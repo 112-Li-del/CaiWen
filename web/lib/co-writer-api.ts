@@ -31,7 +31,7 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 export async function listCoWriterDocuments(): Promise<
   CoWriterDocumentSummary[]
 > {
-  const res = await fetch(apiUrl(`${BASE}/documents`), { cache: "no-store" });
+  const res = await fetch(apiUrl(`${BASE}/documents`), { credentials: "include", cache: "no-store" });
   const data = await jsonOrThrow<{ documents: CoWriterDocumentSummary[] }>(res);
   return Array.isArray(data?.documents) ? data.documents : [];
 }
@@ -42,6 +42,7 @@ export async function createCoWriterDocument(payload?: {
 }): Promise<CoWriterDocument> {
   const res = await fetch(apiUrl(`${BASE}/documents`), {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: payload?.title ?? null,
@@ -57,6 +58,7 @@ export async function getCoWriterDocument(
   const res = await fetch(
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
+      credentials: "include",
       cache: "no-store",
     },
   );
@@ -71,6 +73,7 @@ export async function updateCoWriterDocument(
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
       method: "PUT",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: payload.title ?? null,
@@ -86,6 +89,7 @@ export async function deleteCoWriterDocument(docId: string): Promise<boolean> {
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
       method: "DELETE",
+      credentials: "include",
     },
   );
   const data = await jsonOrThrow<{ deleted: boolean }>(res);

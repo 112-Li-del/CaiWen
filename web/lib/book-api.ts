@@ -12,6 +12,7 @@ const BASE = "/api/v1/book";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(`${BASE}${path}`), {
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
   });
@@ -219,6 +220,7 @@ export async function getLegacyChatSession(
 ): Promise<LegacyChatSession | null> {
   const res = await fetch(
     apiUrl(`/api/v1/chat/sessions/${encodeURIComponent(session_id)}`),
+    { credentials: "include" },
   );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`chat session ${session_id} → ${res.status}`);

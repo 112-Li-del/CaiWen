@@ -64,6 +64,7 @@ export async function listSkills(options?: {
     `${SKILLS_CACHE_PREFIX}list`,
     async () => {
       const response = await fetch(apiUrl("/api/v1/skills/list"), {
+        credentials: "include",
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -84,6 +85,7 @@ export async function getSkill(name: string): Promise<SkillDetail> {
   const response = await fetch(
     apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
     {
+      credentials: "include",
       cache: "no-store",
     },
   );
@@ -101,6 +103,7 @@ export async function createSkill(
 ): Promise<SkillInfo> {
   const response = await fetch(apiUrl("/api/v1/skills/create"), {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: payload.name,
@@ -126,6 +129,7 @@ export async function updateSkill(
     apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
     {
       method: "PUT",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     },
@@ -144,6 +148,7 @@ export async function deleteSkill(name: string): Promise<void> {
     apiUrl(`/api/v1/skills/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
+      credentials: "include",
     },
   );
   await asJson(response);
@@ -157,6 +162,7 @@ export async function listSkillTags(options?: {
     SKILL_TAGS_CACHE_KEY,
     async () => {
       const response = await fetch(apiUrl("/api/v1/skills/tags/list"), {
+        credentials: "include",
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -169,6 +175,7 @@ export async function listSkillTags(options?: {
 export async function createSkillTag(name: string): Promise<string> {
   const response = await fetch(apiUrl("/api/v1/skills/tags/create"), {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
@@ -185,6 +192,7 @@ export async function renameSkillTag(
     apiUrl(`/api/v1/skills/tags/${encodeURIComponent(oldName)}`),
     {
       method: "PUT",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rename_to: newName }),
     },
@@ -199,6 +207,7 @@ export async function deleteSkillTag(name: string): Promise<void> {
     apiUrl(`/api/v1/skills/tags/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
+      credentials: "include",
     },
   );
   await asJson(response);

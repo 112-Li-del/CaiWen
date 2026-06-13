@@ -44,6 +44,7 @@ export interface NotebookDetail extends NotebookSummary {
 
 export async function listNotebooks(): Promise<NotebookSummary[]> {
   const response = await fetch(apiUrl("/api/v1/notebook/list"), {
+    credentials: "include",
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -53,6 +54,7 @@ export async function listNotebooks(): Promise<NotebookSummary[]> {
 
 export async function getNotebook(notebookId: string): Promise<NotebookDetail> {
   const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
+    credentials: "include",
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -67,6 +69,7 @@ export async function createNotebook(payload: {
 }): Promise<NotebookSummary> {
   const response = await fetch(apiUrl("/api/v1/notebook/create"), {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: payload.name,
@@ -91,6 +94,7 @@ export async function updateNotebook(
 ): Promise<NotebookSummary> {
   const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
     method: "PUT",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -102,6 +106,7 @@ export async function updateNotebook(
 export async function deleteNotebook(notebookId: string): Promise<void> {
   const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
     method: "DELETE",
+    credentials: "include",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
@@ -112,7 +117,7 @@ export async function deleteNotebookRecord(
 ): Promise<void> {
   const response = await fetch(
     apiUrl(`/api/v1/notebook/${notebookId}/records/${recordId}`),
-    { method: "DELETE" },
+    { method: "DELETE", credentials: "include" },
   );
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
@@ -181,7 +186,7 @@ export async function listNotebookEntries(
   const query = params.toString();
   const response = await fetch(
     apiUrl(`/api/v1/question-notebook/entries${query ? `?${query}` : ""}`),
-    { cache: "no-store" },
+    { credentials: "include", cache: "no-store" },
   );
   return expectJson<NotebookEntryListResponse>(response);
 }
@@ -192,6 +197,7 @@ export async function getNotebookEntry(
   const response = await fetch(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
+      credentials: "include",
       cache: "no-store",
     },
   );
@@ -208,6 +214,7 @@ export async function lookupNotebookEntry(
   });
   const response = await fetch(
     apiUrl(`/api/v1/question-notebook/entries/lookup/by-question?${params}`),
+    { credentials: "include" },
   );
   if (response.status === 404) return null;
   return expectJson<NotebookEntry>(response);
@@ -221,6 +228,7 @@ export async function updateNotebookEntry(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
       method: "PATCH",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
     },
@@ -244,6 +252,7 @@ export async function upsertNotebookEntry(data: {
     apiUrl("/api/v1/question-notebook/entries/upsert"),
     {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...data,
@@ -261,6 +270,7 @@ export async function deleteNotebookEntry(entryId: number): Promise<void> {
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
       method: "DELETE",
+      credentials: "include",
     },
   );
   await expectJson<{ deleted: boolean }>(response);
@@ -276,6 +286,7 @@ export async function addEntryToCategory(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}/categories`),
     {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category_id: categoryId }),
     },
@@ -291,7 +302,7 @@ export async function removeEntryFromCategory(
     apiUrl(
       `/api/v1/question-notebook/entries/${entryId}/categories/${categoryId}`,
     ),
-    { method: "DELETE" },
+    { method: "DELETE", credentials: "include" },
   );
   await expectJson<{ removed: boolean }>(response);
 }
@@ -300,6 +311,7 @@ export async function removeEntryFromCategory(
 
 export async function listCategories(): Promise<NotebookCategory[]> {
   const response = await fetch(apiUrl("/api/v1/question-notebook/categories"), {
+    credentials: "include",
     cache: "no-store",
   });
   return expectJson<NotebookCategory[]>(response);
@@ -308,6 +320,7 @@ export async function listCategories(): Promise<NotebookCategory[]> {
 export async function createCategory(name: string): Promise<NotebookCategory> {
   const response = await fetch(apiUrl("/api/v1/question-notebook/categories"), {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
@@ -322,6 +335,7 @@ export async function renameCategory(
     apiUrl(`/api/v1/question-notebook/categories/${categoryId}`),
     {
       method: "PATCH",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     },
@@ -334,6 +348,7 @@ export async function deleteCategory(categoryId: number): Promise<void> {
     apiUrl(`/api/v1/question-notebook/categories/${categoryId}`),
     {
       method: "DELETE",
+      credentials: "include",
     },
   );
   await expectJson<{ deleted: boolean }>(response);
