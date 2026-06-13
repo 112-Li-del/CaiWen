@@ -1,129 +1,25 @@
 <div align="center">
 
-<img src="assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
-
-# DeepTutor：Agent 原生个性化辅导
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# CaiWen（财问）
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/112-Li-del/CaiWen?style=flat-square&color=brightgreen)](https://github.com/112-Li-del/CaiWen/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
 
-[![Discord](https://img.shields.io/badge/Discord-社区-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![飞书](https://img.shields.io/badge/飞书-群组-00D4AA?style=flat-square&logo=feishu&logoColor=white)](./Communication.md)
-[![微信](https://img.shields.io/badge/微信-群组-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/112-Li-del/CaiWen/issues/78)
-
-[核心功能](#-核心功能) · [快速开始](#-快速开始) · [功能探索](#-功能探索) · [TutorBot](#-tutorbot--持久化自主-ai-导师) · [CLI](#️-deeptutor-cli--agent-原生接口) · [多用户](#-多用户--共享部署与用户隔离工作区) · [路线图](#️-路线图) · [社区](#-社区与生态)
-
+[核心功能](#-核心功能) · [快速开始](#-快速开始) · [功能探索](#-功能探索) · [TutorBot](#-tutorbot) · [CLI](#-cli) · [多用户](#-多用户)
 
 </div>
-
----
-
-> 🤝 **欢迎任何形式的贡献！** 请参阅我们的[贡献指南](CONTRIBUTING.md)了解分支策略、编码规范以及如何入门。
-
-### 📦 版本发布
-
-> **[2026.5.10]** [v1.3.10](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.10) — 修复远程 Docker CORS、SDK 跨提供商 `DISABLE_SSL_VERIFY`、更安全的代码块引用，以及可选 Matrix E2EE 插件。
-
-> **[2026.5.9]** [v1.3.9](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.9) — TutorBot 支持 Zulip 和 NVIDIA NIM、更安全的多模型路由、`deeptutor start`、侧边栏提示，以及会话存储一致性。
-
-> **[2026.5.8]** [v1.3.8](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.8) — 可选多用户部署，支持隔离的用户工作区、管理员授权、认证路由和受限运行时访问。
-
-> **[2026.5.4]** [v1.3.7](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.7) — 推理模型/提供商修复、可视化知识库索引历史、更安全的 Co-Writer 清除/模板编辑。
-
-> **[2026.5.3]** [v1.3.6](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.6) — 基于目录的聊天和 TutorBot 模型选择、更安全的 RAG 重建索引、OpenAI Responses token 限制修复、Skills 编辑器校验。
-
-> **[2026.5.2]** [v1.3.5](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.5) — 更顺畅的本地启动设置、更安全的 RAG 查询、更干净的本地嵌入认证、设置页深色模式优化。
-
-> **[2026.5.1]** [v1.3.4](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.4) — 书籍页面聊天持久化与重建流程、聊天到书籍引用、更强的语言/推理处理、RAG 文档提取加固。
-
-> **[2026.4.30]** [v1.3.3](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.3) — NVIDIA NIM + Gemini 嵌入支持、统一的 Space 上下文管理聊天历史/技能/记忆、会话快照、RAG 重建索引弹性。
-
-> **[2026.4.29]** [v1.3.2](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.2) — 透明嵌入端点 URL、无效持久化向量的 RAG 重建索引弹性、推理模型输出记忆清理、Deep Solve 运行时修复。
-
-> **[2026.4.28]** [v1.3.1](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.1) — 稳定性：更安全的 RAG 路由和嵌入验证、Docker 数据持久化、IME 安全输入、Windows/GBK 编码健壮性。
-
-> **[2026.4.27]** [v1.3.0](https://github.com/112-Li-del/CaiWen/releases/tag/v1.3.0) — 带重建索引工作流的版本化知识库索引、重建的 Knowledge 工作区、新适配器嵌入自动发现、Space 中心。
-
-<details>
-<summary><b>更早的版本（两周以前）</b></summary>
-
-> **[2026.4.25]** [v1.2.5](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.5) — 聊天附件持久化与文件预览抽屉、附件感知的能力管道、TutorBot Markdown 导出。
-
-> **[2026.4.25]** [v1.2.4](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.4) — 文本/代码/SVG 附件、一键 Setup Tour、Markdown 聊天导出、紧凑的知识库管理 UI。
-
-> **[2026.4.24]** [v1.2.3](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.3) — 文档附件（PDF/DOCX/XLSX/PPTX）、推理思考块展示、Soul 模板编辑器、Co-Writer 保存到笔记本。
-
-> **[2026.4.22]** [v1.2.2](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.2) — 用户自定义 Skills 系统、聊天输入性能大幅优化、TutorBot 自动启动、书籍图书馆 UI、可视化全屏。
-
-> **[2026.4.21]** [v1.2.1](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.1) — 每阶段 token 限制、所有入口的重新生成回复、RAG 和 Gemma 兼容性修复。
-
-> **[2026.4.20]** [v1.2.0](https://github.com/112-Li-del/CaiWen/releases/tag/v1.2.0) — Book Engine"活书"编译器、多文档 Co-Writer、交互式 HTML 可视化、题库 @-提及。
-
-> **[2026.4.18]** [v1.1.2](https://github.com/112-Li-del/CaiWen/releases/tag/v1.1.2) — Schema 驱动的 Channels 标签页、RAG 单管道整合、外部化的聊天提示词。
-
-> **[2026.4.17]** [v1.1.1](https://github.com/112-Li-del/CaiWen/releases/tag/v1.1.1) — 通用"立即回答"、Co-Writer 滚动同步、统一设置面板、流式停止按钮。
-
-> **[2026.4.15]** [v1.1.0](https://github.com/112-Li-del/CaiWen/releases/tag/v1.1.0) — LaTeX 块级数学公式全面重构、LLM 诊断探针、Docker + 本地 LLM 指南。
-
-> **[2026.4.14]** [v1.1.0-beta](https://github.com/112-Li-del/CaiWen/releases/tag/v1.1.0-beta) — 可收藏的会话、Snow 主题、WebSocket 心跳与自动重连、嵌入注册表全面重构。
-
-> **[2026.4.13]** [v1.0.3](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.3) — 带书签和分类的错题本、Mermaid 图表可视化、嵌入不匹配检测、Qwen/vLLM 兼容、LM Studio 和 llama.cpp 支持、Glass 主题。
-
-> **[2026.4.11]** [v1.0.2](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.2) — 搜索整合（含 SearXNG 回退）、提供商切换修复、前端资源泄漏修复。
-
-> **[2026.4.10]** [v1.0.1](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.1) — Visualize 能力（Chart.js/SVG）、题目去重、o4-mini 模型支持。
-
-> **[2026.4.10]** [v1.0.0-beta.4](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.0-beta.4) — 嵌入进度追踪与速率限制重试、跨平台依赖修复、MIME 校验修复。
-
-> **[2026.4.8]** [v1.0.0-beta.3](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.0-beta.3) — 原生 OpenAI/Anthropic SDK（去除 litellm）、Windows Math Animator 支持、鲁棒 JSON 解析、全面中文国际化。
-
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.0-beta.2) — 设置热重载、MinerU 嵌套输出、WebSocket 修复、最低 Python 3.11+。
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/112-Li-del/CaiWen/releases/tag/v1.0.0-beta.1) — Agent 原生架构重写（约 20 万行）：Tools + Capabilities 插件模型、CLI 和 SDK、TutorBot、Co-Writer、引导式学习和持久化记忆。
-
-> **[2026.1.23]** [v0.6.0](https://github.com/112-Li-del/CaiWen/releases/tag/v0.6.0) — 会话持久化、增量文档上传、灵活的 RAG 管道导入、全面中文本地化。
-
-> **[2026.1.18]** [v0.5.2](https://github.com/112-Li-del/CaiWen/releases/tag/v0.5.2) — Docling 支持 RAG-Anything、日志系统优化、Bug 修复。
-
-> **[2026.1.15]** [v0.5.0](https://github.com/112-Li-del/CaiWen/releases/tag/v0.5.0) — 统一服务配置、按知识库选择 RAG 管道、题目生成全面重构、侧边栏定制。
-
-> **[2026.1.9]** [v0.4.0](https://github.com/112-Li-del/CaiWen/releases/tag/v0.4.0) — 多提供商 LLM 和嵌入支持、新首页、RAG 模块解耦、环境变量重构。
-
-> **[2026.1.5]** [v0.3.0](https://github.com/112-Li-del/CaiWen/releases/tag/v0.3.0) — 统一 PromptManager 架构、GitHub Actions CI/CD、GHCR 预构建 Docker 镜像。
-
-> **[2026.1.2]** [v0.2.0](https://github.com/112-Li-del/CaiWen/releases/tag/v0.2.0) — Docker 部署、Next.js 16 和 React 19 升级、WebSocket 安全加固、关键漏洞修复。
-
-</details>
-
-### 📰 新闻动态
-
-> **[2026.4.19]** 🎉 我们在 111 天内达到了 2 万 star！感谢大家的鼎力支持——我们将持续迭代，致力于为每个人提供真正个性化、智能化的辅导。
-
-> **[2026.4.10]** 📄 我们的论文已在 arXiv 上线！阅读[预印本](https://arxiv.org/abs/2604.26962)，了解更多 DeepTutor 的设计理念和背后的思路。
-
-> **[2026.4.4]** 好久不见！✨ DeepTutor v1.0.0 正式发布——Agent 原生进化，架构全面重写，新增 TutorBot，Apache-2.0 许可证下灵活的模式切换。新篇章开启，我们的故事继续！
-
-> **[2026.2.6]** 🚀 仅用 39 天达到 1 万 star！衷心感谢我们社区的大力支持！
-
-> **[2026.1.1]** 新年快乐！加入我们的 [Discord](https://discord.gg/eRsjPgMU4t)、[微信群](https://github.com/112-Li-del/CaiWen/issues/78) 或 [讨论区](https://github.com/112-Li-del/CaiWen/discussions)——一起塑造 DeepTutor 的未来！
-
-> **[2025.12.29]** DeepTutor 正式发布！
-
 
 ## ✨ 核心功能
 
 - **统一聊天工作区** — 六种模式，一个对话线程。聊天、深度求解、题目生成、深度研究、数学动画和可视化共享同一上下文——可以随时开始对话、升级到多 Agent 问题求解、生成测验、可视化概念，然后深入研究，全程不丢失任何信息。
 - **AI Co-Writer** — 多文档 Markdown 工作区，AI 是一等协作者。选中文字即可重写、扩展或总结——从你的知识库和网络中汲取内容。每一个片段都能反哺到你的学习生态系统中。
 - **Book Engine** — 将你的学习材料转化为结构化、交互式的"活书"。多 Agent 管道设计大纲、检索相关来源、编译包含 13 种块类型的丰富页面——测验、闪卡、时间线、概念图、交互演示等。
-- **知识中心** — 上传 PDF、Markdown 和文本文件构建 RAG 就绪的知识库。在彩色标签的笔记本中整理知识点，在题库中回顾测验题目，创建自定义 Skills 来塑造 DeepTutor 如何教你。你的文档不只是堆在那里——它们会为每一次对话提供动力。
-- **持久化记忆** — DeepTutor 构建你的动态学习画像：你学过什么、怎么学的、目标是什么。记忆在所有功能和所有 TutorBot 之间共享，每次互动都让它更加精准。
+- **知识中心** — 上传 PDF、Markdown 和文本文件构建 RAG 就绪的知识库。在彩色标签的笔记本中整理知识点，在题库中回顾测验题目，创建自定义 Skills 来塑造 CaiWen 如何教你。你的文档不只是堆在那里——它们会为每一次对话提供动力。
+- **持久化记忆** — CaiWen 构建你的动态学习画像：你学过什么、怎么学的、目标是什么。记忆在所有功能和所有 TutorBot 之间共享，每次互动都让它更加精准。
 - **个人 TutorBot** — 不是聊天机器人，是自主导师。每个 TutorBot 拥有自己的工作区、记忆、个性和技能集。它们设置提醒、学习新能力，与你共同成长。基于 [nanobot](https://github.com/HKUDS/nanobot) 构建。
-- **Agent 原生 CLI** — 所有能力、知识库、会话和 TutorBot 都只需一条命令。人类获得丰富的终端输出，AI Agent 获得结构化 JSON。把 [`SKILL.md`](SKILL.md) 交给 DeepTutor，你的 Agent 就能自主操作它。
+- **Agent 原生 CLI** — 所有能力、知识库、会话和 TutorBot 都只需一条命令。人类获得丰富的终端输出，AI Agent 获得结构化 JSON。把 [`SKILL.md`](SKILL.md) 交给 CaiWen，你的 Agent 就能自主操作它。
 - **可选认证** — 本地使用默认关闭。设置两个环境变量即可在公开部署时要求登录。多用户支持，bcrypt 哈希密码、JWT 会话、自助注册页面和内置管理后台管理账户和角色。可选 **PocketBase** 支持 OAuth 认证和改进的多用户并发——作为可选边车部署，无需修改代码。
 
 ---
@@ -486,7 +382,7 @@ PocketBase 是一个可选的轻量级后端，替代内置的 SQLite/JSON 认�
 **快速开始（Docker Compose）：**
 
 ```bash
-# 使用 docker compose 时，PocketBase 会自动随 DeepTutor 一起启动
+# 使用 docker compose 时，PocketBase 会自动随 CaiWen 一起启动
 docker compose up -d
 
 # 1. 打开管理面板并创建管理员账户
@@ -633,14 +529,14 @@ deeptutor run deep_solve "解方程 x^2 = 4"          # 多 Agent 问题求解
 deeptutor kb create my-kb --doc textbook.pdf      # 构建知识库
 ```
 
-> 完整功能指南和命令参考请参见 [DeepTutor CLI](#️-deeptutor-cli--agent-原生接口)。
+> 完整功能指南和命令参考请参见 [CaiWen CLI](#️-deeptutor-cli--agent-原生接口)。
 
 ---
 
 ## 📖 功能探索
 
 <div align="center">
-<img src="assets/figs/deeptutor-architecture.png" alt="DeepTutor 架构图" width="800">
+<img src="assets/figs/deeptutor-architecture.png" alt="CaiWen 架构图" width="800">
 </div>
 
 ### 💬 Chat — 统一智能工作区
@@ -680,7 +576,7 @@ Co-Writer 将 Chat 的智能直接带到了写作界面。创建和管理多个�
 <img src="assets/figs/dt-book-0.png" alt="书籍图书馆" width="270"><img src="assets/figs/dt-book-1.png" alt="书籍阅读器" width="270"><img src="assets/figs/dt-book-2.png" alt="书籍动画" width="270">
 </div>
 
-给 DeepTutor 一个主题，指向你的知识库，它就会生成一本结构化、交互式的书籍——不是静态导出，而是一本你可以阅读、自测和讨论的动态文档。
+给 CaiWen 一个主题，指向你的知识库，它就会生成一本结构化、交互式的书籍——不是静态导出，而是一本你可以阅读、自测和讨论的动态文档。
 
 在幕后，一个多 Agent 管道处理繁重工作：提出大纲、从你的知识库中检索相关来源、合成章节树、规划每一页、编译每一个块。你始终掌控——审核方案、重排章节、在任意页面旁边聊天。
 
@@ -692,27 +588,27 @@ Co-Writer 将 Chat 的智能直接带到了写作界面。创建和管理多个�
 <img src="assets/figs/dt-knowledge.png" alt="知识管理" width="800">
 </div>
 
-知识管理是你构建和管理文档集合、笔记和教学角色的地方，为 DeepTutor 的一切提供动力。
+知识管理是你构建和管理文档集合、笔记和教学角色的地方，为 CaiWen 的一切提供动力。
 
 - **知识库** — 上传 PDF、Office 文件（DOCX/XLSX/PPTX）、Markdown 以及各种文本和代码文件，创建可搜索、RAG 就绪的文档集合。随着你的资料库增长，增量添加文档。
 - **笔记本** — 跨会话整理学习记录。将 Chat、Co-Writer、Book 或 Deep Research 中的见解保存到分类、彩色标签的笔记本中。
 - **题库** — 浏览和回顾所有生成的测验题目。收藏条目，直接在聊天中 @-提及，以便回顾过往表现。
-- **Skills** — 通过 `SKILL.md` 文件创建自定义教学角色。每个 Skill 定义名称、描述、可选触发器和 Markdown 正文，激活后注入到聊天系统提示中——将 DeepTutor 变成苏格拉底式导师、同伴学习伙伴、研究助手或你设计的任何角色。
+- **Skills** — 通过 `SKILL.md` 文件创建自定义教学角色。每个 Skill 定义名称、描述、可选触发器和 Markdown 正文，激活后注入到聊天系统提示中——将 CaiWen 变成苏格拉底式导师、同伴学习伙伴、研究助手或你设计的任何角色。
 
 你的知识库不是被动存储——它积极参与每一次对话、每一个研究会话和每一条你创建的学习路径。
 
-### 🧠 记忆 — DeepTutor 随你的学习而成长
+### 🧠 记忆 — CaiWen 随你的学习而成长
 
 <div align="center">
 <img src="assets/figs/dt-memory.png" alt="Memory" width="800">
 </div>
 
-DeepTutor 通过两个互补维度维护对你持久、动态的理解：
+CaiWen 通过两个互补维度维护对你持久、动态的理解：
 
 - **摘要** — 你学习进度的动态摘要：你学了什么、探索了哪些主题、你的理解如何发展。
 - **画像** — 你的学习者身份：偏好、知识水平、目标和沟通风格——通过每次互动自动完善。
 
-记忆在所有功能和所有 TutorBot 之间共享。你使用 DeepTutor 越多，它就越个性化和高效。
+记忆在所有功能和所有 TutorBot 之间共享。你使用 CaiWen 越多，它就越个性化和高效。
 
 ---
 
@@ -729,9 +625,9 @@ TutorBot 不是聊天机器人——它是基于 [nanobot](https://github.com/HK
 </div>
 
 - **Soul 模板** — 通过可编辑的 Soul 文件定义导师的个性、语气和教学理念。从内置原型（苏格拉底式、鼓励型、严谨型）中选择，或自定义——Soul 塑造每一次回应。
-- **独立工作区** — 每个 Bot 有自己的目录，独立的记忆、会话、Skill 和配置——完全隔离，但可以访问 DeepTutor 的共享知识层。
+- **独立工作区** — 每个 Bot 有自己的目录，独立的记忆、会话、Skill 和配置——完全隔离，但可以访问 CaiWen 的共享知识层。
 - **主动心跳** — Bot 不仅回应——它们主动发起。内置心跳系统支持定期学习签到、复习提醒和计划任务。你的导师即使你不主动去找它，它也会来找你。
-- **完整工具访问** — 每个 Bot 都能访问 DeepTutor 的完整工具集：RAG 检索、代码执行、网络搜索、学术论文搜索、深度推理和头脑风暴。
+- **完整工具访问** — 每个 Bot 都能访问 CaiWen 的完整工具集：RAG 检索、代码执行、网络搜索、学术论文搜索、深度推理和头脑风暴。
 - **Skill 学习** — 通过向其工作区添加 Skill 文件来教会你的 Bot 新能力。随着你的需求变化，你导师的能力也随之提升。
 - **多渠道存在** — 将 Bot 连接到 Telegram、Discord、Slack、飞书、企业微信、钉钉、Matrix、QQ、WhatsApp、Email 等。你的导师无论你在哪里都能找到你。
 - **团队与子 Agent** — 在单个 Bot 内派生子 Agent 或编排多 Agent 团队，完成复杂的长时任务。
@@ -744,15 +640,15 @@ deeptutor bot list                  # 查看你所有活跃的导师
 
 ---
 
-### ⌨️ DeepTutor CLI — Agent 原生接口
+### ⌨️ CaiWen CLI — Agent 原生接口
 
 <div align="center">
-<img src="assets/figs/cli-architecture.png" alt="DeepTutor CLI 架构" width="800">
+<img src="assets/figs/cli-architecture.png" alt="CaiWen CLI 架构" width="800">
 </div>
 
-DeepTutor 完全 CLI 原生。每一项能力、知识库、会话、记忆和 TutorBot 都只需一条命令——不需要浏览器。CLI 同时服务人类（丰富的终端渲染）和 AI Agent（结构化 JSON 输出）。
+CaiWen 完全 CLI 原生。每一项能力、知识库、会话、记忆和 TutorBot 都只需一条命令——不需要浏览器。CLI 同时服务人类（丰富的终端渲染）和 AI Agent（结构化 JSON 输出）。
 
-将项目根目录的 [`SKILL.md`](SKILL.md) 交给任何使用工具的 Agent（[nanobot](https://github.com/HKUDS/nanobot) 或任何具有工具访问权限的 LLM），它就能自主配置和操作 DeepTutor。
+将项目根目录的 [`SKILL.md`](SKILL.md) 交给任何使用工具的 Agent（[nanobot](https://github.com/HKUDS/nanobot) 或任何具有工具访问权限的 LLM），它就能自主配置和操作 CaiWen。
 
 **一次性执行** — 直接从终端运行任何能力：
 
@@ -803,7 +699,7 @@ deeptutor session open <id>                         # 在 REPL 中恢复会话
 |:---|:---|
 | `deeptutor run <capability> <message>` | 单轮执行任意能力（`chat`、`deep_solve`、`deep_question`、`deep_research`、`math_animator`、`visualize`） |
 | `deeptutor chat` | 交互式 REPL，可选 `--capability`、`--tool`、`--kb`、`--language` |
-| `deeptutor serve` | 启动 DeepTutor API 服务器 |
+| `deeptutor serve` | 启动 CaiWen API 服务器 |
 
 **`deeptutor bot`**
 
@@ -881,7 +777,7 @@ deeptutor session open <id>                         # 在 REPL 中恢复会话
 <img src="assets/figs/dt-multi-user.png" alt="多用户" width="800">
 </div>
 
-打开认证开关，DeepTutor 就变成一个多租户部署，具有**用户隔离工作区**和**管理员管理资源**。第一个注册的人成为管理员，为所有其他人配置模型、API 密钥和知识库。后续账户由管理员创建（仅限邀请），每个人拥有自己独立的聊天历史 / 记忆 / 笔记本 / 知识库，且只能看到管理员分配给他们的大模型、知识库和 Skill。
+打开认证开关，CaiWen 就变成一个多租户部署，具有**用户隔离工作区**和**管理员管理资源**。第一个注册的人成为管理员，为所有其他人配置模型、API 密钥和知识库。后续账户由管理员创建（仅限邀请），每个人拥有自己独立的聊天历史 / 记忆 / 笔记本 / 知识库，且只能看到管理员分配给他们的大模型、知识库和 Skill。
 
 **快速开始（5 步）：**
 
@@ -961,67 +857,15 @@ multi-user/
 | 🔜 | **LightRAG 集成** — 集成 [LightRAG](https://github.com/HKUDS/LightRAG) 作为高级知识库引擎 |
 | 🔜 | **文档站点** — 包含指南、API 参考和教程的综合文档页面 |
 
-> 如果 DeepTutor 对你有用，[给我们一颗 star](https://github.com/112-Li-del/CaiWen/stargazers)——这是对我们最大的支持！
+> 如果 CaiWen 对你有用，[给我们一颗 star](https://github.com/112-Li-del/CaiWen/stargazers)——这是对我们最大的支持！
 
 ---
-
-## 🌐 社区与生态
-
-DeepTutor 站在优秀开源项目的肩膀上：
-
-| 项目 | 在 DeepTutor 中的角色 |
-|:---|:---|
-| [**nanobot**](https://github.com/HKUDS/nanobot) | 超轻量 Agent 引擎，驱动 TutorBot |
-| [**LlamaIndex**](https://github.com/run-llama/llama_index) | RAG 管道和文档索引骨干 |
-| [**ManimCat**](https://github.com/Wing900/ManimCat) | AI 驱动的数学动画生成，支持 Math Animator |
-
-**来自 HKUDS 生态：**
-
-| [⚡ LightRAG](https://github.com/HKUDS/LightRAG) | [🤖 AutoAgent](https://github.com/HKUDS/AutoAgent) | [🔬 AI-Researcher](https://github.com/HKUDS/AI-Researcher) | [🧬 nanobot](https://github.com/HKUDS/nanobot) |
-|:---:|:---:|:---:|:---:|
-| 简单快速的 RAG | 零代码 Agent 框架 | 自动化研究 | 超轻量 AI Agent |
-
 
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
-## ⭐ Star 历史
-
-<div align="center">
-
-<a href="https://www.star-history.com/#112-Li-del/CaiWen&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=112-Li-del/CaiWen&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=112-Li-del/CaiWen&type=timeline&legend=top-left" />
-    <img alt="Star 历史图表" src="https://api.star-history.com/svg?repos=112-Li-del/CaiWen&type=timeline&legend=top-left" />
-  </picture>
-</a>
-
-</div>
-
-<p align="center">
- <a href="https://www.star-history.com/hkuds/deeptutor">
-  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=112-Li-del/CaiWen&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=112-Li-del/CaiWen" />
-   <img alt="Star 历史排名" src="https://api.star-history.com/badge?repo=112-Li-del/CaiWen" />
-  </picture>
- </a>
-</p>
-
-<div align="center">
-
-**[香港大学数据智能实验室](https://github.com/HKUDS)**
-
-[⭐ 加星](https://github.com/112-Li-del/CaiWen/stargazers) · [🐛 报告 Bug](https://github.com/112-Li-del/CaiWen/issues) · [💬 讨论区](https://github.com/112-Li-del/CaiWen/discussions)
-
 ---
 
 基于 [Apache License 2.0](LICENSE) 许可。
 
-<p>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=112-Li-del.CaiWen&style=for-the-badge&color=00d4ff" alt="访问量">
-</p>
-
-</div>
