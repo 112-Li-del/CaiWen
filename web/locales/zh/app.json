@@ -1607,8 +1607,5 @@
   "Reference Docs": "参考文档",
   "Knowledge Base Document": "知识库文档",
   "Web Search Result": "网络搜索结果",
-  "Paper Search Result": "论文检索结果",
-  "No memory selected": "未选择记忆",
-  "Confirm": "确定",
-  "Confirm ({{n}})": "确定（{{n}}）"
+  "Paper Search Result": "论文检索结果"
 }

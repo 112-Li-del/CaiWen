@@ -145,11 +145,9 @@ export default function MemoryPicker({
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="text-[12px] text-[var(--muted-foreground)]">
-              {selected.length === 0
-                ? t("No memory selected")
-                : selected.length === 1
-                  ? t("1 memory artifact selected")
-                  : t("{{n}} memory artifacts selected", { n: selected.length })}
+              {selected.length === 1
+                ? t("1 memory artifact selected")
+                : t("{{n}} memory artifacts selected", { n: selected.length })}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -160,11 +158,10 @@ export default function MemoryPicker({
               </button>
               <button
                 onClick={handleApply}
-                className="rounded-xl bg-[#b0501e] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-opacity hover:bg-[#8a3e17] hover:opacity-100"
+                disabled={!selected.length}
+                className="btn-primary rounded-xl bg-[var(--primary)] px-4 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {selected.length > 0
-                  ? t("Confirm ({{n}})", { n: selected.length })
-                  : t("Confirm")}
+                {t("Use Selected Memory ({{n}})", { n: selected.length })}
               </button>
             </div>
           </div>

@@ -1607,8 +1607,5 @@
   "Reference Docs": "Reference Docs",
   "Knowledge Base Document": "Knowledge Base Document",
   "Web Search Result": "Web Search Result",
-  "Paper Search Result": "Paper Search Result",
-  "No memory selected": "No memory selected",
-  "Confirm": "Confirm",
-  "Confirm ({{n}})": "Confirm ({{n}})"
+  "Paper Search Result": "Paper Search Result"
 }
