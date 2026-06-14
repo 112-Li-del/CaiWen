@@ -5,11 +5,15 @@ import { memo, useCallback, useMemo, useState } from "react";
 import {
   BookOpen,
   Brain,
+  ChevronDown,
   ClipboardList,
   Coins,
   Copy,
+  FileText,
+  Globe,
   MessageSquare,
   RefreshCcw,
+  ScrollText,
   Wand2,
   X,
   Zap,
@@ -158,6 +162,19 @@ const AssistantMessage = memo(function AssistantMessage({
     return extractVisualizeResult(resultEvent.metadata);
   }, [msg.capability, resultEvent]);
 
+  // Extract source documents from events (emitted after the LLM finishes answering)
+  const allSources = useMemo(() => {
+    return events
+      .filter((e) => e.type === "sources")
+      .flatMap(
+        (e) =>
+          ((e.metadata as Record<string, unknown> | undefined)
+            ?.sources ?? []) as Record<string, unknown>[],
+      );
+  }, [events]);
+
+  const showSources = !isStreaming && allSources.length > 0;
+
   return (
     <>
       {hasCallTrace ? (
@@ -192,11 +209,102 @@ const AssistantMessage = memo(function AssistantMessage({
       ) : (
         <AssistantResponse content={msg.content} />
       )}
+      {showSources && <SourcesPanel sources={allSources} />}
     </>
   );
 });
 
 AssistantMessage.displayName = "AssistantMessage";
+
+type SourceItem = Record<string, unknown>;
+
+const SourcesPanel = memo(function SourcesPanel({
+  sources,
+}: {
+  sources: SourceItem[];
+}) {
+  const { t } = useTranslation();
+  if (!sources || sources.length === 0) return null;
+
+  const iconForSource = (s: SourceItem) => {
+    const type = String(s.type ?? "");
+    if (type === "rag") return <FileText size={13} strokeWidth={1.8} />;
+    if (type === "web") return <Globe size={13} strokeWidth={1.8} />;
+    if (type === "paper") return <ScrollText size={13} strokeWidth={1.8} />;
+    return <FileText size={13} strokeWidth={1.8} />;
+  };
+
+  const labelForSource = (s: SourceItem) => {
+    const type = String(s.type ?? "");
+    if (type === "rag") return t("Knowledge Base Document");
+    if (type === "web") return t("Web Search Result");
+    if (type === "paper") return t("Paper Search Result");
+    return t("Source");
+  };
+
+  const subtitleForSource = (s: SourceItem) => {
+    const parts: string[] = [];
+    const file = String(s.source_file ?? s.url ?? "");
+    if (file) parts.push(file);
+    const page = String(s.page ?? "");
+    if (page) parts.push(`p.${page}`);
+    const score = Number(s.score);
+    if (!Number.isNaN(score) && score > 0)
+      parts.push(`${(score * 100).toFixed(0)}%`);
+    return parts.join(" · ");
+  };
+
+  return (
+    <details className="group mt-3 rounded-lg border border-[var(--border)] bg-[var(--card)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[13px] font-medium text-[var(--foreground)]">
+        <span className="inline-flex items-center gap-1.5">
+          <FileText size={13} strokeWidth={1.8} className="text-[var(--muted-foreground)]" />
+          {t("Sources")} ({sources.length})
+        </span>
+        <ChevronDown
+          size={13}
+          className="text-[var(--muted-foreground)] transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="border-t border-[var(--border)] px-3 py-2.5 space-y-2">
+        {sources.map((s, i) => {
+          const title = String(s.title ?? s.query ?? `${t("Source")} ${i + 1}`);
+          const contentPreview = String(s.content_preview ?? s.content ?? "");
+          const subtitle = subtitleForSource(s);
+
+          return (
+            <div
+              key={`src-${i}`}
+              className="rounded-md bg-[var(--muted)]/60 px-2.5 py-2 text-[12px]"
+            >
+              <div className="flex items-start gap-1.5">
+                <span className="mt-0.5 shrink-0 text-[var(--muted-foreground)]">
+                  {iconForSource(s)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-[var(--foreground)] leading-snug break-words">
+                    {title}
+                  </div>
+                  {subtitle && (
+                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)] truncate">
+                      {subtitle}
+                    </div>
+                  )}
+                  {contentPreview && (
+                    <div className="mt-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]/80 line-clamp-2">
+                      {contentPreview}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+});
+SourcesPanel.displayName = "SourcesPanel";
 
 /**
  * Inline "Answer now" affordance shown alongside the active assistant turn.

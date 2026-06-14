@@ -190,15 +190,32 @@ class ChatAgent(BaseAgent):
                 rag_answer = rag_result.content
                 if rag_answer:
                     context_parts.append(f"[Knowledge Base: {kb_name}]\n{rag_answer}")
-                    sources["rag"].append(
-                        {
-                            "kb_name": kb_name,
-                            "content": rag_answer[:500] + "..."
-                            if len(rag_answer) > 500
-                            else rag_answer,
-                        }
-                    )
-                    self.logger.info(f"RAG retrieved {len(rag_answer)} chars")
+                    if rag_result.sources:
+                        sources["rag"] = [
+                            {
+                                "type": "rag",
+                                "title": s.get("title", ""),
+                                "content_preview": (
+                                    (s.get("content_preview") or s.get("content") or "")[:200]
+                                ),
+                                "source_file": s.get("source_file", s.get("source", "")),
+                                "page": s.get("page", ""),
+                                "score": s.get("score", ""),
+                                "kb_name": kb_name,
+                            }
+                            for s in rag_result.sources
+                        ]
+                    else:
+                        sources["rag"] = [
+                            {
+                                "type": "rag",
+                                "kb_name": kb_name,
+                                "content_preview": rag_answer[:200] + "..."
+                                if len(rag_answer) > 200
+                                else rag_answer,
+                            }
+                        ]
+                    self.logger.info(f"RAG retrieved {len(rag_answer)} chars, {len(sources['rag'])} source docs")
             except Exception as e:
                 self.logger.warning(f"RAG search failed: {e}")
 

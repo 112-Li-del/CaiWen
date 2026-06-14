@@ -95,9 +95,25 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             **extra_kwargs,
         )
         content = result.get("answer") or result.get("content", "")
+        rag_sources = result.get("sources", [])
+        sources = [
+            {
+                "type": "rag",
+                "title": s.get("title", ""),
+                "content_preview": s.get("content", "")[:200] if isinstance(s.get("content"), str) else "",
+                "source_file": s.get("source", ""),
+                "page": s.get("page", ""),
+                "score": s.get("score", ""),
+                "kb_name": str(kb_name or ""),
+                "query": query,
+            }
+            for s in rag_sources
+        ]
+        if not sources:
+            sources = [{"type": "rag", "query": query, "kb_name": kb_name or ""}]
         return ToolResult(
             content=content,
-            sources=[{"type": "rag", "query": query, "kb_name": kb_name}],
+            sources=sources,
             metadata=result,
         )
 

@@ -1603,5 +1603,9 @@
   "Co-Writer tooltip": "AI 驱动的协作文档编辑器。",
   "Book tooltip": "生成交互式 AI 书籍。",
   "Knowledge tooltip": "管理文档与教学人设。",
-  "Space tooltip": "你的个人学习空间。"
+  "Space tooltip": "你的个人学习空间。",
+  "Reference Docs": "参考文档",
+  "Knowledge Base Document": "知识库文档",
+  "Web Search Result": "网络搜索结果",
+  "Paper Search Result": "论文检索结果"
 }

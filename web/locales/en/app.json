@@ -1603,5 +1603,9 @@
   "Co-Writer tooltip": "AI-powered document editor.",
   "Book tooltip": "Create AI-powered books.",
   "Knowledge tooltip": "Manage learning personas.",
-  "Space tooltip": "Your personal learning library."
+  "Space tooltip": "Your personal learning library.",
+  "Reference Docs": "Reference Docs",
+  "Knowledge Base Document": "Knowledge Base Document",
+  "Web Search Result": "Web Search Result",
+  "Paper Search Result": "Paper Search Result"
 }
