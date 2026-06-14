@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""DeepTutor Web Launcher — starts backend + frontend from user settings."""
+"""CaiWen Web Launcher — starts backend + frontend from user settings."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
 def _load_runtime_deps():
     from _cli_kit import banner, bold, dim, log_error, log_info, log_success, log_warn
 
-    from deeptutor.services.config.launch_settings import load_launch_settings
+    from CaiWen.services.config.launch_settings import load_launch_settings
 
     return banner, bold, dim, log_error, log_info, log_success, log_warn, load_launch_settings
 
@@ -51,8 +51,8 @@ MESSAGES = {
         "port_conflict": "{name} port {port} is already in use.",
         "port_owner": "owner: {command} (PID {pid})",
         "port_owner_unknown": "owner: unknown process",
-        "port_hint": "Stop the existing process or run `python scripts/stop_web.py` if it is a stale DeepTutor launch.",
-        "cleanup_previous": "Found a stale DeepTutor launch state; cleaning it up first ...",
+        "port_hint": "Stop the existing process or run `python scripts/stop_web.py` if it is a stale CaiWen launch.",
+        "cleanup_previous": "Found a stale CaiWen launch state; cleaning it up first ...",
         "starting_backend": "Starting backend ...",
         "starting_frontend": "Starting frontend ...",
         "waiting_backend": "Waiting for backend at {url} ...",
@@ -65,8 +65,8 @@ MESSAGES = {
         "shutdown_signal": "Received {signal}; shutting down ...",
         "shutdown": "Shutting down ...",
         "stopping": "Stopping {name} (PID {pid})",
-        "state_missing": "No DeepTutor launcher state found.",
-        "state_stopped": "Stopped recorded DeepTutor processes.",
+        "state_missing": "No CaiWen launcher state found.",
+        "state_stopped": "Stopped recorded CaiWen processes.",
         "state_invalid": "Ignoring unreadable launcher state.",
     },
     "zh": {
@@ -77,8 +77,8 @@ MESSAGES = {
         "port_conflict": "{name}端口 {port} 已被占用。",
         "port_owner": "占用进程：{command} (PID {pid})",
         "port_owner_unknown": "占用进程：未知",
-        "port_hint": "请先停止已有进程；如果是上次 DeepTutor 异常退出残留，可运行 `python scripts/stop_web.py`。",
-        "cleanup_previous": "发现上次 DeepTutor 启动状态，正在先清理残留进程 ...",
+        "port_hint": "请先停止已有进程；如果是上次 CaiWen 异常退出残留，可运行 `python scripts/stop_web.py`。",
+        "cleanup_previous": "发现上次 CaiWen 启动状态，正在先清理残留进程 ...",
         "starting_backend": "正在启动后端 ...",
         "starting_frontend": "正在启动前端 ...",
         "waiting_backend": "正在等待后端就绪：{url} ...",
@@ -91,8 +91,8 @@ MESSAGES = {
         "shutdown_signal": "收到 {signal}，正在关闭 ...",
         "shutdown": "正在关闭 ...",
         "stopping": "正在停止 {name} (PID {pid})",
-        "state_missing": "未找到 DeepTutor 启动状态。",
-        "state_stopped": "已停止记录中的 DeepTutor 进程。",
+        "state_missing": "未找到 CaiWen 启动状态。",
+        "state_stopped": "已停止记录中的 CaiWen 进程。",
         "state_invalid": "启动状态文件不可读，已忽略。",
     },
 }
@@ -521,7 +521,7 @@ def main() -> None:
         raise SystemExit(1)
 
     banner(
-        "DeepTutor",
+        "CaiWen",
         [
             f"{_t(language, 'backend')}   http://localhost:{backend_port}",
             f"{_t(language, 'frontend')}  http://localhost:{frontend_port}",
@@ -557,7 +557,7 @@ def main() -> None:
     frontend_env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     frontend_env["PYTHONIOENCODING"] = "utf-8:replace"
 
-    backend_cmd = [sys.executable, "-m", "deeptutor.api.run_server"]
+    backend_cmd = [sys.executable, "-m", "CaiWen.api.run_server"]
     frontend_cmd = [npm, "run", "dev", "--", "--port", str(frontend_port)]
 
     processes: list[ManagedProcess] = []
