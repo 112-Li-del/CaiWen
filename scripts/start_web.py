@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CaiWen Web Launcher — starts backend + frontend from user settings."""
+"""DeepTutor Web Launcher — starts backend + frontend from user settings."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
 def _load_runtime_deps():
     from _cli_kit import banner, bold, dim, log_error, log_info, log_success, log_warn
 
-    from CaiWen.services.config.launch_settings import load_launch_settings
+    from deeptutor.services.config.launch_settings import load_launch_settings
 
     return banner, bold, dim, log_error, log_info, log_success, log_warn, load_launch_settings
 
@@ -144,15 +144,14 @@ def _get_pgid(pid: int | None) -> int | None:
         return None
 
 
-import psutil  # 先确保已经安装 psutil：pip install psutil
-
 def _is_pid_alive(pid: int | None) -> bool:
     if pid is None:
         return False
     try:
-        return psutil.pid_exists(pid)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        os.kill(pid, 0)
+    except OSError:
         return False
+    return True
 
 
 def _spawn(
@@ -557,7 +556,7 @@ def main() -> None:
     frontend_env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     frontend_env["PYTHONIOENCODING"] = "utf-8:replace"
 
-    backend_cmd = [sys.executable, "-m", "CaiWen.api.run_server"]
+    backend_cmd = [sys.executable, "-m", "deeptutor.api.run_server"]
     frontend_cmd = [npm, "run", "dev", "--", "--port", str(frontend_port)]
 
     processes: list[ManagedProcess] = []
