@@ -37,6 +37,9 @@ import { hasVisibleMarkdownContent } from "@/lib/markdown-display";
 import type { SelectedBookReference } from "@/lib/book-references";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import { CallTracePanel } from "./TracePanels";
+import SourceFileViewer, {
+  type SourceViewerSource,
+} from "@/components/chat/preview/SourceFileViewer";
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -162,16 +165,84 @@ const AssistantMessage = memo(function AssistantMessage({
     return extractVisualizeResult(resultEvent.metadata);
   }, [msg.capability, resultEvent]);
 
-  // Extract source documents from events (emitted after the LLM finishes answering)
+  // ── Source viewer state ─────────────────────────────────────────────
+  const [viewerSource, setViewerSource] = useState<SourceViewerSource | null>(
+    null,
+  );
+  const [viewerOpen, setViewerOpen] = useState(false);
+
+  // Extract source documents from events (emitted after the LLM finishes answering).
+  // Sources may arrive via different structures depending on the code path:
+  //   A) {"type": "sources", "rag": [...], "web": [...]} — top-level keys
+  //   B) {"type": "sources", "metadata": {"sources": [...]}} — nested under metadata
   const allSources = useMemo(() => {
-    return events
-      .filter((e) => e.type === "sources")
-      .flatMap(
-        (e) =>
-          ((e.metadata as Record<string, unknown> | undefined)
-            ?.sources ?? []) as Record<string, unknown>[],
-      );
+    const sources: Record<string, unknown>[] = [];
+    for (const e of events) {
+      if (e.type !== "sources") continue;
+      const evt = e as unknown as Record<string, unknown>;
+
+      // Path A: top-level rag / web arrays
+      for (const key of ["rag", "web"]) {
+        const list = evt[key];
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (item && typeof item === "object") {
+              sources.push(item as Record<string, unknown>);
+            }
+          }
+        }
+      }
+
+      // Path B: nested under metadata.sources
+      const nestedSources = (evt.metadata as Record<string, unknown> | undefined)?.sources;
+      if (Array.isArray(nestedSources)) {
+        for (const item of nestedSources) {
+          if (item && typeof item === "object") {
+            sources.push(item as Record<string, unknown>);
+          }
+        }
+      }
+    }
+    return sources;
   }, [events]);
+
+  // Map citation ID (e.g. "rag-1", "web-2") → source object
+  const findSourceByCitation = useCallback(
+    (citationId: string): SourceViewerSource | null => {
+      const match = citationId.match(/^(web|rag|code|src)-(\d+)$/);
+      if (!match) return null;
+      const prefix = match[1];
+      const idx = Number(match[2]) - 1; // 1-based → 0-based
+
+      // Filter sources by type prefix, then index
+      const typedSources = allSources.filter(
+        (s) => String(s.type ?? "").toLowerCase() === prefix.toLowerCase(),
+      );
+      return (typedSources[idx] as unknown as SourceViewerSource) ?? null;
+    },
+    [allSources],
+  );
+
+  const handleCitationClick = useCallback(
+    (citationId: string) => {
+      const src = findSourceByCitation(citationId);
+      if (src) {
+        setViewerSource(src);
+        setViewerOpen(true);
+      } else {
+        // Fallback: scroll to references section
+        const target = document.getElementById("references");
+        target?.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    },
+    [findSourceByCitation],
+  );
+
+  const handleCloseViewer = useCallback(() => {
+    setViewerOpen(false);
+    // Delay clearing the source so the slide-out animation completes
+    setTimeout(() => setViewerSource(null), 300);
+  }, []);
 
   const showSources = !isStreaming && allSources.length > 0;
 
@@ -207,9 +278,24 @@ const AssistantMessage = memo(function AssistantMessage({
           language={language}
         />
       ) : (
-        <AssistantResponse content={msg.content} />
+        <AssistantResponse content={msg.content} onCitationClick={handleCitationClick} />
       )}
-      {showSources && <SourcesPanel sources={allSources} />}
+      {showSources && (
+        <SourcesPanel
+          sources={allSources}
+          onSourceClick={(src) => {
+            setViewerSource(src);
+            setViewerOpen(true);
+          }}
+        />
+      )}
+
+      {/* Source file viewer slide-over */}
+      <SourceFileViewer
+        open={viewerOpen}
+        source={viewerSource}
+        onClose={handleCloseViewer}
+      />
     </>
   );
 });
@@ -220,8 +306,10 @@ type SourceItem = Record<string, unknown>;
 
 const SourcesPanel = memo(function SourcesPanel({
   sources,
+  onSourceClick,
 }: {
   sources: SourceItem[];
+  onSourceClick?: (source: SourceViewerSource) => void;
 }) {
   const { t } = useTranslation();
   if (!sources || sources.length === 0) return null;
@@ -244,14 +332,51 @@ const SourcesPanel = memo(function SourcesPanel({
 
   const subtitleForSource = (s: SourceItem) => {
     const parts: string[] = [];
-    const file = String(s.source_file ?? s.url ?? "");
-    if (file) parts.push(file);
+    const type = String(s.type ?? "");
+    // For web sources, show the URL (truncated)
+    if (type === "web") {
+      const url = String(s.url ?? "");
+      if (url) {
+        try {
+          const u = new URL(url);
+          parts.push(u.hostname + u.pathname.slice(0, 30) + (u.pathname.length > 30 ? "…" : ""));
+        } catch {
+          parts.push(url.slice(0, 50));
+        }
+      }
+    } else {
+      const file = String(s.source_file ?? "");
+      if (file) {
+        // Extract just the filename for display
+        const bn = file.replace(/\\/g, "/").split("/").pop() || file;
+        parts.push(bn);
+      }
+    }
     const page = String(s.page ?? "");
     if (page) parts.push(`p.${page}`);
     const score = Number(s.score);
     if (!Number.isNaN(score) && score > 0)
       parts.push(`${(score * 100).toFixed(0)}%`);
     return parts.join(" · ");
+  };
+
+  const handleSourceClick = (s: SourceItem) => {
+    const type = String(s.type ?? "");
+    if (type === "web") {
+      // Open web sources in a new tab
+      const url = String(s.url ?? "");
+      if (url) window.open(url, "_blank", "noopener noreferrer");
+      return;
+    }
+    // Open RAG/paper sources in the source viewer
+    onSourceClick?.(s as unknown as SourceViewerSource);
+  };
+
+  const isClickable = (s: SourceItem) => {
+    const type = String(s.type ?? "");
+    if (type === "web") return Boolean(s.url);
+    if (type === "rag" || type === "paper") return true;
+    return false;
   };
 
   return (
@@ -271,11 +396,29 @@ const SourcesPanel = memo(function SourcesPanel({
           const title = String(s.title ?? s.query ?? `${t("Source")} ${i + 1}`);
           const contentPreview = String(s.content_preview ?? s.content ?? "");
           const subtitle = subtitleForSource(s);
+          const clickable = isClickable(s);
 
           return (
             <div
               key={`src-${i}`}
-              className="rounded-md bg-[var(--muted)]/60 px-2.5 py-2 text-[12px]"
+              className={`rounded-md bg-[var(--muted)]/60 px-2.5 py-2 text-[12px] ${
+                clickable
+                  ? "cursor-pointer transition-colors hover:bg-[var(--muted)] hover:ring-1 hover:ring-[var(--primary)]/30"
+                  : ""
+              }`}
+              onClick={clickable ? () => handleSourceClick(s) : undefined}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleSourceClick(s);
+                      }
+                    }
+                  : undefined
+              }
             >
               <div className="flex items-start gap-1.5">
                 <span className="mt-0.5 shrink-0 text-[var(--muted-foreground)]">
@@ -286,8 +429,16 @@ const SourcesPanel = memo(function SourcesPanel({
                     {title}
                   </div>
                   {subtitle && (
-                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)] truncate">
-                      {subtitle}
+                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
+                      <span
+                        className={
+                          clickable
+                            ? "text-[var(--primary)] underline-offset-2 hover:underline"
+                            : ""
+                        }
+                      >
+                        {subtitle}
+                      </span>
                     </div>
                   )}
                   {contentPreview && (

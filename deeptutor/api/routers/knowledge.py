@@ -25,7 +25,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
@@ -960,6 +960,124 @@ async def list_kb_raw_files(kb_name: str):
             }
         )
     return {"files": files}
+
+
+@router.get("/{kb_name}/files/{filename:path}/content")
+async def get_kb_raw_file_content(
+    kb_name: str, filename: str, highlight: str = ""
+):
+    """Serve raw text file content as JSON with line numbers.
+
+    Supports optional ``?highlight=<text>`` query parameter — matching lines
+    are marked with ``highlighted: true`` so the frontend can scroll to and
+    emphasise the relevant passage.
+
+    Only text/* and common text-like files are returned as JSON. Binary or
+    unsupported types return a 415 status.
+    """
+    raw_dir = _resolve_kb_raw_dir(kb_name)
+    if not raw_dir.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    raw_resolved = raw_dir.resolve()
+    target = (raw_dir / filename).resolve()
+    try:
+        target.relative_to(raw_resolved)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    media_type, _ = mimetypes.guess_type(target.name)
+    if not media_type or not (
+        media_type.startswith("text/")
+        or media_type
+        in (
+            "application/json",
+            "application/xml",
+            "application/javascript",
+            "application/x-yaml",
+        )
+    ):
+        # For common code files without a text/* mimetype, try based on extension
+        text_extensions = {
+            ".py", ".js", ".ts", ".tsx", ".jsx", ".vue", ".svelte",
+            ".rs", ".go", ".java", ".c", ".cpp", ".h", ".hpp",
+            ".rb", ".php", ".swift", ".kt", ".scala", ".clj",
+            ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat",
+            ".sql", ".r", ".m", ".jl", ".lua", ".ex", ".exs",
+            ".erl", ".hrl", ".hs", ".elm", ".fs", ".fsx",
+            ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+            ".md", ".mdx", ".rst", ".tex", ".sty", ".cls",
+            ".css", ".scss", ".sass", ".less", ".svg",
+            ".html", ".htm", ".xhtml",
+            ".env", ".gitignore", ".dockerignore",
+            ".proto", ".graphql", ".gql",
+            ".cmake", ".make", ".mk",
+            ".gradle", ".sbt",
+            ".zig", ".nim", ".v", ".cr",
+            ".csv", ".tsv", ".log",
+        }
+        if target.suffix.lower() not in text_extensions:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported file type for content view: {target.suffix}",
+            )
+
+    try:
+        raw_bytes = target.read_bytes()
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = raw_bytes.decode("latin-1")
+        except Exception:
+            try:
+                text = raw_bytes.decode("gbk")
+            except Exception:
+                raise HTTPException(
+                    status_code=415,
+                    detail="Unable to decode file as text.",
+                )
+
+    lines = text.split("\n")
+    highlight_text = highlight.strip()
+
+    result_lines: list[dict] = []
+    first_highlighted = -1
+
+    for idx, line_text in enumerate(lines):
+        line_entry: dict = {"number": idx + 1, "text": line_text, "highlighted": False}
+        if highlight_text and highlight_text in line_text:
+            line_entry["highlighted"] = True
+            if first_highlighted < 0:
+                first_highlighted = idx
+        result_lines.append(line_entry)
+
+    # Also try to match across line boundaries if no single-line match found
+    if highlight_text and first_highlighted < 0:
+        normalized_text = text.replace("\n", " ")
+        normalized_highlight = highlight_text.replace("\n", " ")
+        pos = normalized_text.find(normalized_highlight)
+        if pos >= 0:
+            # Find which lines this maps to
+            prefix = normalized_text[:pos]
+            start_line = prefix.count("\n")
+            end_line = start_line + normalized_highlight.count("\n")
+            for idx in range(start_line, min(end_line + 1, len(result_lines))):
+                result_lines[idx]["highlighted"] = True
+            first_highlighted = start_line
+
+    return JSONResponse(
+        {
+            "lines": result_lines,
+            "total_lines": len(result_lines),
+            "first_highlighted_line": (
+                first_highlighted + 1 if first_highlighted >= 0 else None
+            ),
+            "mime_type": media_type or "text/plain",
+        }
+    )
 
 
 @router.get("/{kb_name}/files/{filename:path}")

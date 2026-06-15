@@ -202,6 +202,8 @@ class ChatAgent(BaseAgent):
                                 "page": s.get("page", ""),
                                 "score": s.get("score", ""),
                                 "kb_name": kb_name,
+                                "full_text": str(s.get("full_text", "") or ""),
+                                "chunk_id": str(s.get("chunk_id", "") or ""),
                             }
                             for s in rag_result.sources
                         ]

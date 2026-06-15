@@ -67,6 +67,7 @@ export default function SimpleMarkdownRenderer({
   content,
   className = "",
   variant = "default",
+  onCitationClick,
 }: MarkdownRendererProps) {
   const normalizedContent = useMemo(
     () => normalizeMarkdownForDisplay(content),
@@ -341,10 +342,14 @@ export default function SimpleMarkdownRenderer({
       if (isCitation) {
         const label = extractText(children);
         const ids = label.split(/\s*,\s*/);
-        const scrollToRef = (event: React.MouseEvent) => {
+        const handleCitationClick = (event: React.MouseEvent, citationId: string) => {
           event.preventDefault();
-          const target = document.getElementById("references");
-          target?.scrollIntoView({ block: "start", behavior: "smooth" });
+          if (onCitationClick) {
+            onCitationClick(citationId);
+          } else {
+            const target = document.getElementById("references");
+            target?.scrollIntoView({ block: "start", behavior: "smooth" });
+          }
         };
         return (
           <span
@@ -362,7 +367,7 @@ export default function SimpleMarkdownRenderer({
                   {idx > 0 && ", "}
                   <a
                     href={href}
-                    onClick={scrollToRef}
+                    onClick={(e) => handleCitationClick(e, id)}
                     className="cursor-pointer text-[var(--primary)] no-underline transition-colors hover:text-[var(--primary)]/70 hover:underline"
                   >
                     {prefix ? (
