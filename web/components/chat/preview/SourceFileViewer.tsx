@@ -304,7 +304,7 @@ const SourceFileViewer = memo(function SourceFileViewer({
         </div>
 
         {/* ── Body ──────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto pb-12" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto" ref={scrollRef}>
           {source.type === "web" ? (
             /* ── Web source ──────────────────────────────────────── */
             <div className="p-4">
@@ -380,15 +380,10 @@ const SourceFileViewer = memo(function SourceFileViewer({
                   {t("lines")})
                 </div>
                 <div className="font-mono text-[12px] leading-[1.55]">
-                  {fileState.data.lines.map((line, idx, arr) => {
-                    // Only attach the scroll-target ref to the FIRST highlighted line
-                    const isFirstHighlighted =
-                      line.highlighted &&
-                      !arr.slice(0, idx).some((l) => l.highlighted);
-                    return (
+                  {fileState.data.lines.map((line) => (
                     <div
                       key={line.number}
-                      ref={isFirstHighlighted ? highlightedRef : undefined}
+                      ref={line.highlighted ? highlightedRef : undefined}
                       className={`flex ${
                         line.highlighted
                           ? "bg-[var(--primary)]/10 border-l-[3px] border-[var(--primary)]"
@@ -398,12 +393,11 @@ const SourceFileViewer = memo(function SourceFileViewer({
                       <span className="select-none shrink-0 w-[3.25rem] text-right pr-3 text-[var(--muted-foreground)]/50">
                         {line.number}
                       </span>
-                      <span className="whitespace-pre-wrap break-all flex-1 pr-4 text-[var(--foreground)]/85">
+                      <span className="whitespace-pre flex-1 pr-4 text-[var(--foreground)]/85">
                         {line.text}
                       </span>
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
             </div>
