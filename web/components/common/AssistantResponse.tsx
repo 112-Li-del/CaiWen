@@ -10,14 +10,11 @@ import { parseModelThinkingSegments } from "@/lib/think-segments";
 interface AssistantResponseProps {
   content: string;
   className?: string;
-  /** Called when a citation badge is clicked. */
-  onCitationClick?: (citationId: string) => void;
 }
 
 export default function AssistantResponse({
   content,
   className = "text-[14px] leading-[1.75]",
-  onCitationClick,
 }: AssistantResponseProps) {
   const segments = useMemo(
     () => parseModelThinkingSegments(content),
@@ -60,7 +57,6 @@ export default function AssistantResponse({
             content={segment.content}
             variant="prose"
             className="text-[var(--foreground)]"
-            onCitationClick={onCitationClick}
           />
         );
       })}

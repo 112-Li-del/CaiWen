@@ -21,12 +21,6 @@ export interface MarkdownRendererProps {
    * editor/preview scroll synchronization.
    */
   trackSourceLines?: boolean;
-  /**
-   * Called when a citation badge (e.g. [RAG1], [WEB2]) is clicked.
-   * The citationId looks like "rag-1", "web-2", etc.
-   * When not provided, citations scroll to the #references section (default).
-   */
-  onCitationClick?: (citationId: string) => void;
 }
 
 function detectMathContent(content: string): boolean {
@@ -66,7 +60,6 @@ export default function MarkdownRenderer({
   enableMermaid,
   allowHtml,
   trackSourceLines,
-  onCitationClick,
 }: MarkdownRendererProps) {
   const resolvedEnableMath = enableMath ?? detectMathContent(content);
   const resolvedEnableCode = enableCode ?? detectCodeContent(content);
@@ -86,7 +79,6 @@ export default function MarkdownRenderer({
         content={content}
         className={className}
         variant={variant}
-        onCitationClick={onCitationClick}
       />
     );
   }
@@ -101,7 +93,6 @@ export default function MarkdownRenderer({
       enableMermaid={resolvedEnableMermaid}
       allowHtml={resolvedAllowHtml}
       trackSourceLines={trackSourceLines}
-      onCitationClick={onCitationClick}
     />
   );
 }

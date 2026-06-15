@@ -106,8 +106,6 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 "score": s.get("score", ""),
                 "kb_name": str(kb_name or ""),
                 "query": query,
-                "full_text": str(s.get("full_text", "") or ""),
-                "chunk_id": str(s.get("chunk_id", "") or ""),
             }
             for s in rag_sources
         ]

@@ -201,12 +201,10 @@ class LlamaIndexPipeline:
         for i, node in enumerate(nodes):
             context_parts.append(node.node.text)
             meta = node.node.metadata or {}
-            full_text = node.node.text or ""
             sources.append(
                 {
                     "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
-                    "content": full_text[:200],
-                    "full_text": full_text,
+                    "content": node.node.text[:200],
                     "source": meta.get("file_path", meta.get("file_name", "")),
                     "page": meta.get("page_label", meta.get("page", "")),
                     "chunk_id": node.node.node_id or str(i),
