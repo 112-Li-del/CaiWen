@@ -62,7 +62,7 @@ export default function RegisterPage() {
       {/* Logo / Title */}
       <div className="text-center mb-8">
         <h1 className="text-2xl font-semibold text-[var(--foreground)] tracking-tight">
-          DeepTutor
+          CaiWen
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {t("Create your account")}
@@ -187,7 +187,7 @@ export default function RegisterPage() {
       </p>
 
       <p className="mt-3 text-center text-xs text-[var(--muted-foreground)]">
-        DeepTutor · Agent-Native Learning
+        CaiWen · 智能学习伴侣
       </p>
     </div>
   );
