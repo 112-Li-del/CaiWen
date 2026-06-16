@@ -131,12 +131,12 @@ function LoginPageContent() {
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#5C4033" }}
               >
-                {t("Email")}
+                用户名
               </label>
               <input
                 id="username"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -149,7 +149,7 @@ function LoginPageContent() {
                   borderColor: `${NUFE_RED}30`,
                   "--tw-ring-color": NUFE_RED,
                 } as React.CSSProperties}
-                placeholder="you@example.com"
+                placeholder="请输入学号/工号"
               />
             </div>
 
@@ -160,7 +160,7 @@ function LoginPageContent() {
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#5C4033" }}
               >
-                {t("Password")}
+                密码
               </label>
               <input
                 id="password"
@@ -178,7 +178,7 @@ function LoginPageContent() {
                   borderColor: `${NUFE_RED}30`,
                   "--tw-ring-color": NUFE_RED,
                 } as React.CSSProperties}
-                placeholder="••••••••"
+                placeholder="请输入密码"
               />
             </div>
 
@@ -222,7 +222,7 @@ function LoginPageContent() {
         className="mt-5 text-center text-xs tracking-wider"
         style={{ color: "#B8A89A" }}
       >
-        南京财经大学 · CaiWen AI 学习平台
+        南京财经大学 · 财问智能问答平台
       </p>
     </div>
   );

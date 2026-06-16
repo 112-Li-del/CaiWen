@@ -120,19 +120,19 @@ export default function RegisterPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
+            {/* 用户名 */}
             <div>
               <label
                 htmlFor="username"
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#5C4033" }}
               >
-                {t("Email")}
+                用户名
               </label>
               <input
                 id="username"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -145,18 +145,18 @@ export default function RegisterPage() {
                   borderColor: `${NUFE_RED}30`,
                   "--tw-ring-color": NUFE_RED,
                 } as React.CSSProperties}
-                placeholder="you@example.com"
+                placeholder="请输入学号/工号"
               />
             </div>
 
-            {/* Password */}
+            {/* 密码 */}
             <div>
               <label
                 htmlFor="password"
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#5C4033" }}
               >
-                {t("Password")}
+                密码
               </label>
               <input
                 id="password"
@@ -174,21 +174,21 @@ export default function RegisterPage() {
                   borderColor: `${NUFE_RED}30`,
                   "--tw-ring-color": NUFE_RED,
                 } as React.CSSProperties}
-                placeholder="••••••••"
+                placeholder="请输入密码"
               />
               <p className="mt-1 text-xs" style={{ color: "#B8A89A" }}>
                 {t("At least 8 characters")}
               </p>
             </div>
 
-            {/* Confirm Password */}
+            {/* 确认密码 */}
             <div>
               <label
                 htmlFor="confirmPassword"
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#5C4033" }}
               >
-                {t("Confirm password")}
+                确认密码
               </label>
               <input
                 id="confirmPassword"
@@ -206,7 +206,7 @@ export default function RegisterPage() {
                   borderColor: `${NUFE_RED}30`,
                   "--tw-ring-color": NUFE_RED,
                 } as React.CSSProperties}
-                placeholder="••••••••"
+                placeholder="请再次输入密码"
               />
             </div>
 
@@ -250,7 +250,7 @@ export default function RegisterPage() {
         className="mt-5 text-center text-xs tracking-wider"
         style={{ color: "#B8A89A" }}
       >
-        南京财经大学 · CaiWen AI 学习平台
+        南京财经大学 · 财问智能问答平台
       </p>
     </div>
   );
