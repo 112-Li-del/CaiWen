@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Lora } from "next/font/google";
+import { Plus_Jakarta_Sans, Lora, Ma_Shan_Zheng } from "next/font/google";
 import "./globals.css";
 import ThemeScript from "@/components/ThemeScript";
 import { AppShellProvider } from "@/context/AppShellContext";
@@ -15,6 +15,13 @@ const fontSerif = Lora({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-serif",
+});
+
+const fontCalligraphy = Ma_Shan_Zheng({
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+  variable: "--font-calligraphy",
 });
 
 export const metadata: Metadata = {
@@ -39,7 +46,7 @@ export default function RootLayout({
       lang="en"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
-      className={`${fontSans.variable} ${fontSerif.variable}`}
+      className={`${fontSans.variable} ${fontSerif.variable} ${fontCalligraphy.variable}`}
     >
       <head>
         <ThemeScript />
