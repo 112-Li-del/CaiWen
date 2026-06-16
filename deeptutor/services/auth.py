@@ -107,6 +107,7 @@ def _make_user_record(hashed: str, role: str = "user", created_at: str = "") -> 
         "role": role,
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "disabled": False,
+        "status": "active",
     }
 
 
@@ -131,7 +132,7 @@ def is_first_user() -> bool:
     return len(_load_users()) == 0
 
 
-def add_user(username: str, plain_password: str, role: str = "user") -> None:
+def add_user(username: str, plain_password: str, role: str = "user", status: str = "active") -> None:
     """
     Add or update a user in data/user/auth_users.json.
 
@@ -139,12 +140,15 @@ def add_user(username: str, plain_password: str, role: str = "user") -> None:
     is empty the first user is automatically promoted to 'admin' regardless of
     the role argument.
 
+    status: 'active' (default) or 'pending' — pending users cannot log in until
+    approved by an admin.
+
     Creates the file (and parent directories) if they don't exist.
     """
     from deeptutor.multi_user.identity import save_user
 
-    record = save_user(username, hash_password(plain_password), role=role)  # type: ignore[arg-type]
-    logger.info("User '%s' saved with role=%r", username, record.get("role", "user"))
+    record = save_user(username, hash_password(plain_password), role=role, status=status)  # type: ignore[arg-type]
+    logger.info("User '%s' saved with role=%r status=%s", username, record.get("role", "user"), status)
 
 
 def list_users() -> list[dict]:
@@ -182,6 +186,26 @@ def set_role(username: str, role: str) -> bool:
     if not _set_role(username, role):  # type: ignore[arg-type]
         return False
     logger.info(f"User '{username}' role updated to {role!r}")
+    return True
+
+
+def approve_user(username: str) -> bool:
+    """Approve a pending user — set their status to 'active'."""
+    from deeptutor.multi_user.identity import approve_user as _approve_user
+
+    if not _approve_user(username):
+        return False
+    logger.info("User '%s' approved", username)
+    return True
+
+
+def reject_user(username: str) -> bool:
+    """Reject a pending user — delete their record."""
+    from deeptutor.multi_user.identity import reject_user as _reject_user
+
+    if not _reject_user(username):
+        return False
+    logger.info("User '%s' rejected", username)
     return True
 
 
@@ -345,6 +369,11 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
     hashed = record.get("hash", "") if isinstance(record, dict) else record
     if not verify_password(password, hashed):
         return None
+
+    # Reject pending users — must be approved by admin first
+    if isinstance(record, dict) and record.get("status") == "pending":
+        logger.info("Login attempt rejected: user '%s' is pending approval", username)
+        return TokenPayload(username=username, role="pending", user_id="")
 
     role = record.get("role", "user") if isinstance(record, dict) else "user"
     user_id = str(record.get("id") or "") if isinstance(record, dict) else ""

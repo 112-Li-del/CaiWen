@@ -4,18 +4,26 @@ const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
 const LOGIN_PATH = "/login";
 const COOKIE_NAME = "dt_token";
 
+// Static asset extensions that don't need auth
+const STATIC_EXT = /\.(jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|eot|css|js|json|map|txt)$/i;
+
+function isStaticAsset(pathname: string): boolean {
+  return STATIC_EXT.test(pathname);
+}
+
 export function middleware(req: NextRequest) {
   // Auth is disabled (default) — let everything through
   if (!AUTH_ENABLED) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
 
-  // Always allow auth pages and Next.js internals
+  // Always allow auth pages, Next.js internals, and static assets
   if (
     pathname.startsWith(LOGIN_PATH) ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon")
+    pathname.startsWith("/favicon") ||
+    isStaticAsset(pathname)
   ) {
     return NextResponse.next();
   }

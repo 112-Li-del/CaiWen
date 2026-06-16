@@ -2,12 +2,15 @@
 
 import { Fragment, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
 import {
   listUsers,
   deleteUser,
   setUserRole,
   createUser,
+  approveUser,
+  rejectUser,
   type UserRecord,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
@@ -20,6 +23,8 @@ import {
   SlidersHorizontal,
   UserPlus,
   X,
+  Check,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -37,6 +42,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminUsersPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -57,7 +63,7 @@ export default function AdminUsersPage() {
       const data = await listUsers();
       setUsers(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load users");
+      setError(e instanceof Error ? e.message : t("Failed to load users"));
     } finally {
       setLoading(false);
     }
@@ -96,11 +102,11 @@ export default function AdminUsersPage() {
     setCreateError("");
     const username = createUsername.trim();
     if (!username) {
-      setCreateError("Username is required.");
+      setCreateError(t("Username is required."));
       return;
     }
     if (createPassword.length < 8) {
-      setCreateError("Password must be at least 8 characters.");
+      setCreateError(t("Password must be at least 8 characters."));
       return;
     }
     setCreateSubmitting(true);
@@ -109,28 +115,40 @@ export default function AdminUsersPage() {
       setShowCreateDialog(false);
       await load();
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : "Failed to create user");
+      setCreateError(e instanceof Error ? e.message : t("Failed to create user"));
     } finally {
       setCreateSubmitting(false);
     }
   }
 
   async function handleDelete(username: string) {
-    if (!window.confirm(`Delete user "${username}"? This cannot be undone.`))
+    if (
+      !window.confirm(t('Delete user "{{name}}"? This cannot be undone.', { name: username }))
+    )
       return;
     setActionError("");
     try {
       await deleteUser(username);
       setUsers((prev) => prev.filter((u) => u.username !== username));
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to delete user");
+      setActionError(e instanceof Error ? e.message : t("Failed to delete user"));
     }
   }
 
   async function handleToggleRole(user: UserRecord) {
     const newRole = user.role === "admin" ? "user" : "admin";
-    const verb = newRole === "admin" ? "Promote" : "Demote";
-    if (!window.confirm(`${verb} "${user.username}" to ${newRole}?`)) return;
+    const verbLabel = newRole === "admin" ? t("Promote") : t("Demote");
+    const roleLabel = t(newRole);
+    if (
+      !window.confirm(
+        t('{{verb}} "{{name}}" to {{role}}?', {
+          verb: verbLabel,
+          name: user.username,
+          role: roleLabel,
+        }),
+      )
+    )
+      return;
     setActionError("");
     try {
       await setUserRole(user.username, newRole);
@@ -143,7 +161,40 @@ export default function AdminUsersPage() {
         setExpandedUserId((current) => (current === user.id ? null : current));
       }
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to update role");
+      setActionError(e instanceof Error ? e.message : t("Failed to update role"));
+    }
+  }
+
+  async function handleApprove(username: string) {
+    if (!window.confirm(t("Approve {{name}}?", { name: username }))) return;
+    setActionError("");
+    try {
+      await approveUser(username);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.username === username ? { ...u, status: "active" } : u,
+        ),
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t("Failed to save"));
+    }
+  }
+
+  async function handleReject(username: string) {
+    if (
+      !window.confirm(
+        t("Reject {{name}}? This will permanently delete their account.", {
+          name: username,
+        }),
+      )
+    )
+      return;
+    setActionError("");
+    try {
+      await rejectUser(username);
+      setUsers((prev) => prev.filter((u) => u.username !== username));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t("Failed to save"));
     }
   }
 
@@ -165,14 +216,14 @@ export default function AdminUsersPage() {
             className="flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
           >
             <ArrowLeft size={15} />
-            Back
+            {t("Back")}
           </Link>
           <div className="flex-1">
             <h1 className="text-xl font-semibold text-[var(--foreground)]">
-              User Management
+              {t("User Management")}
             </h1>
             <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
-              Manage registered accounts
+              {t("Manage registered accounts")}
             </p>
           </div>
           <button
@@ -182,7 +233,7 @@ export default function AdminUsersPage() {
                        hover:bg-[var(--card)] transition-colors"
           >
             <UserPlus size={14} />
-            Add user
+            {t("Add user")}
           </button>
           <button
             onClick={load}
@@ -193,7 +244,7 @@ export default function AdminUsersPage() {
                        disabled:opacity-50 transition-colors"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Refresh
+            {t("Refresh")}
           </button>
         </div>
 
@@ -206,7 +257,7 @@ export default function AdminUsersPage() {
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
-              Loading…
+              {t("Loading…")}
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-16 text-red-500 text-sm">
@@ -214,103 +265,138 @@ export default function AdminUsersPage() {
             </div>
           ) : users.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
-              No users found.
+              {t("No users found.")}
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
-                  <th className="px-5 py-3 font-medium">Username</th>
-                  <th className="px-5 py-3 font-medium">Role</th>
-                  <th className="px-5 py-3 font-medium">Joined</th>
-                  <th className="px-5 py-3 font-medium text-right">Actions</th>
+                  <th className="px-5 py-3 font-medium">{t("Username")}</th>
+                  <th className="px-5 py-3 font-medium">{t("Role")}</th>
+                  <th className="px-5 py-3 font-medium">{t("Joined")}</th>
+                  <th className="px-5 py-3 font-medium text-right">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {users.map((user) => {
                   const isSelf = user.username === currentUser;
                   const isAdmin = user.role === "admin";
-                  const canManageAssignments = !isAdmin && Boolean(user.id);
+                  const isPending = user.status === "pending";
+                  const canManageAssignments = !isAdmin && !isPending && Boolean(user.id);
                   return (
                     <Fragment key={user.username}>
-                      <tr className="group hover:bg-[var(--background)]/50 transition-colors">
+                      <tr className={`group hover:bg-[var(--background)]/50 transition-colors ${isPending ? "bg-yellow-500/5" : ""}`}>
                         <td className="px-5 py-3.5 font-medium text-[var(--foreground)]">
                           {user.username}
                           {isSelf && (
                             <span className="ml-2 text-xs text-[var(--muted-foreground)]">
-                              (you)
+                              ({t("you")})
                             </span>
                           )}
                         </td>
                         <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
-                            ${
-                              user.role === "admin"
-                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
-                                : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
-                            }`}
-                          >
-                            {user.role === "admin" ? (
-                              <Shield size={11} />
-                            ) : null}
-                            {user.role}
-                          </span>
+                          {isPending ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-500/15 text-yellow-600 dark:text-yellow-400">
+                              <Clock size={11} />
+                              {t("Pending")}
+                            </span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+                              ${
+                                user.role === "admin"
+                                  ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                  : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
+                              }`}
+                            >
+                              {user.role === "admin" ? (
+                                <Shield size={11} />
+                              ) : null}
+                              {t(user.role)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
                           {formatDate(user.created_at)}
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center justify-end gap-1.5">
-                            {canManageAssignments && (
-                              <button
-                                onClick={() =>
-                                  setExpandedUserId((current) =>
-                                    current === user.id ? null : user.id,
-                                  )
-                                }
-                                title="Manage assignments"
-                                className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                         hover:bg-[var(--background)] hover:text-[var(--foreground)]
-                                         transition-colors"
-                              >
-                                <SlidersHorizontal size={15} />
-                              </button>
+                            {isPending ? (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(user.username)}
+                                  title={t("Approve")}
+                                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium
+                                           bg-green-500/10 text-green-600 dark:text-green-400
+                                           hover:bg-green-500/20 transition-colors"
+                                >
+                                  <Check size={13} />
+                                  {t("Approve")}
+                                </button>
+                                <button
+                                  onClick={() => handleReject(user.username)}
+                                  title={t("Reject")}
+                                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium
+                                           bg-red-500/10 text-red-500
+                                           hover:bg-red-500/20 transition-colors"
+                                >
+                                  <X size={13} />
+                                  {t("Reject")}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {canManageAssignments && (
+                                  <button
+                                    onClick={() =>
+                                      setExpandedUserId((current) =>
+                                        current === user.id ? null : user.id,
+                                      )
+                                    }
+                                    title={t("Manage assignments")}
+                                    className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                             hover:bg-[var(--background)] hover:text-[var(--foreground)]
+                                             transition-colors"
+                                  >
+                                    <SlidersHorizontal size={15} />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleToggleRole(user)}
+                                  disabled={isSelf}
+                                  title={
+                                    isSelf
+                                      ? t("Cannot change your own role")
+                                      : user.role === "admin"
+                                        ? t("Demote to user")
+                                        : t("Promote to admin")
+                                  }
+                                  className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                           hover:bg-[var(--background)] hover:text-[var(--foreground)]
+                                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {user.role === "admin" ? (
+                                    <ShieldOff size={15} />
+                                  ) : (
+                                    <Shield size={15} />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(user.username)}
+                                  disabled={isSelf}
+                                  title={
+                                    isSelf
+                                      ? t("Cannot delete your own account")
+                                      : t("Delete {{name}}", { name: user.username })
+                                  }
+                                  className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                           hover:bg-red-500/10 hover:text-red-500
+                                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </>
                             )}
-                            <button
-                              onClick={() => handleToggleRole(user)}
-                              disabled={isSelf}
-                              title={
-                                isSelf
-                                  ? "Cannot change your own role"
-                                  : user.role === "admin"
-                                    ? "Demote to user"
-                                    : "Promote to admin"
-                              }
-                              className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                       hover:bg-[var(--background)] hover:text-[var(--foreground)]
-                                       disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
-                              {user.role === "admin" ? (
-                                <ShieldOff size={15} />
-                              ) : (
-                                <Shield size={15} />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleDelete(user.username)}
-                              disabled={isSelf}
-                              title={
-                                isSelf
-                                  ? "Cannot delete your own account"
-                                  : `Delete ${user.username}`
-                              }
-                              className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                       hover:bg-red-500/10 hover:text-red-500
-                                       disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
-                              <Trash2 size={15} />
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -330,7 +416,7 @@ export default function AdminUsersPage() {
         </div>
 
         <p className="mt-8 text-center text-xs text-[var(--muted-foreground)]">
-          DeepTutor Admin · User Management
+          {t("DeepTutor Admin · User Management")}
         </p>
       </div>
 
@@ -348,21 +434,21 @@ export default function AdminUsersPage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-semibold text-[var(--foreground)]">
-                Add user
+                {t("Add user")}
               </h2>
               <button
                 type="button"
                 onClick={closeCreateDialog}
                 disabled={createSubmitting}
                 className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)] disabled:opacity-40"
-                aria-label="Close"
+                aria-label={t("Close")}
               >
                 <X size={16} />
               </button>
             </div>
 
             <label className="mb-3 block text-xs text-[var(--muted-foreground)]">
-              Username (or email)
+              {t("Username (or email)")}
               <input
                 type="text"
                 value={createUsername}
@@ -375,7 +461,7 @@ export default function AdminUsersPage() {
             </label>
 
             <label className="mb-4 block text-xs text-[var(--muted-foreground)]">
-              Password (≥ 8 chars)
+              {t("Password (≥ 8 chars)")}
               <input
                 type="password"
                 value={createPassword}
@@ -397,14 +483,14 @@ export default function AdminUsersPage() {
                 disabled={createSubmitting}
                 className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="submit"
                 disabled={createSubmitting}
                 className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-40"
               >
-                {createSubmitting ? "Creating…" : "Create"}
+                {createSubmitting ? t("Creating…") : t("Create")}
               </button>
             </div>
           </form>

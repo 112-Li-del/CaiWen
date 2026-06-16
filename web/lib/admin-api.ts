@@ -6,6 +6,7 @@ export interface UserRecord {
   role: "admin" | "user";
   created_at: string;
   disabled?: boolean;
+  status?: string;
 }
 
 export async function listUsers(): Promise<UserRecord[]> {
@@ -78,4 +79,32 @@ export async function createUser(
     throw new Error(message);
   }
   return (await res.json()) as CreatedUser;
+}
+
+export async function approveUser(username: string): Promise<void> {
+  const res = await fetch(
+    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/approve`),
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Failed to approve user");
+  }
+}
+
+export async function rejectUser(username: string): Promise<void> {
+  const res = await fetch(
+    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/reject`),
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Failed to reject user");
+  }
 }

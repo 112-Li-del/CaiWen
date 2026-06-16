@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
 import type { GrantPayload, MultiUserResources } from "../types";
@@ -36,6 +37,7 @@ function grantFingerprint(grant: GrantPayload): string {
 }
 
 export function GrantEditor({ userId }: { userId: string }) {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<MultiUserResources | null>(null);
   const [grant, setGrant] = useState<GrantPayload>(() => emptyGrant(userId));
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export function GrantEditor({ userId }: { userId: string }) {
       .catch((error) => {
         setSaveState("error");
         setMessage(
-          error instanceof Error ? error.message : "Failed to load grants",
+          error instanceof Error ? error.message : t("Failed to load grants"),
         );
       })
       .finally(() => {
@@ -181,24 +183,24 @@ export function GrantEditor({ userId }: { userId: string }) {
       setGrant(saved);
       setSavedFingerprint(grantFingerprint(saved));
       setSaveState("saved");
-      setMessage("Saved just now");
+      setMessage(t("Saved just now"));
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Failed to save");
+      setMessage(error instanceof Error ? error.message : t("Failed to save"));
     }
   }
 
   const status = loading
-    ? "Loading assignments..."
+    ? t("Loading assignments...")
     : saveState === "saving"
-      ? "Saving changes..."
+      ? t("Saving changes…")
       : saveState === "error"
-        ? message || "Failed to save"
+        ? message || t("Failed to save")
         : saveState === "saved" && !dirty
-          ? message || "Saved just now"
+          ? message || t("Saved just now")
           : dirty
-            ? "Unsaved changes"
-            : "Ready";
+            ? t("Unsaved changes")
+            : t("Ready");
 
   const statusTone =
     saveState === "error"
@@ -212,7 +214,7 @@ export function GrantEditor({ userId }: { userId: string }) {
       <div className="border-t border-[var(--border)] bg-[var(--background)]/40 p-4">
         <div className="flex h-[420px] items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--muted-foreground)]">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Loading assignments...
+          {t("Loading assignments...")}
         </div>
       </div>
     );
@@ -225,22 +227,23 @@ export function GrantEditor({ userId }: { userId: string }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-[var(--foreground)]">
-                Assign access
+                {t("Assign access")}
               </h2>
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                Admin resources stay linked server-side; users only receive
-                allowed access.
+                {t(
+                  "Admin resources stay linked server-side; users only receive allowed access.",
+                )}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5 text-[11px] text-[var(--muted-foreground)]">
               <span className="rounded-full bg-[var(--muted)]/60 px-2 py-1">
-                {selectedModelCount} models
+                {t("{{count}} models", { count: selectedModelCount })}
               </span>
               <span className="rounded-full bg-[var(--muted)]/60 px-2 py-1">
-                {kbIds.size} KBs
+                {t("{{count}} KBs", { count: kbIds.size })}
               </span>
               <span className="rounded-full bg-[var(--muted)]/60 px-2 py-1">
-                {skillIds.size} skills
+                {t("{{count}} skills", { count: skillIds.size })}
               </span>
             </div>
           </div>
@@ -250,7 +253,7 @@ export function GrantEditor({ userId }: { userId: string }) {
           <div className="grid gap-5 md:grid-cols-3">
             <section className="min-w-0">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                Models
+                {t("Models")}
               </h3>
               <div className="space-y-3 text-xs">
                 {(["llm", "embedding"] as const).map((service) => (
@@ -320,7 +323,7 @@ export function GrantEditor({ userId }: { userId: string }) {
             </section>
             <section className="min-w-0">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                Knowledge
+                {t("Knowledge")}
               </h3>
               <div className="space-y-1.5 text-xs">
                 {(resources?.knowledge_bases || []).map((kb) => (
@@ -341,7 +344,7 @@ export function GrantEditor({ userId }: { userId: string }) {
             </section>
             <section className="min-w-0">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                Skills
+                {t("Skills")}
               </h3>
               <div className="space-y-1.5 text-xs">
                 {(resources?.skills || []).map((skill) => (
@@ -388,10 +391,10 @@ export function GrantEditor({ userId }: { userId: string }) {
               <Save className="h-3 w-3" />
             )}
             {saving
-              ? "Saving..."
+              ? t("Saving…")
               : saveState === "saved" && !dirty
-                ? "Saved"
-                : "Save assignments"}
+                ? t("Saved")
+                : t("Save assignments")}
           </button>
         </div>
       </div>

@@ -68,6 +68,7 @@ function extractDetail(detail: unknown): string {
 
 /**
  * Register a new account. The first user to register becomes admin.
+ * Subsequent users get status=pending and must be approved by an admin.
  */
 export async function register(
   username: string,
@@ -76,6 +77,7 @@ export async function register(
   ok: boolean;
   role?: string;
   is_first_user?: boolean;
+  status?: string;
   error?: string;
 }> {
   try {
@@ -88,7 +90,12 @@ export async function register(
 
     const data = await res.json().catch(() => ({}));
     if (res.ok)
-      return { ok: true, role: data.role, is_first_user: data.is_first_user };
+      return {
+        ok: true,
+        role: data.role,
+        is_first_user: data.is_first_user,
+        status: data.status,
+      };
     return { ok: false, error: extractDetail(data.detail) };
   } catch {
     return { ok: false, error: "Could not reach the server" };

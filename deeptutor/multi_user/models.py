@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 Role = Literal["admin", "user"]
 ScopeKind = Literal["admin", "user"]
+UserStatus = Literal["active", "pending"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +18,7 @@ class UserRecord:
     role: Role = "user"
     created_at: str = ""
     disabled: bool = False
+    status: UserStatus = "active"
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -25,6 +27,7 @@ class UserRecord:
             "role": self.role,
             "created_at": self.created_at,
             "disabled": self.disabled,
+            "status": self.status,
         }
 
 

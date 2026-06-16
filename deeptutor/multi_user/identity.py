@@ -53,6 +53,7 @@ def _canonical_record(
             "role": default_role,
             "created_at": utc_now(),
             "disabled": False,
+            "status": "active",
         }
     if not isinstance(value, dict):
         return None
@@ -62,12 +63,16 @@ def _canonical_record(
     role = str(value.get("role") or default_role)
     if role not in {"admin", "user"}:
         role = default_role
+    status = str(value.get("status") or "active")
+    if status not in ("active", "pending"):
+        status = "active"
     return {
         "id": str(value.get("id") or new_user_id()),
         "hash": hashed,
         "role": role,
         "created_at": str(value.get("created_at") or utc_now()),
         "disabled": bool(value.get("disabled", False)),
+        "status": status,
     }
 
 
@@ -168,7 +173,12 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     return {}
 
 
-def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[str, Any]:
+def save_user(
+    username: str,
+    hashed_password: str,
+    role: Role = "user",
+    status: str = "active",
+) -> dict[str, Any]:
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
     # Read-modify-write must be atomic so concurrent first-time registrations
     # cannot each see an empty store and each promote themselves to admin.
@@ -182,6 +192,7 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
             "role": effective_role,
             "created_at": str(existing.get("created_at") or utc_now()),
             "disabled": bool(existing.get("disabled", False)),
+            "status": status,
         }
         users[username] = record
         _write_users(users)
@@ -199,6 +210,7 @@ def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplie
             "role": record.get("role", "user"),
             "created_at": record.get("created_at", ""),
             "disabled": bool(record.get("disabled", False)),
+            "status": str(record.get("status") or "active"),
         }
         for username, record in load_users(env_username, env_password_hash).items()
     ]
@@ -236,6 +248,36 @@ def set_role(username: str, role: Role) -> bool:
         return False
     users[username]["role"] = role
     _write_users(users)
+    return True
+
+
+def approve_user(username: str) -> bool:
+    """Approve a pending user — set their status to 'active'."""
+    if not USERS_FILE.exists():
+        return False
+    users = load_users()
+    if username not in users:
+        return False
+    if users[username].get("status") != "pending":
+        return False
+    users[username]["status"] = "active"
+    _write_users(users)
+    logger.info("User '%s' approved (status → active)", username)
+    return True
+
+
+def reject_user(username: str) -> bool:
+    """Reject a pending user — delete their record entirely."""
+    if not USERS_FILE.exists():
+        return False
+    users = load_users()
+    if username not in users:
+        return False
+    if users[username].get("status") != "pending":
+        return False
+    users.pop(username, None)
+    _write_users(users)
+    logger.info("User '%s' rejected and removed", username)
     return True
 
 

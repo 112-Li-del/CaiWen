@@ -19,6 +19,7 @@ from deeptutor.services.auth import (
     TOKEN_EXPIRE_HOURS,
     TokenPayload,
     add_user,
+    approve_user,
     authenticate,
     authenticate_pb,
     create_token,
@@ -27,6 +28,7 @@ from deeptutor.services.auth import (
     is_first_user,
     list_users,
     register_pb,
+    reject_user,
     set_role,
 )
 
@@ -112,6 +114,7 @@ class UserInfo(BaseModel):
     role: str
     created_at: str
     disabled: bool = False
+    status: str = "active"
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +291,11 @@ async def login(body: LoginRequest, response: Response) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
+    if result.role == "pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is pending approval. Please wait for an administrator to approve it.",
+        )
 
     token = create_token(result.username, result.role, result.user_id)
     response.set_cookie(
@@ -319,11 +327,12 @@ async def logout(response: Response) -> dict:
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest) -> dict:
     """
-    Bootstrap-only registration.
+    Self-registration with admin approval.
 
-    Public endpoint that creates the *first* admin account when the user store
-    is empty. Once an admin exists, this endpoint is closed; further accounts
-    must be created by an admin via ``POST /api/v1/auth/users``.
+    Anyone can register. The first user is automatically activated as admin.
+    Subsequent users are created with ``status=pending`` and must be approved
+    by an admin via ``POST /api/v1/auth/users/{username}/approve`` before
+    they can log in.
 
     Only available when AUTH_ENABLED=true.
     """
@@ -355,15 +364,10 @@ async def register(body: RegisterRequest) -> dict:
             "role": "user",
             "is_first_user": True,
             "is_admin": False,
+            "status": "active",
         }
 
-    # Standard mode — only allowed before the first admin exists.
-    if not is_first_user():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Self-registration is closed. Ask an administrator to create your account.",
-        )
-
+    # Check for duplicate username
     existing = {u["username"] for u in list_users()}
     if body.username in existing:
         raise HTTPException(
@@ -371,7 +375,11 @@ async def register(body: RegisterRequest) -> dict:
             detail="Username already taken",
         )
 
-    add_user(body.username, body.password)
+    # First user → auto active + admin. Subsequent → pending, wait for approval.
+    first_user = is_first_user()
+    user_status = "active" if first_user else "pending"
+
+    add_user(body.username, body.password, status=user_status)
     user_id = ""
     role = "user"
     for item in list_users():
@@ -379,14 +387,20 @@ async def register(body: RegisterRequest) -> dict:
             user_id = str(item.get("id") or "")
             role = str(item.get("role") or "user")
             break
-    logger.info(f"First user (admin) registered: '{body.username}'")
+
+    if first_user:
+        logger.info(f"First user (admin) registered: '{body.username}'")
+    else:
+        logger.info(f"User '{body.username}' registered (pending approval)")
+
     return {
         "ok": True,
         "user_id": user_id,
         "username": body.username,
         "role": role,
-        "is_first_user": True,
+        "is_first_user": first_user,
         "is_admin": role == "admin",
+        "status": user_status,
     }
 
 
@@ -489,6 +503,54 @@ async def remove_user(
 
     logger.info(f"Admin '{current.username if current else 'local'}' deleted user '{username}'")
     return {"ok": True}
+
+
+@router.post("/users/{username}/approve", status_code=status.HTTP_200_OK)
+async def admin_approve_user(
+    username: str,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Approve a pending user — activates their account so they can log in."""
+    if current and username == current.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot approve your own account",
+        )
+
+    if not approve_user(username):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or not in pending state",
+        )
+
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' approved user '{username}'"
+    )
+    return {"ok": True, "username": username, "status": "active"}
+
+
+@router.post("/users/{username}/reject", status_code=status.HTTP_200_OK)
+async def admin_reject_user(
+    username: str,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Reject a pending user — permanently deletes their account."""
+    if current and username == current.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot reject your own account",
+        )
+
+    if not reject_user(username):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or not in pending state",
+        )
+
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' rejected user '{username}'"
+    )
+    return {"ok": True, "username": username, "status": "rejected"}
 
 
 @router.put("/users/{username}/role", status_code=status.HTTP_200_OK)
