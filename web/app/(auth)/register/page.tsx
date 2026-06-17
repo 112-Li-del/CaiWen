@@ -60,11 +60,23 @@ export default function RegisterPage() {
   }
 
   return (
+   <div
+      className="min-h-screen w-full flex items-center justify-center p-4"
+      style={{
+        backgroundImage: `url("/login_bg2.png")`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundColor: "rgba(0, 0, 0, 0.2)",
+        backgroundBlendMode: "overlay",
+      }}
+    >
+  
     <div className="w-full max-w-md">
       {/* ======== 南财红顶栏横幅 ======== */}
       <div
         className="rounded-t-2xl px-6 py-5 text-center"
-        style={{ backgroundColor: NUFE_RED }}
+        style={{ backgroundColor:"rgab(139,26,43,0.80)" }}
       >
         <img
           src="/nufe_logo.png"
@@ -86,16 +98,18 @@ export default function RegisterPage() {
 
       {/* ======== 注册卡片主体 ======== */}
       <div
-        className="rounded-b-2xl shadow-md px-8 pt-6 pb-8 border-l-2 border-r-2 border-b-2"
+        className="rounded-b-2xl shadow-md px-8 pt-6 pb-8 "
         style={{
-          backgroundColor: WARM_CREAM,
-          borderColor: PLAQUE_RED,
+          backgroundColor:`${WARM_CREAM}88`,
+          //borderColor: PLAQUE_RED,
           boxShadow: "0 4px 24px rgba(77,13,16,0.10)",
         }}
       >
         <div
           className="rounded-xl border px-7 py-6"
-          style={{ borderColor: `${NUFE_RED}30` }}
+          style={{ borderColor:`${NUFE_RED}30`,
+                   backgroundColor: "rgba(255,255,255,0.01)"
+        }}
         >
           <div className="text-center mb-6">
             <h1
@@ -253,5 +267,6 @@ export default function RegisterPage() {
         南京财经大学 · 财问智能问答平台
       </p>
     </div>
+  </div>
   );
 }

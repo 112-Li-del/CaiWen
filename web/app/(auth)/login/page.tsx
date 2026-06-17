@@ -59,7 +59,7 @@ function LoginPageContent() {
       {/* ======== 南财红顶栏横幅 ======== */}
       <div
         className="rounded-t-2xl px-6 py-5 text-center"
-        style={{ backgroundColor: NUFE_RED }}
+        style={{ backgroundColor: "rgab(139,26,43,0.80)" }}
       >
         <img
           src="/nufe_logo.png"
@@ -81,18 +81,24 @@ function LoginPageContent() {
 
       {/* ======== 登录卡片主体 ======== */}
       <div
-        className="rounded-b-2xl shadow-md px-8 pt-6 pb-8 border-l-2 border-r-2 border-b-2"
+        className="rounded-b-2xl shadow-md px-8 pt-6 pb-8 "
         style={{
-          backgroundColor: WARM_CREAM,
-          borderColor: PLAQUE_RED,
+          backgroundColor: `${WARM_CREAM}88`,
+          //borderColor: PLAQUE_RED,
           boxShadow: "0 4px 24px rgba(77,13,16,0.10)",
         }}
       >
         {/* 内框 */}
         <div
           className="rounded-xl border px-7 py-6"
-          style={{ borderColor: `${NUFE_RED}30` }}
+          style={{ borderColor: `${NUFE_RED}30` ,
+          backgroundColor: "rgba(255,255,255,0.01)"
+        }}
+
+         
+
         >
+
           {/* App 名称 */}
           <div className="text-center mb-6">
             <h1
@@ -238,7 +244,23 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginPageContent />
+      {/* 新增全屏背景容器，撑满整个屏幕，垂直居中登录卡片 */}
+      <div
+        className="min-h-screen w-full flex items-center justify-center p-4"
+        style={{
+          // 替换成你自己的图片路径
+          backgroundImage: `url("/login_bg2.png")`,
+          backgroundSize: "cover", // 图片铺满屏幕不变形
+          backgroundPosition: "center", // 图片居中
+          backgroundRepeat: "no-repeat",
+          // 黑色半透明遮罩，防止背景太亮看不清登录框，0.4=40%透明度，数值越大越暗
+          backgroundColor: "rgba(0, 0, 0, 0.2)",
+          backgroundBlendMode: "overlay", // 遮罩和图片融合
+        }}
+      >
+        {/* 你原来的登录卡片内容不动，只包在背景div里面 */}
+        <LoginPageContent />
+      </div>
     </Suspense>
   );
 }
