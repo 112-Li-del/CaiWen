@@ -102,7 +102,7 @@ function LoginPageContent() {
           {/* App 名称 */}
           <div className="text-center mb-6">
             <h1
-              className="text-3xl tracking-wide"
+              className="text-4xl tracking-wide"
               style={{
                 color: NUFE_RED,
                 fontFamily: "var(--font-calligraphy)",
@@ -212,12 +212,15 @@ function LoginPageContent() {
       </div>
 
       {/* 注册入口 */}
-      <p className="mt-5 text-center text-sm" style={{ color: "#8B7355" }}>
+      <p className="mt-5 text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
         {t("Don't have an account?")}{" "}
         <Link
           href="/register"
-          className="hover:underline font-medium"
-          style={{ color: NUFE_RED }}
+          className="font-medium inline-block px-3 py-1 rounded-md hover:opacity-85 transition-opacity"
+          style={{
+            color: NUFE_RED,
+            backgroundColor: "#fff",
+          }}
         >
           {t("Create one")}
         </Link>
@@ -225,8 +228,8 @@ function LoginPageContent() {
 
       {/* 底部 */}
       <p
-        className="mt-5 text-center text-xs tracking-wider"
-        style={{ color: "#B8A89A" }}
+        className="mt-5 text-center text-sm font-semibold tracking-wider"
+        style={{ color: "rgba(255,255,255,0.75)" }}
       >
         南京财经大学 · 财问智能问答平台
       </p>
@@ -246,7 +249,7 @@ export default function LoginPage() {
     >
       {/* 新增全屏背景容器，撑满整个屏幕，垂直居中登录卡片 */}
       <div
-        className="min-h-screen w-full flex items-center justify-center p-4"
+        className="h-screen w-full flex items-center justify-center p-4 overflow-y-auto"
         style={{
           // 替换成你自己的图片路径
           backgroundImage: `url("/login_bg2.png")`,

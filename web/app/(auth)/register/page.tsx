@@ -61,7 +61,7 @@ export default function RegisterPage() {
 
   return (
    <div
-      className="min-h-screen w-full flex items-center justify-center p-4"
+      className="h-screen w-full flex items-center justify-center p-4 overflow-y-auto"
       style={{
         backgroundImage: `url("/login_bg2.png")`,
         backgroundSize: "cover",
@@ -113,7 +113,7 @@ export default function RegisterPage() {
         >
           <div className="text-center mb-6">
             <h1
-              className="text-3xl tracking-wide"
+              className="text-4xl tracking-wide"
               style={{
                 color: NUFE_RED,
                 fontFamily: "var(--font-calligraphy)",
@@ -190,7 +190,7 @@ export default function RegisterPage() {
                 } as React.CSSProperties}
                 placeholder="请输入密码"
               />
-              <p className="mt-1 text-xs" style={{ color: "#B8A89A" }}>
+              <p className="mt-1 text-xs" style={{ color: "#fff" }}>
                 {t("At least 8 characters")}
               </p>
             </div>
@@ -248,12 +248,15 @@ export default function RegisterPage() {
       </div>
 
       {/* 登录入口 */}
-      <p className="mt-5 text-center text-sm" style={{ color: "#8B7355" }}>
+      <p className="mt-5 text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
         {t("Already have an account?")}{" "}
         <Link
           href="/login"
-          className="hover:underline font-medium"
-          style={{ color: NUFE_RED }}
+          className="font-medium inline-block px-3 py-1 rounded-md hover:opacity-85 transition-opacity"
+          style={{
+            color: NUFE_RED,
+            backgroundColor: "#fff",
+          }}
         >
           {t("Sign in")}
         </Link>
@@ -261,8 +264,8 @@ export default function RegisterPage() {
 
       {/* 底部 */}
       <p
-        className="mt-5 text-center text-xs tracking-wider"
-        style={{ color: "#B8A89A" }}
+        className="mt-5 text-center text-sm font-semibold tracking-wider"
+        style={{ color: "rgba(255,255,255,0.75)" }}
       >
         南京财经大学 · 财问智能问答平台
       </p>
