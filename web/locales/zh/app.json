@@ -1693,5 +1693,11 @@
   "Reject {{name}}? This will permanently delete their account.": "确认拒绝 {{name}}？此操作将永久删除该账户。",
   "User approved": "用户已批准",
   "User rejected": "用户已拒绝",
-  "This user is pending admin approval.": "此用户正在等待管理员审批。"
+  "This user is pending admin approval.": "此用户正在等待管理员审批。",
+  "Last 7 days": "最近 7 天",
+  "Earlier": "更早",
+  "Sign out": "退出登录",
+  "Admin": "管理",
+  "Admin — User Management": "管理 — 用户管理",
+  "Untitled chat": "未命名对话"
 }

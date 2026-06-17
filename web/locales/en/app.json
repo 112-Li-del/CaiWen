@@ -1693,5 +1693,11 @@
   "Reject {{name}}? This will permanently delete their account.": "Reject {{name}}? This will permanently delete their account.",
   "User approved": "User approved",
   "User rejected": "User rejected",
-  "This user is pending admin approval.": "This user is pending admin approval."
+  "This user is pending admin approval.": "This user is pending admin approval.",
+  "Last 7 days": "Last 7 days",
+  "Earlier": "Earlier",
+  "Sign out": "Sign out",
+  "Admin": "Admin",
+  "Admin — User Management": "Admin — User Management",
+  "Untitled chat": "Untitled chat"
 }
