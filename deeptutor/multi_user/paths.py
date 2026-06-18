@@ -32,8 +32,9 @@ def local_admin_user() -> CurrentUser:
 
 
 def scope_for_user(user_id: str, *, is_admin: bool) -> UserScope:
-    if is_admin:
-        return admin_scope()
+    # All users get their own isolated workspace — admins too.
+    # Admin-level access to shared resources (knowledge bases, user
+    # management) is handled separately via get_admin_path_service().
     return UserScope(kind="user", user_id=user_id, root=(MULTI_USER_ROOT / user_id).resolve())
 
 
