@@ -20,6 +20,8 @@ for _key in (
     "POCKETBASE_URL",
     "POCKETBASE_ADMIN_EMAIL",
     "POCKETBASE_ADMIN_PASSWORD",
+    "CORS_ORIGIN",
+    "CORS_ORIGINS",
 ):
     if _key in _env_values:
         os.environ[_key] = _env_values[_key]

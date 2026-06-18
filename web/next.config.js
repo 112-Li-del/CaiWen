@@ -103,6 +103,9 @@ const nextConfig = {
   // This eliminates the need to copy the full node_modules into Docker production images
   output: "standalone",
 
+  // Allow cross-origin access from the school network in dev mode
+  allowedDevOrigins: ["172.16.129.61", "localhost", "127.0.0.1"],
+
   // Move dev indicator to bottom-right corner
   devIndicators: {
     position: "bottom-right",
