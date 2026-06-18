@@ -354,11 +354,18 @@ class TurnRuntimeManager:
     """Run one turn in the background and multiplex persisted/live events."""
 
     def __init__(self, store: SessionStoreProtocol | None = None) -> None:
-        from deeptutor.services.session import get_session_store
-
-        self.store = store or get_session_store()
+        self._store = store
         self._lock = asyncio.Lock()
         self._executions: dict[str, _TurnExecution] = {}
+
+    @property
+    def store(self) -> SessionStoreProtocol:
+        """Resolve the session store for the current user context."""
+        if self._store is not None:
+            return self._store
+        from deeptutor.services.session import get_session_store
+
+        return get_session_store()
 
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         capability = str(payload.get("capability") or "chat")

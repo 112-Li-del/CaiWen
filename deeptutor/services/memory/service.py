@@ -470,7 +470,12 @@ _memory_services: dict[str, MemoryService] = {}
 
 
 def get_memory_service() -> MemoryService:
-    path_service = get_path_service()
+    try:
+        from deeptutor.multi_user.paths import get_current_path_service
+
+        path_service = get_current_path_service()
+    except ImportError:
+        path_service = get_path_service()
     key = str(path_service.get_memory_dir().resolve())
     if key not in _memory_services:
         _memory_services[key] = MemoryService(path_service=path_service)

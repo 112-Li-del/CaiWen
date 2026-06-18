@@ -15,6 +15,7 @@ Features:
 
 from abc import ABC, abstractmethod
 import json
+from pathlib import Path
 import time
 from typing import Any
 import uuid
@@ -109,27 +110,44 @@ class BaseSessionManager(ABC):
 
     def _ensure_file(self) -> None:
         """Ensure the sessions file exists with correct format."""
-        # Ensure directory exists
-        self.sessions_file.parent.mkdir(parents=True, exist_ok=True)
+        file_path = self._resolve_sessions_file()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not self.sessions_file.exists():
+        if not file_path.exists():
             initial_data = {
                 "version": "1.0",
                 "sessions": [],
             }
             self._save_data(initial_data)
 
-    def _load_data(self) -> dict[str, Any]:
-        """Load sessions data from file."""
+    def _resolve_sessions_file(self) -> Path:
+        """Resolve the sessions file path for the current user context.
+
+        When auth is enabled, each user gets their own sessions file so
+        conversation history is isolated. Admin users and local mode
+        fall back to the default (shared) path.
+        """
         try:
-            with open(self.sessions_file, encoding="utf-8") as f:
+            from deeptutor.multi_user.paths import get_current_path_service
+
+            return get_current_path_service().get_session_file(self.module_name)
+        except ImportError:
+            return self.sessions_file
+
+    def _load_data(self) -> dict[str, Any]:
+        """Load sessions data from the current user's file."""
+        file_path = self._resolve_sessions_file()
+        try:
+            with open(file_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {"version": "1.0", "sessions": []}
 
     def _save_data(self, data: dict[str, Any]) -> None:
-        """Save sessions data to file."""
-        with open(self.sessions_file, "w", encoding="utf-8") as f:
+        """Save sessions data to the current user's file."""
+        file_path = self._resolve_sessions_file()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
     def _get_sessions(self) -> list[dict[str, Any]]:

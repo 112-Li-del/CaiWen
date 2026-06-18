@@ -1161,7 +1161,13 @@ _instances: dict[str, SQLiteSessionStore] = {}
 
 
 def get_sqlite_session_store() -> SQLiteSessionStore:
-    db_path = get_path_service().get_chat_history_db().resolve()
+    try:
+        from deeptutor.multi_user.paths import get_current_path_service
+
+        path_service = get_current_path_service()
+    except ImportError:
+        path_service = get_path_service()
+    db_path = path_service.get_chat_history_db().resolve()
     key = str(db_path)
     if key not in _instances:
         _instances[key] = SQLiteSessionStore(db_path=db_path)

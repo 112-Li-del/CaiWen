@@ -431,7 +431,13 @@ _instances: dict[str, NotebookManager] = {}
 
 
 def get_notebook_manager() -> NotebookManager:
-    base_dir = get_path_service().get_notebook_dir().resolve()
+    try:
+        from deeptutor.multi_user.paths import get_current_path_service
+
+        path_service = get_current_path_service()
+    except ImportError:
+        path_service = get_path_service()
+    base_dir = path_service.get_notebook_dir().resolve()
     key = str(base_dir)
     if key not in _instances:
         _instances[key] = NotebookManager(base_dir=str(base_dir))

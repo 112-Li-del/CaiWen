@@ -26,12 +26,8 @@ export default function ThemeScript() {
         } else if (stored === 'light') {
           // already clean
         } else {
-          if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            document.documentElement.classList.add('dark');
-            localStorage.setItem('deeptutor-theme', 'dark');
-          } else {
-            localStorage.setItem('deeptutor-theme', 'light');
-          }
+          document.documentElement.classList.add('theme-goldred');
+          localStorage.setItem('deeptutor-theme', 'goldred');
         }
       } catch (e) {}
     })();
