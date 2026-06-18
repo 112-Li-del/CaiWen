@@ -26,7 +26,8 @@ def _manager_for(base_dir: str) -> KnowledgeBaseManager:
 
 
 def current_kb_base_dir() -> Path:
-    return get_current_path_service().get_knowledge_bases_root()
+    # All users share the same knowledge bases from the admin workspace.
+    return admin_kb_base_dir()
 
 
 def admin_kb_base_dir() -> Path:
