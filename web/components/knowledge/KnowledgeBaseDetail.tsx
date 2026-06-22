@@ -36,6 +36,7 @@ interface KnowledgeBaseDetailProps {
   onSetDefault: (kbName: string) => Promise<void>;
   onDelete: (kbName: string) => Promise<void>;
   onClearHistory: (kbName: string) => void;
+  onRename: (oldName: string, newName: string) => Promise<void>;
 }
 
 const SECTIONS: {
@@ -63,6 +64,7 @@ export default function KnowledgeBaseDetail({
   onSetDefault,
   onDelete,
   onClearHistory,
+  onRename,
 }: KnowledgeBaseDetailProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<DetailSection>("files");
@@ -204,6 +206,11 @@ export default function KnowledgeBaseDetail({
                   }
                   onDelete={() =>
                     kb.read_only ? Promise.resolve() : onDelete(kb.name)
+                  }
+                  onRename={(newName) =>
+                    kb.read_only
+                      ? Promise.resolve()
+                      : onRename(kb.name, newName)
                   }
                 />
               )}

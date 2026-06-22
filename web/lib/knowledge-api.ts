@@ -270,3 +270,21 @@ export async function deleteKnowledgeBase(name: string): Promise<void> {
   }
   invalidateKnowledgeCaches();
 }
+
+export async function renameKnowledgeBase(
+  name: string,
+  newName: string,
+): Promise<void> {
+  const form = new FormData();
+  form.append("new_name", newName);
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/rename`),
+    { method: "PUT", body: form },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to rename knowledge base"),
+    );
+  }
+  invalidateKnowledgeCaches();
+}

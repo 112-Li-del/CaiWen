@@ -992,6 +992,31 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
     )
 
 
+class RenameRequest(BaseModel):
+    """Request model for renaming a knowledge base."""
+
+    new_name: str
+
+
+@router.put("/{kb_name}/rename")
+async def rename_knowledge_base(kb_name: str, new_name: str = Form(...)):
+    """Rename a knowledge base."""
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        updated_info = manager.rename_knowledge_base(resolved_name, new_name)
+        logger.info(f"KB '{kb_name}' renamed to '{new_name}'")
+        return {
+            "message": f"Knowledge base renamed from '{kb_name}' to '{new_name}'",
+            "old_name": kb_name,
+            "new_name": new_name,
+            "info": updated_info,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/{kb_name}")
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""

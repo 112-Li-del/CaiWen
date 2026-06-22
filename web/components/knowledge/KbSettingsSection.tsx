@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Star, Trash2 } from "lucide-react";
+import { Check, Loader2, Pencil, Star, Trash2, X } from "lucide-react";
 import {
   formatKnowledgeTimestamp,
   type KnowledgeBase,
@@ -11,12 +12,14 @@ interface KbSettingsSectionProps {
   kb: KnowledgeBase;
   onSetDefault: () => Promise<void>;
   onDelete: () => Promise<void>;
+  onRename: (newName: string) => Promise<void>;
 }
 
 export default function KbSettingsSection({
   kb,
   onSetDefault,
   onDelete,
+  onRename,
 }: KbSettingsSectionProps) {
   const { t } = useTranslation();
   const meta = kb.metadata || {};
@@ -30,8 +33,124 @@ export default function KbSettingsSection({
   const updated = formatKnowledgeTimestamp(meta.last_updated);
   const lastIndexed = formatKnowledgeTimestamp(meta.last_indexed_at);
 
+  // Rename state
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(kb.name);
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const handleStartEdit = () => {
+    setDraftName(kb.name);
+    setRenameError(null);
+    setEditingName(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingName(false);
+    setDraftName(kb.name);
+    setRenameError(null);
+  };
+
+  const handleSaveRename = async () => {
+    const trimmed = draftName.trim();
+    if (!trimmed) {
+      setRenameError(t("Knowledge base name is required"));
+      return;
+    }
+    if (trimmed === kb.name) {
+      setEditingName(false);
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await onRename(trimmed);
+      setEditingName(false);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Rename section */}
+      <section className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+        <div>
+          <div className="text-[12.5px] font-medium text-[var(--foreground)]">
+            {t("Knowledge Base Name")}
+          </div>
+          <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
+            {t("Rename this knowledge base.")}
+          </p>
+        </div>
+
+        {editingName ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                disabled={renaming}
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void handleSaveRename();
+                  } else if (event.key === "Escape") {
+                    handleCancelEdit();
+                  }
+                }}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSaveRename()}
+                disabled={renaming || !draftName.trim()}
+                className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {renaming ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Check className="h-3 w-3" />
+                )}
+                {t("Save")}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                disabled={renaming}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+              >
+                <X className="h-3 w-3" />
+                {t("Cancel")}
+              </button>
+            </div>
+            {renameError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11.5px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                {renameError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-medium text-[var(--foreground)]">
+              {kb.name}
+            </span>
+            {!kb.read_only && (
+              <button
+                type="button"
+                onClick={handleStartEdit}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <Pencil className="h-3 w-3" />
+                {t("Edit")}
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+
       <section className="space-y-3">
         <div>
           <div className="text-[13px] font-medium text-[var(--foreground)]">

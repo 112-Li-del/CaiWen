@@ -133,6 +133,8 @@
   "No knowledge bases found. Create one to get started.": "未找到任何知识库。请先创建一个。",
   "Create Knowledge Base": "创建知识库",
   "Knowledge Base Name": "知识库名称",
+  "Rename this knowledge base.": "重命名此知识库。",
+  "Knowledge base name is required": "知识库名称不能为空",
   "Notebooks": "笔记本",
   "Settings": "设置",
   "Loading": "加载中...",

@@ -914,6 +914,86 @@ class KnowledgeBaseManager:
         self._save_config()
         return True
 
+    def rename_knowledge_base(self, old_name: str, new_name: str) -> dict:
+        """
+        Rename a knowledge base.
+
+        Args:
+            old_name: Current knowledge base name
+            new_name: New knowledge base name
+
+        Returns:
+            Dict with updated KB information
+
+        Raises:
+            ValueError: If validation fails or new name already exists
+        """
+        from deeptutor.knowledge.naming import validate_knowledge_base_name
+
+        new_name = validate_knowledge_base_name(new_name)
+
+        if old_name == new_name:
+            raise ValueError("New name must be different from the current name")
+
+        if old_name not in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base not found: {old_name}")
+
+        if new_name in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base '{new_name}' already exists")
+
+        # Reload config to get latest state
+        self.config = self._load_config()
+
+        # Get the KB entry
+        kb_entry = self.config.get("knowledge_bases", {}).get(old_name)
+        if kb_entry is None:
+            raise ValueError(f"Knowledge base '{old_name}' not found in config")
+
+        # Rename directory on disk
+        old_dir = self.base_dir / old_name
+        new_dir = self.base_dir / new_name
+        if old_dir.exists():
+            old_dir.rename(new_dir)
+
+        # Update kb_config.json: move entry to new key
+        del self.config["knowledge_bases"][old_name]
+        self.config["knowledge_bases"][new_name] = kb_entry
+        kb_entry["path"] = new_name
+        kb_entry["updated_at"] = datetime.now().isoformat()
+
+        # Update default KB reference if this was the default
+        try:
+            from deeptutor.services.config import get_kb_config_service
+
+            kb_config_service = get_kb_config_service()
+            current_default = kb_config_service.get_default_kb()
+            if current_default == old_name:
+                kb_config_service.set_default_kb(new_name)
+        except Exception as e:
+            logger.warning(f"Failed to update default KB reference during rename: {e}")
+
+        self._save_config()
+
+        # Update metadata.json inside the KB directory
+        metadata_file = new_dir / "metadata.json"
+        try:
+            metadata = {}
+            if metadata_file.exists():
+                with open(metadata_file, encoding="utf-8") as f:
+                    metadata = json.load(f)
+            metadata["name"] = new_name
+            metadata["last_updated"] = datetime.now().isoformat()
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Failed to update metadata.json during rename: {e}")
+
+        # Sync to PocketBase if enabled
+        self._sync_kb_to_pb(new_name, kb_entry)
+
+        logger.info(f"Renamed KB '{old_name}' to '{new_name}'")
+        return self.get_info(new_name)
+
     def clean_rag_storage(self, name: str | None = None, backup: bool = True) -> bool:
         """
         Clean (delete) index storage for a knowledge base.

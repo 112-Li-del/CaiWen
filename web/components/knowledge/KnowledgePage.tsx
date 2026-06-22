@@ -31,6 +31,7 @@ export default function KnowledgePage() {
     setDefault,
     reindex,
     deleteKb,
+    renameKb,
   } = useKnowledgeBases();
 
   const [explicitSelection, setExplicitSelection] = useState<string | null>(
@@ -108,6 +109,19 @@ export default function KnowledgePage() {
     [deleteKb, explicitSelection, setError, t],
   );
 
+  const handleRename = useCallback(
+    async (oldName: string, newName: string) => {
+      try {
+        await renameKb(oldName, newName);
+        if (explicitSelection === oldName) setExplicitSelection(newName);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    },
+    [renameKb, explicitSelection, setError],
+  );
+
   const handleUpload = useCallback(
     async (kbName: string, files: File[]) => {
       try {
@@ -181,6 +195,7 @@ export default function KnowledgePage() {
             onSetDefault={handleSetDefault}
             onDelete={handleDelete}
             onClearHistory={clearHistory}
+            onRename={handleRename}
           />
         </div>
       )}

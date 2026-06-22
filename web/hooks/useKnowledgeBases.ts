@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createKnowledgeBase as createKbApi,
   deleteKnowledgeBase as deleteKbApi,
+  renameKnowledgeBase as renameKbApi,
   getKnowledgeUploadPolicy,
   invalidateKnowledgeCaches,
   listKnowledgeBases,
@@ -264,6 +265,14 @@ export function useKnowledgeBases() {
     [history, load, progress],
   );
 
+  const renameKb = useCallback(
+    async (oldName: string, newName: string) => {
+      await renameKbApi(oldName, newName);
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
   return {
     kbs: combinedKbs,
     rawKbs: kbs,
@@ -283,6 +292,7 @@ export function useKnowledgeBases() {
     setDefault,
     reindex,
     deleteKb,
+    renameKb,
   };
 }
 

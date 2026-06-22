@@ -133,6 +133,8 @@
   "No knowledge bases found. Create one to get started.": "No knowledge bases found. Create one to get started.",
   "Create Knowledge Base": "Create Knowledge Base",
   "Knowledge Base Name": "Knowledge Base Name",
+  "Rename this knowledge base.": "Rename this knowledge base.",
+  "Knowledge base name is required": "Knowledge base name is required",
   "Notebooks": "Notebooks",
   "Settings": "Settings",
   "Loading": "Loading...",
