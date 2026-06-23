@@ -68,34 +68,59 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 ToolParameter(
                     name="kb_name",
                     type="string",
-                    description="Knowledge base to search.",
+                    description="Knowledge base to search (single KB).",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="kb_names",
+                    type="array",
+                    description="Knowledge bases to search (multiple KBs — system-injected).",
                     required=False,
                 ),
             ],
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.tools.rag_tool import rag_search
+        from deeptutor.tools.rag_tool import rag_multi_search, rag_search
 
         query = str(kwargs.get("query") or "").strip()
         if not query:
             raise ValueError("RAG query must be a non-empty string.")
         kb_name = kwargs.get("kb_name")
+        kb_names = kwargs.get("kb_names")
         event_sink = kwargs.get("event_sink")
         extra_kwargs = {
             key: value
             for key, value in kwargs.items()
-            if key not in {"query", "kb_name", "event_sink"}
+            if key not in {"query", "kb_name", "kb_names", "event_sink"}
         }
 
-        result = await rag_search(
-            query=query,
-            kb_name=kb_name,
-            event_sink=event_sink,
-            **extra_kwargs,
-        )
+        # Prefer multi-search when multiple KB names are provided
+        if kb_names and isinstance(kb_names, list) and len(kb_names) > 1:
+            result = await rag_multi_search(
+                query=query,
+                kb_names=kb_names,
+                event_sink=event_sink,
+                **extra_kwargs,
+            )
+        elif kb_names and isinstance(kb_names, list) and len(kb_names) == 1:
+            # Single KB via list — delegate to single search
+            result = await rag_search(
+                query=query,
+                kb_name=kb_names[0],
+                event_sink=event_sink,
+                **extra_kwargs,
+            )
+        else:
+            result = await rag_search(
+                query=query,
+                kb_name=kb_name,
+                event_sink=event_sink,
+                **extra_kwargs,
+            )
         content = result.get("answer") or result.get("content", "")
         rag_sources = result.get("sources", [])
+        resolved_kb_names = kb_names if (kb_names and isinstance(kb_names, list)) else ([kb_name] if kb_name else [])
         sources = [
             {
                 "type": "rag",
@@ -104,13 +129,15 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 "source_file": s.get("source", ""),
                 "page": s.get("page", ""),
                 "score": s.get("score", ""),
-                "kb_name": str(kb_name or ""),
+                "kb_name": s.get("kb_name") or str(kb_name or ""),
                 "query": query,
             }
             for s in rag_sources
         ]
         if not sources:
-            sources = [{"type": "rag", "query": query, "kb_name": kb_name or ""}]
+            sources = [
+                {"type": "rag", "query": query, "kb_name": ", ".join(resolved_kb_names) if resolved_kb_names else str(kb_name or "")}
+            ]
         return ToolResult(
             content=content,
             sources=sources,

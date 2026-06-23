@@ -42,7 +42,7 @@ class DeepQuestionCapability(BaseCapability):
             return
 
         llm_config = get_llm_config()
-        kb_name = context.knowledge_bases[0] if context.knowledge_bases else None
+        kb_name = ", ".join(context.knowledge_bases) if context.knowledge_bases else None
         turn_id = str(context.metadata.get("turn_id", "") or context.session_id or "deep-question")
         output_dir = get_path_service().get_task_workspace("deep_question", turn_id)
 

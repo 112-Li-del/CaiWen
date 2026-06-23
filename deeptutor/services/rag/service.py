@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -123,6 +124,107 @@ class RAGService:
             )
 
             return result
+
+    async def search_multi(
+        self,
+        query: str,
+        kb_names: list[str],
+        event_sink=None,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """Search across multiple knowledge bases in parallel and merge results.
+
+        Each KB is queried independently with the same query. Results are
+        merged with KB-name labels so the caller can attribute each snippet.
+        """
+        if not kb_names:
+            return {
+                "query": query,
+                "answer": "",
+                "content": "",
+                "sources": [],
+                "provider": DEFAULT_PROVIDER,
+            }
+
+        if len(kb_names) == 1:
+            return await self.search(query=query, kb_name=kb_names[0], event_sink=event_sink, **kwargs)
+
+        with self._capture_raw_logs(event_sink):
+            await self._emit_tool_event(
+                event_sink,
+                "status",
+                f"Query: {query}",
+                {"query": query, "kb_names": kb_names, "trace_layer": "summary"},
+            )
+
+            async def _search_one(name: str) -> tuple[str, dict[str, Any] | None]:
+                try:
+                    await self._emit_tool_event(
+                        event_sink,
+                        "status",
+                        f"Retrieving from knowledge base '{name}'...",
+                        {"provider": DEFAULT_PROVIDER, "kb_name": name, "trace_layer": "summary"},
+                    )
+                    result = await self.search(query=query, kb_name=name, event_sink=None, **kwargs)
+                    if result.get("error_type") or result.get("needs_reindex"):
+                        self.logger.warning("KB '%s' search issue: %s", name, result.get("answer", ""))
+                    return name, result
+                except Exception as exc:
+                    self.logger.error("KB '%s' search failed: %s", name, exc)
+                    return name, None
+
+            tasks = [_search_one(name) for name in kb_names]
+            gathered = await asyncio.gather(*tasks)
+
+            merged_answer_parts: list[str] = []
+            merged_sources: list[dict[str, Any]] = []
+            has_any_result = False
+
+            for name, result in gathered:
+                if result is None:
+                    continue
+                answer = result.get("answer") or result.get("content") or ""
+                if answer.strip():
+                    has_any_result = True
+                    # Label the source KB so users can see where each chunk came from
+                    merged_answer_parts.append(f"【{name}】\n{answer}")
+                for src in result.get("sources", []):
+                    if isinstance(src, dict):
+                        src["kb_name"] = name
+                    merged_sources.append(src)
+
+            if not has_any_result:
+                await self._emit_tool_event(
+                    event_sink,
+                    "status",
+                    "No results from any of the selected knowledge bases.",
+                    {
+                        "provider": DEFAULT_PROVIDER,
+                        "kb_names": kb_names,
+                        "trace_layer": "summary",
+                        "call_state": "error",
+                    },
+                )
+
+            merged_answer = "\n\n".join(merged_answer_parts)
+            await self._emit_tool_event(
+                event_sink,
+                "status",
+                f"Retrieved {len(merged_answer)} characters of grounded context across {len(kb_names)} KBs.",
+                {
+                    "provider": DEFAULT_PROVIDER,
+                    "kb_names": kb_names,
+                    "trace_layer": "summary",
+                },
+            )
+
+            return {
+                "query": query,
+                "answer": merged_answer,
+                "content": merged_answer,
+                "sources": merged_sources,
+                "provider": DEFAULT_PROVIDER,
+            }
 
     async def _emit_tool_event(
         self,

@@ -321,6 +321,7 @@ export default function ChatPage() {
   const [showMemoryPicker, setShowMemoryPicker] = useState(false);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
+  const [kbMenuOpen, setKbMenuOpen] = useState(false);
   const [selectedNotebookRecords, setSelectedNotebookRecords] = useState<
     SelectedRecord[]
   >([]);
@@ -345,7 +346,10 @@ export default function ChatPage() {
   const toolBtnRef = useRef<HTMLButtonElement>(null);
   const spaceMenuRef = useRef<HTMLDivElement>(null);
   const spaceBtnRef = useRef<HTMLButtonElement>(null);
+  const kbMenuRef = useRef<HTMLDivElement>(null);
+  const kbBtnRef = useRef<HTMLButtonElement>(null);
   const initialLoadRef = useRef(false);
+  const kbInitialAutoSelectDoneRef = useRef(false);
 
   const activeCap = useMemo(
     () => getCapability(state.activeCapability),
@@ -577,15 +581,22 @@ export default function ChatPage() {
       try {
         const list = await listKnowledgeBases({ force: options?.force });
         setKnowledgeBases(list);
-        if (!state.knowledgeBases.length && list.length) {
+        if (
+          !kbInitialAutoSelectDoneRef.current &&
+          !state.knowledgeBases.length &&
+          list.length
+        ) {
+          kbInitialAutoSelectDoneRef.current = true;
           const def = list.find((k: KnowledgeBase) => k.is_default);
-          setKBs([def?.name || list[0].name]);
+          if (def?.name) {
+            setKBs([def.name]);
+          }
         }
       } catch {
         setKnowledgeBases([]);
       }
     },
-    [setKBs, state.knowledgeBases.length],
+    [setKBs],
   );
 
   /* Load KBs */
@@ -681,6 +692,13 @@ export default function ChatPage() {
         !spaceBtnRef.current.contains(t)
       )
         setSpaceMenuOpen(false);
+      if (
+        kbMenuRef.current &&
+        !kbMenuRef.current.contains(t) &&
+        kbBtnRef.current &&
+        !kbBtnRef.current.contains(t)
+      )
+        setKbMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -1064,11 +1082,16 @@ export default function ChatPage() {
     regenerateLastMessage();
   }, [regenerateLastMessage]);
 
-  const handleSetKB = useCallback(
+  const handleToggleKB = useCallback(
     (kb: string) => {
-      setKBs(kb ? [kb] : []);
+      const current = state.knowledgeBases;
+      if (current.includes(kb)) {
+        setKBs(current.filter((k) => k !== kb));
+      } else {
+        setKBs([...current, kb]);
+      }
     },
-    [setKBs],
+    [state.knowledgeBases, setKBs],
   );
   const handleSelectNotebookPicker = useCallback(() => {
     setShowNotebookPicker(true);
@@ -1322,7 +1345,10 @@ export default function ChatPage() {
           selectedSkills={selectedSkills}
           skillsAutoMode={skillsAutoMode}
           selectedMemoryFiles={selectedMemoryFiles}
-          stateKnowledgeBase={state.knowledgeBases[0] || ""}
+          stateKnowledgeBases={state.knowledgeBases}
+          kbMenuOpen={kbMenuOpen}
+          kbMenuRef={kbMenuRef}
+          kbBtnRef={kbBtnRef}
           isStreaming={state.isStreaming}
           isResearchMode={isResearchMode}
           isQuizMode={isQuizMode}
@@ -1340,7 +1366,8 @@ export default function ChatPage() {
           onSetCapMenuOpen={setCapMenuOpen}
           onSetToolMenuOpen={setToolMenuOpen}
           onSetSpaceMenuOpen={setSpaceMenuOpen}
-          onSetKB={handleSetKB}
+          onToggleKB={handleToggleKB}
+          onSetKbMenuOpen={setKbMenuOpen}
           onSelectLLM={setLLMSelection}
           onSelectNotebookPicker={handleSelectNotebookPicker}
           onSelectBookPicker={handleSelectBookPicker}

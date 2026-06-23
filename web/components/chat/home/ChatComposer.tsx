@@ -15,6 +15,7 @@ import {
   ArrowUp,
   AtSign,
   ChevronDown,
+  Database,
   Layers,
   Paperclip,
   Sparkles,
@@ -143,7 +144,10 @@ export default memo(function ChatComposer({
   selectedSkills,
   skillsAutoMode,
   selectedMemoryFiles,
-  stateKnowledgeBase,
+  stateKnowledgeBases,
+  kbMenuOpen,
+  kbMenuRef,
+  kbBtnRef,
   isStreaming,
   isResearchMode,
   isQuizMode,
@@ -161,7 +165,8 @@ export default memo(function ChatComposer({
   onSetCapMenuOpen,
   onSetToolMenuOpen,
   onSetSpaceMenuOpen,
-  onSetKB,
+  onToggleKB,
+  onSetKbMenuOpen,
   onSelectLLM,
   onSelectNotebookPicker,
   onSelectBookPicker,
@@ -233,7 +238,10 @@ export default memo(function ChatComposer({
   selectedSkills: string[];
   skillsAutoMode: boolean;
   selectedMemoryFiles: SpaceMemoryFile[];
-  stateKnowledgeBase: string;
+  stateKnowledgeBases: string[];
+  kbMenuOpen: boolean;
+  kbMenuRef: RefObject<HTMLDivElement | null>;
+  kbBtnRef: RefObject<HTMLButtonElement | null>;
   isStreaming: boolean;
   isResearchMode: boolean;
   isQuizMode: boolean;
@@ -251,7 +259,8 @@ export default memo(function ChatComposer({
   onSetCapMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetToolMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetSpaceMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
-  onSetKB: (kb: string) => void;
+  onToggleKB: (kb: string) => void;
+  onSetKbMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSelectLLM: (selection: LLMSelection | null) => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
@@ -855,35 +864,88 @@ export default memo(function ChatComposer({
                   onChange={onSelectLLM}
                 />
 
-                <select
-                  value={stateKnowledgeBase}
-                  onChange={(e) => onSetKB(e.target.value)}
-                  disabled={!ragActive}
-                  title={
-                    ragActive
-                      ? t("Select Knowledge Base")
-                      : t("Enable Knowledge Base source first")
-                  }
-                  className={`h-[28px] appearance-none rounded-full border bg-transparent py-0 pl-2.5 pr-5 text-[11px] outline-none transition-colors ${
-                    ragActive
-                      ? "cursor-pointer border-[var(--border)]/40 text-[var(--muted-foreground)] hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                      : "cursor-not-allowed border-transparent text-[var(--border)]"
-                  }`}
-                  style={{
-                    backgroundImage: ragActive
-                      ? "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")"
-                      : "none",
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 6px center",
-                  }}
-                >
-                  <option value="">{ragActive ? t("No KB") : "—"}</option>
-                  {knowledgeBases.map((kb) => (
-                    <option key={kb.name} value={kb.name}>
-                      {kb.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative flex items-center gap-0.5">
+                  <button
+                    ref={kbBtnRef}
+                    type="button"
+                    onClick={() =>
+                      ragActive ? onSetKbMenuOpen((v) => !v) : undefined
+                    }
+                    disabled={!ragActive}
+                    className={`inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium transition-colors ${
+                      ragActive
+                        ? "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                        : "cursor-not-allowed text-[var(--border)]"
+                    }`}
+                  >
+                    <Database size={12} strokeWidth={1.7} />
+                    {t("KB")}
+                    <ChevronDown
+                      size={10}
+                      className={`transition-transform ${kbMenuOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {stateKnowledgeBases.length > 0 && (
+                    <span className="shrink-0 rounded-full bg-[var(--primary)]/10 px-1.5 py-px text-[9px] font-semibold text-[var(--primary)]">
+                      {stateKnowledgeBases.length}
+                    </span>
+                  )}
+                  {kbMenuOpen && (
+                    <div
+                      ref={kbMenuRef}
+                      className="absolute bottom-full right-0 z-50 mb-1.5 min-w-[200px] max-w-[260px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                    >
+                      {knowledgeBases.length === 0 ? (
+                        <div className="px-3 py-2 text-[11px] text-[var(--muted-foreground)]">
+                          {t("No knowledge bases available")}
+                        </div>
+                      ) : (
+                        knowledgeBases.map((kb) => {
+                          const active = stateKnowledgeBases.includes(kb.name);
+                          return (
+                            <button
+                              key={kb.name}
+                              type="button"
+                              onClick={() => onToggleKB(kb.name)}
+                              className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-[var(--muted)]/40 ${
+                                active
+                                  ? "text-[var(--primary)]"
+                                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
+                                  active
+                                    ? "border-[var(--primary)] bg-[var(--primary)] text-white"
+                                    : "border-[var(--border)]"
+                                }`}
+                              >
+                                {active && (
+                                  <svg
+                                    width="8"
+                                    height="8"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="3"
+                                  >
+                                    <path d="M20 6L9 17l-5-5" />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="flex-1 truncate font-medium">
+                                {kb.name}
+                              </span>
+                              {active && (
+                                <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary)]" />
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {isStreaming ? (
                   <button

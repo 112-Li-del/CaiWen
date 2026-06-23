@@ -44,7 +44,7 @@ class DeepResearchCapability(BaseCapability):
             return
 
         llm_config = get_llm_config()
-        kb_name = context.knowledge_bases[0] if context.knowledge_bases else None
+        kb_name = ", ".join(context.knowledge_bases) if context.knowledge_bases else None
         topic = context.user_message
         enabled_tools = set(
             self.manifest.tools_used if context.enabled_tools is None else context.enabled_tools
@@ -56,7 +56,7 @@ class DeepResearchCapability(BaseCapability):
         # effective sources. This avoids any code path falling through to a
         # placeholder KB at the pipeline layer. If after the downgrade no
         # source is left at all, surface a clear error to the user.
-        if "kb" in request_config.sources and not kb_name:
+        if "kb" in request_config.sources and not context.knowledge_bases:
             request_config = request_config.model_copy(
                 update={
                     "sources": [src for src in request_config.sources if src != "kb"],

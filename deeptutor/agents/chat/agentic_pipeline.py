@@ -1087,12 +1087,13 @@ class AgenticChatPipeline:
             properties = parameters.get("properties")
             if isinstance(properties, dict):
                 properties.pop("kb_name", None)
+                properties.pop("kb_names", None)
                 query_schema = properties.get("query")
                 if isinstance(query_schema, dict):
                     query_schema.setdefault("minLength", 1)
             required = parameters.get("required")
             if isinstance(required, list):
-                parameters["required"] = [name for name in required if name != "kb_name"]
+                parameters["required"] = [name for name in required if name not in ("kb_name", "kb_names")]
             parameters["additionalProperties"] = False
         return schemas
 
@@ -1101,7 +1102,12 @@ class AgenticChatPipeline:
         if tool_name != "rag":
             return dict(args)
         query = str(args.get("query") or "").strip()
-        return {"query": query} if query else {}
+        result = {"query": query} if query else {}
+        # Include kb_names for visibility in trace (but not kb_name to avoid confusion)
+        kb_names = args.get("kb_names")
+        if kb_names and isinstance(kb_names, list):
+            result["kb_names"] = kb_names
+        return result
 
     @staticmethod
     def _extract_answer_now_context(context: UnifiedContext) -> dict[str, Any] | None:
@@ -1137,7 +1143,7 @@ class AgenticChatPipeline:
                 ),
             )
 
-        if tool_name == "rag" and not str(tool_args.get("kb_name") or "").strip():
+        if tool_name == "rag" and not str(tool_args.get("kb_name") or "").strip() and not (isinstance(tool_args.get("kb_names"), list) and tool_args.get("kb_names")):
             message = self._rag_without_kb_message()
             if stream is not None and retrieve_meta is not None:
                 await stream.progress(
@@ -1285,7 +1291,8 @@ class AgenticChatPipeline:
                 fallback_query = self._fallback_rag_query(context)
                 if fallback_query:
                     kwargs["query"] = fallback_query
-            kwargs["kb_name"] = selected_kbs[0] if selected_kbs else ""
+            kwargs["kb_names"] = selected_kbs
+            kwargs["kb_name"] = selected_kbs[0] if selected_kbs else ""  # backward compat
             kwargs.setdefault("mode", "hybrid")
         elif tool_name == "code_execution":
             kwargs.setdefault("intent", context.user_message)
@@ -1316,7 +1323,7 @@ class AgenticChatPipeline:
         return " ".join(message.split())[:800]
 
     def _acting_system_prompt(self, enabled_tools: list[str], context: UnifiedContext) -> str:
-        kb_name = context.knowledge_bases[0] if context.knowledge_bases else ""
+        kb_name = ", ".join(context.knowledge_bases) if context.knowledge_bases else ""
         tool_list = self.registry.build_prompt_text(
             enabled_tools,
             format="list",
@@ -1339,7 +1346,7 @@ class AgenticChatPipeline:
         return self._t("react_fallback.system", tool_table=tool_table)
 
     def _thinking_system_prompt(self, enabled_tools: list[str], context: UnifiedContext) -> str:
-        kb_name = context.knowledge_bases[0] if context.knowledge_bases else ""
+        kb_name = ", ".join(context.knowledge_bases) if context.knowledge_bases else ""
         tool_list = self.registry.build_prompt_text(
             enabled_tools,
             format="list",
@@ -1369,16 +1376,18 @@ class AgenticChatPipeline:
     def _current_kb_system_note(self, context: UnifiedContext) -> str:
         if not self._selected_kbs(context):
             return ""
+        kb_list = ", ".join(self._selected_kbs(context))
         if getattr(self, "language", "en") == "zh":
             return (
-                "本轮已有系统态选中的知识库。如果需要知识库检索，只需调用 RAG 并提供非空 query；"
+                f"本轮已选中知识库：{kb_list}。"
+                "如果需要知识库检索，只需调用 RAG 并提供非空 query；"
                 "不要输出、猜测或沿用任何知识库名称，也不要传 kb_name。系统会把 query 发到当前选中的知识库。"
             )
         return (
-            "A knowledge base is selected in system state for this turn. "
+            f"Knowledge bases selected for this turn: {kb_list}. "
             "If retrieval is useful, call RAG with only a non-empty query; do not output, "
             "guess, reuse, or pass any knowledge-base name. The system will route "
-            "the query to the currently selected knowledge base."
+            "the query to the currently selected knowledge base(s)."
         )
 
     def _rag_without_kb_message(self) -> str:

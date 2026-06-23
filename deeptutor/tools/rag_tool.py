@@ -111,6 +111,91 @@ async def rag_search(
         raise Exception(f"RAG search failed: {e}")
 
 
+async def rag_multi_search(
+    query: str,
+    kb_names: Optional[List[str]] = None,
+    provider: Optional[str] = None,
+    kb_base_dir: Optional[str] = None,
+    event_sink=None,
+    **kwargs,
+) -> dict:
+    """
+    Query multiple knowledge bases in parallel and merge results.
+
+    Args:
+        query: Query question
+        kb_names: List of knowledge base names to search (optional, defaults to default KB)
+        provider: RAG pipeline to use (defaults to configured provider or "llamaindex")
+        kb_base_dir: Base directory for knowledge bases (for testing)
+        **kwargs: Additional parameters passed to the RAG pipeline
+
+    Returns:
+        dict: Merged results from all KBs with KB-name labels.
+    """
+    query = str(query or "").strip()
+    if not query:
+        raise ValueError("RAG query must be a non-empty string.")
+
+    if kb_names is None:
+        kb_names = []
+
+    # Resolve kb_base_dir and KB access (same logic as rag_search)
+    if kb_base_dir is None:
+        try:
+            from deeptutor.multi_user.context import get_current_user
+            from deeptutor.multi_user.knowledge_access import resolve_for_rag
+
+            # Resolve each kb_name through the access layer
+            resolved_names: list[str] = []
+            for name in kb_names:
+                resource = resolve_for_rag(name)
+                if resource is not None:
+                    if kb_base_dir is None:
+                        kb_base_dir = str(resource.base_dir)
+                    resolved_names.append(resource.name)
+            kb_names = resolved_names
+            if not kb_names and not get_current_user().is_admin:
+                raise ValueError(
+                    "No knowledge base selected. Pass kb_names explicitly or set a default."
+                )
+        except ValueError:
+            raise
+        except Exception as exc:
+            if getattr(exc, "status_code", None) in {403, 404}:
+                raise
+            pass
+
+    service = RAGService(kb_base_dir=kb_base_dir, provider=provider)
+
+    # Resolve each KB name (handle default aliases)
+    resolved = []
+    for name in kb_names:
+        resolved_name = _resolve_kb_name(name, kb_base_dir=kb_base_dir)
+        if resolved_name:
+            resolved.append(resolved_name)
+
+    if not resolved:
+        raise ValueError("No knowledge base selected and no default knowledge base is configured.")
+
+    if len(resolved) == 1:
+        return await service.search(
+            query=query,
+            kb_name=resolved[0],
+            event_sink=event_sink,
+            **kwargs,
+        )
+
+    try:
+        return await service.search_multi(
+            query=query,
+            kb_names=resolved,
+            event_sink=event_sink,
+            **kwargs,
+        )
+    except Exception as e:
+        raise Exception(f"Multi-KB RAG search failed: {e}")
+
+
 async def initialize_rag(
     kb_name: str,
     documents: List[str],

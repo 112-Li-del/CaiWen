@@ -49,12 +49,12 @@ class DeepSolveCapability(BaseCapability):
             self.manifest.tools_used if context.enabled_tools is None else context.enabled_tools
         )
         rag_enabled = "rag" in enabled_tools
-        kb_name = context.knowledge_bases[0] if rag_enabled and context.knowledge_bases else None
+        kb_name = ", ".join(context.knowledge_bases) if rag_enabled and context.knowledge_bases else None
 
         # Consistency normalization: if rag is requested but no KB is
         # actually available, strip "rag" from the enabled tool set so the
         # ReAct loop never exposes an action that would fail at runtime.
-        if rag_enabled and not kb_name:
+        if rag_enabled and not context.knowledge_bases:
             enabled_tools = [tool for tool in enabled_tools if tool != "rag"]
             rag_enabled = False
             await stream.progress(
@@ -74,7 +74,7 @@ class DeepSolveCapability(BaseCapability):
             kb_name=kb_name,
             language=context.language,
             enabled_tools=enabled_tools,
-            disable_planner_retrieve=not (rag_enabled and kb_name),
+            disable_planner_retrieve=not (rag_enabled and bool(context.knowledge_bases)),
         )
         await solver.ainit()
 

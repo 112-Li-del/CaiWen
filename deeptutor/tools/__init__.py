@@ -9,6 +9,7 @@ _LAZY_EXPORTS = {
     "run_code": (".code_executor", "run_code"),
     "run_code_sync": (".code_executor", "run_code_sync"),
     "rag_search": (".rag_tool", "rag_search"),
+    "rag_multi_search": (".rag_tool", "rag_multi_search"),
     "reason": (".reason", "reason"),
     "web_search": (".web_search", "web_search"),
     "PaperSearchTool": (".paper_search_tool", "PaperSearchTool"),
