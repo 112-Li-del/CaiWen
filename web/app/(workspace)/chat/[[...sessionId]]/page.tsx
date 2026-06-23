@@ -185,7 +185,7 @@ const CAPABILITIES: CapabilityDef[] = [
       "reason",
       "paper_search",
     ],
-    defaultTools: [],
+    defaultTools: ["rag"],
   },
   {
     value: "deep_solve",
@@ -550,6 +550,18 @@ export default function ChatPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // For new users with no stored playground capability config, enable the
+  // knowledge-base (RAG) tool by default so the KB multi-select is immediately
+  // available on the first visit. Existing users' stored tool selections
+  // are preserved and never overwritten.
+  useEffect(() => {
+    const stored = loadCapabilityPlaygroundConfigs();
+    if (Object.keys(stored).length === 0) {
+      setTools(["rag"]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // When URL param changes (sidebar navigation), load the corresponding session
   const prevSessionIdParam = useRef(sessionIdParam);
   useEffect(() => {
@@ -722,7 +734,7 @@ export default function ChatPage() {
       const config = resolveCapabilityPlaygroundConfig(
         capabilityConfigs,
         storageKey,
-        cap.allowedTools,
+        cap.defaultTools,
       );
       setCapability(cap.value || null);
       setTools(
