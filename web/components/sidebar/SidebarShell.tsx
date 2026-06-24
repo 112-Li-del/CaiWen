@@ -173,7 +173,7 @@ export function SidebarShell({
                   className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                     active
                       ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                      : "text-white hover:bg-[var(--background)]/50 hover:text-white"
                   }`}
                 >
                   {active && (
@@ -201,7 +201,7 @@ export function SidebarShell({
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                   active
                     ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                    : "text-white hover:bg-[var(--background)]/50 hover:text-white"
                 }`}
               >
                 {active && (
@@ -218,7 +218,7 @@ export function SidebarShell({
             rel="noreferrer noopener"
             title="GitHub"
             aria-label="GitHub"
-            className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+            className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-white/70 transition-colors hover:bg-[var(--background)]/50 hover:text-white"
           >
             <Github size={15} strokeWidth={1.6} />
           </a>
@@ -261,7 +261,7 @@ export function SidebarShell({
           {/* New chat */}
           <button
             onClick={handleNewChat}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-white transition-colors hover:bg-[var(--background)]/60 hover:text-white"
           >
             <Plus size={16} strokeWidth={2} />
             <span>{t("New Chat")}</span>
@@ -283,7 +283,7 @@ export function SidebarShell({
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                     active
                       ? "bg-[var(--background)]/70 font-semibold text-white"
-                      : "text-white hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                      : "text-white hover:bg-[var(--background)]/50 hover:text-white"
                   }`}
                 >
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
@@ -325,7 +325,7 @@ export function SidebarShell({
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                 active
                   ? "bg-[var(--background)]/70 font-semibold text-white"
-                  : "text-white hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                  : "text-white hover:bg-[var(--background)]/50 hover:text-white"
               }`}
             >
               <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
@@ -342,7 +342,7 @@ export function SidebarShell({
             rel="noreferrer noopener"
             title="GitHub"
             aria-label="GitHub"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-[var(--background)]/50 hover:text-white"
           >
             <Github size={13} strokeWidth={1.7} />
           </a>

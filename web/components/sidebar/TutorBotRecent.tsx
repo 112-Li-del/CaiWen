@@ -53,7 +53,7 @@ export function TutorBotRecent({ collapsed = false }: { collapsed?: boolean }) {
         <Link
           key={bot.bot_id}
           href={`/agents/${bot.bot_id}/chat`}
-          className="group flex items-center gap-2 rounded-r-lg py-1 pl-3 pr-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+          className="group flex items-center gap-2 rounded-r-lg py-1 pl-3 pr-2 text-white transition-colors hover:bg-[var(--background)]/40 hover:text-white"
         >
           <div className="relative shrink-0">
             {bot.running ? (
@@ -65,7 +65,7 @@ export function TutorBotRecent({ collapsed = false }: { collapsed?: boolean }) {
           <span className="min-w-0 flex-1 truncate text-[13px]">
             {bot.name}
           </span>
-          <span className="shrink-0 text-[10px] tabular-nums text-[var(--muted-foreground)]/40">
+          <span className="shrink-0 text-[10px] tabular-nums text-white/40">
             {relativeTime(bot.updated_at)}
           </span>
         </Link>

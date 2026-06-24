@@ -35,7 +35,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
           ${
             active
               ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+              : "text-white hover:bg-[var(--background)]/50 hover:text-white"
           }`}
         aria-label={t("Admin")}
         title={t("Admin — User Management")}
@@ -52,7 +52,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
         ${
           active
             ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-            : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+            : "text-white hover:bg-[var(--background)]/50 hover:text-white"
         }`}
     >
       <ShieldCheck size={16} strokeWidth={1.5} />

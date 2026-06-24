@@ -24,7 +24,7 @@ export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
     return (
       <button
         onClick={handleLogout}
-        className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
+        className="rounded-lg p-2 text-white transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
         aria-label={t("Sign out")}
         title={t("Sign out")}
       >
@@ -36,7 +36,7 @@ export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
   return (
     <button
       onClick={handleLogout}
-      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
+      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-white transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
     >
       <LogOut size={16} strokeWidth={1.5} />
       <span>{t("Sign out")}</span>

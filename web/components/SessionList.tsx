@@ -197,7 +197,7 @@ export default function SessionList({
             {groupIdx > 0 && (
               <div className="my-1 ml-3 mr-2 border-t border-[var(--border)]/20" />
             )}
-            <div className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]/40">
+            <div className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40">
               {label}
             </div>
             {items.map((session) => {
@@ -218,7 +218,7 @@ export default function SessionList({
                  className={`group flex items-center gap-2 rounded-r-lg py-1 pl-3 pr-2 transition-colors ${
   active
     ? "bg-[var(--background)]/50 text-white"
-    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+    : "text-white hover:bg-[var(--background)]/40 hover:text-white"
 }`}
                 >
                   <span
