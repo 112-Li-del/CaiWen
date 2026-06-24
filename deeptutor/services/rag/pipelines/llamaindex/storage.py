@@ -175,3 +175,93 @@ def delete_kb_dir(kb_dir: Path) -> bool:
         shutil.rmtree(kb_dir)
         return True
     return False
+
+
+def remove_document_nodes(storage_dir: Path, file_path: str) -> int:
+    """Surgically remove all nodes belonging to a single source file from an index.
+
+    Loads the persisted index at ``storage_dir``, finds every ``ref_doc`` whose
+    node metadata references ``file_path`` (matched against the ``file_path``
+    and ``file_name`` metadata fields), deletes those ref-docs from the vector
+    store, docstore, and index store, then persists the updated stores back
+    to disk.
+
+    Returns the number of ``ref_doc`` entries that were removed (0 means no
+    matching document was found in this index version).
+
+    Raises ``ValueError`` if the storage directory does not contain a loadable
+    index. Other errors (e.g. corrupt vector store) propagate to the caller so
+    the orchestrator can decide whether to fall back to a full rebuild.
+    """
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+    if not storage_dir.is_dir() or not (storage_dir / "docstore.json").exists():
+        raise ValueError(f"No loadable index found at {storage_dir}")
+
+    storage_context = StorageContext.from_defaults(persist_dir=str(storage_dir))
+    index = load_index_from_storage(storage_context)
+
+    # Normalise the target path for cross-platform comparison
+    target_path = str(Path(file_path).resolve())
+    target_name = Path(file_path).name
+
+    ref_doc_ids_to_delete: list[str] = []
+    for ref_doc_id, ref_doc_info in index.ref_doc_info.items():
+        if not ref_doc_info.node_ids:
+            continue
+        sample_node_id = ref_doc_info.node_ids[0]
+        try:
+            sample_node = index.docstore.get_node(sample_node_id)
+        except Exception:
+            # Node may have been partially cleaned up; inspect remaining nodes
+            found = False
+            for nid in ref_doc_info.node_ids:
+                try:
+                    sample_node = index.docstore.get_node(nid)
+                    found = True
+                    break
+                except Exception:
+                    continue
+            if not found:
+                _logger.warning(
+                    "ref_doc %s has no retrievable nodes; skipping", ref_doc_id
+                )
+                continue
+
+        metadata = getattr(sample_node, "metadata", {}) or {}
+        node_file_path = str(metadata.get("file_path", ""))
+        node_file_name = str(metadata.get("file_name", ""))
+
+        # Match by full path (preferred) or by filename (fallback for
+        # indexes created before file_path was reliably stored).
+        if node_file_path:
+            node_resolved = str(Path(node_file_path).resolve())
+            if node_resolved == target_path:
+                ref_doc_ids_to_delete.append(ref_doc_id)
+                continue
+        if node_file_name and node_file_name == target_name:
+            ref_doc_ids_to_delete.append(ref_doc_id)
+
+    if not ref_doc_ids_to_delete:
+        _logger.info(
+            "No index nodes found for file '%s' in %s", target_name, storage_dir
+        )
+        return 0
+
+    for ref_doc_id in ref_doc_ids_to_delete:
+        try:
+            index.delete_ref_doc(ref_doc_id, delete_from_docstore=True)
+        except TypeError:
+            # Older llama_index versions don't accept the kwarg
+            index.delete_ref_doc(ref_doc_id)
+
+    index.storage_context.persist(persist_dir=str(storage_dir))
+    _logger.info(
+        "Removed %d ref_doc(s) for file '%s' from %s",
+        len(ref_doc_ids_to_delete),
+        target_name,
+        storage_dir,
+    )
+    return len(ref_doc_ids_to_delete)

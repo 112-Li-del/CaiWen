@@ -994,10 +994,12 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
 
 @router.delete("/{kb_name}/files/{filename:path}")
 async def delete_kb_raw_file(kb_name: str, filename: str):
-    """Delete a single raw file from a knowledge base and clean its index.
+    """Delete a single raw file from a knowledge base and surgically remove its chunks.
 
-    The raw file is removed from the ``raw/`` directory and the current RAG
-    index is purged so the KB can be re-indexed on the next retrieval.
+    The raw file is removed from the ``raw/`` directory and ONLY the vector
+    chunks belonging to that specific file are removed from every ready index
+    version.  A full re-index is NOT triggered — the knowledge base stays
+    ready for retrieval immediately after the call returns.
     """
     try:
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
@@ -1016,26 +1018,100 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
         if not target.exists() or not target.is_file():
             raise HTTPException(status_code=404, detail="File not found")
 
-        # Remove the raw file
+        # Remember the absolute path before unlinking so we can match
+        # against node metadata stored during indexing.
+        target_abs_path = str(target)
+
+        # Remove the raw file from disk
         target.unlink()
         logger.info(f"Deleted raw file '{filename}' from KB '{kb_name}'")
 
-        # Purge the current index so it gets rebuilt without this file
-        manager.clean_rag_storage(resolved_name, backup=False)
+        # Surgically remove the file's chunks from every ready index version.
+        from deeptutor.services.rag.service import RAGService
 
-        # Mark KB as needing reindex so retrieval triggers a rebuild
+        rag_service = RAGService(kb_base_dir=str(kb_base_dir))
+        result = await rag_service.remove_document(
+            kb_name=resolved_name, file_path=target_abs_path
+        )
+
+        versions_checked = result.get("versions_checked", 0)
+        versions_modified = result.get("versions_modified", 0)
+        total_removed = result.get("removed", 0)
+        errors = result.get("errors", [])
+
+        logger.info(
+            "Surgical removal for '%s': %d ref_doc(s) removed across %d/%d version(s).",
+            filename,
+            total_removed,
+            versions_modified,
+            versions_checked,
+        )
+        if errors:
+            logger.warning(
+                "Surgical removal for '%s' had %d error(s): %s",
+                filename,
+                len(errors),
+                "; ".join(errors),
+            )
+
+        if versions_checked == 0:
+            # No ready index versions exist — this KB hasn't been indexed yet.
+            # Just leave the status as-is (it was likely ready/no-index before).
+            logger.info(
+                "No ready index versions for KB '%s'; file deleted but no index to update.",
+                resolved_name,
+            )
+            status = "ready"
+            progress_msg = (
+                f"File '{filename}' deleted. No index versions found — "
+                "upload new files to build the index."
+            )
+        elif versions_modified > 0:
+            # At least one version was successfully cleaned — KB stays ready.
+            status = "ready"
+            progress_msg = (
+                f"File '{filename}' deleted and removed from "
+                f"{versions_modified} index version(s)."
+            )
+        elif total_removed == 0 and not errors:
+            # File was removed from disk but had no chunks in any version.
+            # This is normal for newly uploaded files that weren't indexed yet.
+            status = "ready"
+            progress_msg = (
+                f"File '{filename}' deleted (no index chunks found for this file)."
+            )
+        else:
+            # Every version errored — fall back to marking reindex-needed so
+            # the user can trigger a clean rebuild.
+            logger.error(
+                "All %d version(s) failed surgical removal for '%s'; "
+                "marking KB as needing reindex.",
+                versions_checked,
+                filename,
+            )
+            status = "needs_reindex"
+            progress_msg = (
+                f"File '{filename}' deleted but index cleanup failed on all "
+                f"versions. A re-index is recommended."
+            )
+
         manager.update_kb_status(
             name=resolved_name,
-            status="needs_reindex",
+            status=status,
             progress={
-                "stage": "needs_reindex",
-                "message": f"File '{filename}' deleted. Knowledge base needs reindex.",
-                "percent": 0,
+                "stage": "completed" if status == "ready" else "needs_reindex",
+                "message": progress_msg,
+                "percent": 100 if status == "ready" else 0,
                 "timestamp": datetime.now().isoformat(),
             },
         )
 
-        return {"message": f"File '{filename}' deleted successfully"}
+        return {
+            "message": f"File '{filename}' deleted successfully",
+            "index_removed": total_removed,
+            "versions_modified": versions_modified,
+            "versions_checked": versions_checked,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1262,133 +1338,258 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
     flat ``<kb>/version-N/`` storage directory. Prior versions are preserved
     untouched so switching the active embedding model back to a
     previously-indexed one reuses the existing version with no extra work.
+
+    The core indexing operation is retried up to **3 times** with exponential
+    backoff on transient errors (embedding API failures, network timeouts).
+    Permanent errors (missing files, parse failures) skip retries and fail
+    immediately.
     """
+    import asyncio as _asyncio
+
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
 
-    with capture_task_logs(task_id):
-        try:
-            base_path = Path(base_dir)
-            kb_dir = base_path / kb_name
-            raw_dir = kb_dir / "raw"
-            if not raw_dir.is_dir():
-                raise FileNotFoundError(f"KB '{kb_name}' has no `raw/` directory; cannot reindex.")
-            file_paths = [str(path) for path in FileTypeRouter.collect_supported_files(raw_dir)]
-            if not file_paths:
-                raise ValueError(f"KB '{kb_name}' has no source files in `raw/` to reindex.")
+    MAX_RETRIES = 3
+    BASE_DELAY_SECONDS = 2.0  # doubles each retry: 2 → 4 → 8
 
-            _task_log(
-                task_id,
-                f"Re-indexing '{kb_name}' ({len(file_paths)} files) against signature {signature_hash}",
+    # ---- helpers -----------------------------------------------------------
+    def _finalize_success(file_count: int) -> None:
+        completed_at = datetime.now().isoformat()
+        kb_dir = Path(base_dir) / kb_name
+        metadata_file = kb_dir / "metadata.json"
+        try:
+            metadata = {}
+            if metadata_file.exists():
+                with open(metadata_file, encoding="utf-8") as handle:
+                    loaded_metadata = json.load(handle)
+                if isinstance(loaded_metadata, dict):
+                    metadata = loaded_metadata
+            metadata["last_updated"] = completed_at
+            metadata["last_indexed_at"] = completed_at
+            metadata["last_indexed_count"] = file_count
+            metadata["last_indexed_action"] = "reindex"
+            with open(metadata_file, "w", encoding="utf-8") as handle:
+                json.dump(metadata, handle, indent=2, ensure_ascii=False)
+        except Exception as meta_err:
+            logger.warning(
+                "Failed to update re-index metadata for '%s': %s",
+                kb_name,
+                meta_err,
             )
+
+        manager = get_kb_manager()
+        manager.update_kb_status(
+            name=kb_name,
+            status="ready",
+            progress={
+                "stage": "completed",
+                "message": "Re-index complete",
+                "percent": 100,
+                "current": file_count,
+                "total": file_count,
+                "task_id": task_id,
+                "timestamp": completed_at,
+                "indexed_count": file_count,
+                "index_changed": True,
+                "index_action": "reindex",
+            },
+        )
+        # Clear needs_reindex / embedding_mismatch flags.
+        kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
+        mutated = False
+        if kb_entry.get("needs_reindex"):
+            kb_entry["needs_reindex"] = False
+            mutated = True
+        if kb_entry.get("embedding_mismatch"):
+            kb_entry.pop("embedding_mismatch", None)
+            mutated = True
+        if mutated:
+            manager._save_config()
+
+        _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
+        task_manager.update_task_status(task_id, "completed")
+        try:
+            task_stream_manager.emit_complete(task_id, f"Re-index of '{kb_name}' complete")
+        except Exception as emit_exc:
+            logger.warning("Failed to emit complete event for task %s: %s", task_id, emit_exc)
+
+    def _finalize_failure(error_msg: str, trace: str = "") -> None:
+        _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
+        if trace:
+            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+        task_manager.update_task_status(task_id, "error", error=error_msg)
+        try:
+            ProgressTracker(kb_name, Path(base_dir)).update(
+                ProgressStage.ERROR,
+                f"Re-index failed: {error_msg}",
+                error=error_msg,
+            )
+        except Exception:
+            pass
+        # Keep the KB in "needs_reindex" state on failure so the UI
+        # surfaces the re-index CTA instead of silently hiding the problem.
+        try:
+            manager = get_kb_manager()
+            manager.update_kb_status(
+                name=kb_name,
+                status="needs_reindex",
+                progress={
+                    "stage": "error",
+                    "message": f"Re-index failed: {error_msg}",
+                    "percent": 0,
+                    "task_id": task_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "error": error_msg,
+                },
+            )
+        except Exception as status_exc:
+            logger.warning("Failed to update KB status on reindex failure: %s", status_exc)
+        try:
+            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+        except Exception as emit_exc:
+            logger.warning("Failed to emit failed event for task %s: %s", task_id, emit_exc)
+
+    def _is_transient_error(exc: Exception) -> bool:
+        """Heuristic: classify whether the error is likely transient."""
+        msg = str(exc).lower()
+        transient_markers = [
+            "timeout", "timed out", "connection", "reset", "refused",
+            "rate limit", "too many request", "429", "503", "502", "504",
+            "temporary", "unavailable", "try again", "retry",
+            "broken pipe", "connectionreset", "keepalive",
+        ]
+        return any(marker in msg for marker in transient_markers)
+
+    # ---- main work ---------------------------------------------------------
+    with capture_task_logs(task_id):
+        last_error: tuple[str, str] = ("", "")
+        base_path = Path(base_dir)
+        kb_dir = base_path / kb_name
+        raw_dir = kb_dir / "raw"
+
+        # Pre-flight checks (permanent errors — not retried).
+        if not raw_dir.is_dir():
+            _finalize_failure(f"KB '{kb_name}' has no `raw/` directory; cannot reindex.")
+            return
+
+        file_paths = [str(path) for path in FileTypeRouter.collect_supported_files(raw_dir)]
+        if not file_paths:
+            _finalize_failure(f"KB '{kb_name}' has no source files in `raw/` to reindex.")
+            return
+
+        _task_log(
+            task_id,
+            f"Re-indexing '{kb_name}' ({len(file_paths)} files) against signature {signature_hash}",
+        )
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            if attempt > 1:
+                delay = BASE_DELAY_SECONDS * (2 ** (attempt - 2))
+                _task_log(
+                    task_id,
+                    f"Retry {attempt}/{MAX_RETRIES} after {delay:.0f}s delay...",
+                )
+                await _asyncio.sleep(delay)
 
             progress_tracker = ProgressTracker(kb_name, base_path)
             progress_tracker.task_id = task_id
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Re-indexing {len(file_paths)} document(s) with the active embedding model...",
+                f"Re-indexing {len(file_paths)} document(s) "
+                f"{f'(attempt {attempt}/{MAX_RETRIES})' if attempt > 1 else ''}...",
                 current=0,
                 total=len(file_paths),
             )
 
-            from deeptutor.services.rag.service import RAGService
-
-            rag_service = RAGService(kb_base_dir=str(base_path), provider=DEFAULT_PROVIDER)
-
-            def _on_progress(batch_num: int, total_batches: int) -> None:
-                progress_tracker.update(
-                    ProgressStage.PROCESSING_DOCUMENTS,
-                    f"Embedding batches: {batch_num}/{total_batches}",
-                    current=batch_num,
-                    total=total_batches,
-                )
-
-            # The pipeline now raises the underlying error (embedding API
-            # failure, parse error, etc.) so it surfaces in the task log
-            # rather than being swallowed into a generic wrapper. A False
-            # return is reserved for "no documents to index" — surface that
-            # specifically too.
-            success = await rag_service.initialize(
-                kb_name=kb_name,
-                file_paths=file_paths,
-                progress_callback=_on_progress,
-            )
-            if not success:
-                raise RuntimeError(f"Re-index found no valid documents to index in '{kb_name}'.")
-
-            completed_at = datetime.now().isoformat()
-            metadata_file = kb_dir / "metadata.json"
             try:
-                metadata = {}
-                if metadata_file.exists():
-                    with open(metadata_file, encoding="utf-8") as handle:
-                        loaded_metadata = json.load(handle)
-                    if isinstance(loaded_metadata, dict):
-                        metadata = loaded_metadata
-                metadata["last_updated"] = completed_at
-                metadata["last_indexed_at"] = completed_at
-                metadata["last_indexed_count"] = len(file_paths)
-                metadata["last_indexed_action"] = "reindex"
-                with open(metadata_file, "w", encoding="utf-8") as handle:
-                    json.dump(metadata, handle, indent=2, ensure_ascii=False)
-            except Exception as meta_err:
-                logger.warning(
-                    "Failed to update re-index metadata for '%s': %s",
-                    kb_name,
-                    meta_err,
+                from deeptutor.services.rag.service import RAGService
+
+                rag_service = RAGService(kb_base_dir=str(base_path), provider=DEFAULT_PROVIDER)
+
+                def _on_progress(batch_num: int, total_batches: int) -> None:
+                    progress_tracker.update(
+                        ProgressStage.PROCESSING_DOCUMENTS,
+                        f"Embedding batches: {batch_num}/{total_batches}",
+                        current=batch_num,
+                        total=total_batches,
+                    )
+
+                success = await rag_service.initialize(
+                    kb_name=kb_name,
+                    file_paths=file_paths,
+                    progress_callback=_on_progress,
+                )
+                if not success:
+                    raise RuntimeError(
+                        f"Re-index found no valid documents to index in '{kb_name}'."
+                    )
+
+                # Success — exit retry loop.
+                _finalize_success(len(file_paths))
+                return
+
+            except Exception as exc:
+                import traceback as _tb
+
+                error_msg = str(exc)
+                trace = _tb.format_exc()
+                last_error = (error_msg, trace)
+
+                _task_log(
+                    task_id,
+                    f"Attempt {attempt}/{MAX_RETRIES} failed: {error_msg}",
+                    level="warning",
                 )
 
-            manager = get_kb_manager()
-            manager.update_kb_status(
-                name=kb_name,
-                status="ready",
-                progress={
-                    "stage": "completed",
-                    "message": "Re-index complete",
-                    "percent": 100,
-                    "current": len(file_paths),
-                    "total": len(file_paths),
-                    "task_id": task_id,
-                    "timestamp": completed_at,
-                    "indexed_count": len(file_paths),
-                    "index_changed": True,
-                    "index_action": "reindex",
-                },
-            )
-            # Clear the legacy mismatch / needs_reindex flags now that an
-            # index version matching the active config exists on disk.
-            kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
-            mutated = False
-            if kb_entry.get("needs_reindex"):
-                kb_entry["needs_reindex"] = False
-                mutated = True
-            if kb_entry.get("embedding_mismatch"):
-                kb_entry.pop("embedding_mismatch", None)
-                mutated = True
-            if mutated:
-                manager._save_config()
+                # Clean up the (likely incomplete) version dir that was
+                # created for this attempt so the next retry starts fresh.
+                try:
+                    from deeptutor.services.rag.embedding_signature import (
+                        signature_from_embedding_config,
+                    )
+                    from deeptutor.services.rag.index_versioning import (
+                        resolve_storage_dir_for_rebuild,
+                    )
 
-            _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
-            task_manager.update_task_status(task_id, "completed")
-            task_stream_manager.emit_complete(task_id, f"Re-index of '{kb_name}' complete")
-        except Exception as e:
-            import traceback as _tb
+                    sig = signature_from_embedding_config()
+                    # resolve_storage_dir_for_rebuild always returns a *new*
+                    # next-version dir — but the pipeline may have created a
+                    # stale dir that we can scavenge. The recreate below is a
+                    # best-effort cleanup.
+                    candidate = resolve_storage_dir_for_rebuild(kb_dir, sig)
+                    from deeptutor.services.rag.pipelines.llamaindex.storage import (
+                        cleanup_failed_version_dir,
+                    )
 
-            error_msg = str(e)
-            trace = _tb.format_exc()
-            _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
-            task_manager.update_task_status(task_id, "error", error=error_msg)
-            try:
-                ProgressTracker(kb_name, Path(base_dir)).update(
-                    ProgressStage.ERROR,
-                    f"Re-index failed: {error_msg}",
-                    error=error_msg,
-                )
-            except Exception:
-                pass
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+                    # Walk back from the candidate to find the actual stale dir.
+                    for version_dir in sorted(
+                        kb_dir.glob("version-*"), key=lambda p: p.name, reverse=True
+                    ):
+                        if version_dir.is_dir():
+                            cleaned = cleanup_failed_version_dir(version_dir)
+                            if cleaned:
+                                _task_log(
+                                    task_id,
+                                    f"Cleaned up incomplete version dir: {version_dir.name}",
+                                )
+                                break
+                except Exception as cleanup_exc:
+                    logger.warning(
+                        "Failed to clean up version dir after failed attempt: %s", cleanup_exc
+                    )
+
+                if not _is_transient_error(exc):
+                    _task_log(
+                        task_id,
+                        "Error is permanent (not retryable); giving up immediately.",
+                        level="error",
+                    )
+                    break
+
+        # All retries exhausted (or permanent error).
+        final_msg, final_trace = last_error
+        _finalize_failure(final_msg, final_trace)
 
 
 @router.post("/{kb_name}/reindex")

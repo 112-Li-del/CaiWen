@@ -277,6 +277,63 @@ class LlamaIndexPipeline:
         finally:
             set_progress_callback(None)
 
+    async def remove_document(self, kb_name: str, file_path: str) -> dict[str, Any]:
+        """Surgically remove a single document's chunks from all ready index versions.
+
+        Returns a dict with:
+        * ``removed`` — total number of ref_docs removed across all versions
+        * ``versions_checked`` — number of ready versions that were inspected
+        * ``versions_modified`` — number of versions from which nodes were removed
+        * ``errors`` — list of per-version error strings (non-fatal; the caller
+          can decide to fall back to a full reindex if every version failed)
+        """
+        kb_dir = Path(self.kb_base_dir) / kb_name
+        from deeptutor.services.rag.index_versioning import list_kb_versions
+
+        all_versions = list_kb_versions(kb_dir)
+        ready_versions = [v for v in all_versions if v.get("ready")]
+
+        if not ready_versions:
+            self.logger.info("No ready index versions for KB '%s'; nothing to remove from.", kb_name)
+            return {
+                "removed": 0,
+                "versions_checked": 0,
+                "versions_modified": 0,
+                "errors": [],
+            }
+
+        total_removed = 0
+        versions_modified = 0
+        errors: list[str] = []
+
+        for version_entry in ready_versions:
+            storage_dir = Path(str(version_entry["storage_path"]))
+            version_label = version_entry.get("version", str(storage_dir))
+            if not storage_dir.is_dir():
+                self.logger.warning(
+                    "Version '%s' storage dir %s is missing; skipping.", version_label, storage_dir
+                )
+                continue
+
+            try:
+                removed = storage.remove_document_nodes(storage_dir, file_path)
+                total_removed += removed
+                if removed > 0:
+                    versions_modified += 1
+            except Exception as exc:
+                err_msg = f"Version '{version_label}': {exc}"
+                self.logger.warning(
+                    "Failed to remove document from version '%s': %s", version_label, exc
+                )
+                errors.append(err_msg)
+
+        return {
+            "removed": total_removed,
+            "versions_checked": len(ready_versions),
+            "versions_modified": versions_modified,
+            "errors": errors,
+        }
+
     async def delete(self, kb_name: str) -> bool:
         kb_dir = Path(self.kb_base_dir) / kb_name
         deleted = storage.delete_kb_dir(kb_dir)
