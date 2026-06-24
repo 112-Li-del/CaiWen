@@ -1255,6 +1255,8 @@
   "Show file list": "Show file list",
   "Hide file list": "Hide file list",
   "No files yet. Add one using the Add Documents tab.": "No files yet. Add one using the Add Documents tab.",
+  "Are you sure you want to delete this document? This action cannot be undone.": "Are you sure you want to delete this document? This action cannot be undone.",
+  "Delete document": "Delete document",
   "Long-form memory the assistant carries across sessions — your running summary and learner profile.": "Long-form memory the assistant carries across sessions — your running summary and learner profile.",
   "Long-form memory the assistant carries across sessions.": "Long-form memory the assistant carries across sessions.",
   "Your personal library of notebooks, questions, playbooks, and memory.": "Your personal library of notebooks, questions, playbooks, and memory.",

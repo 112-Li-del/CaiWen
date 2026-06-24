@@ -992,6 +992,56 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
     )
 
 
+@router.delete("/{kb_name}/files/{filename:path}")
+async def delete_kb_raw_file(kb_name: str, filename: str):
+    """Delete a single raw file from a knowledge base and clean its index.
+
+    The raw file is removed from the ``raw/`` directory and the current RAG
+    index is purged so the KB can be re-indexed on the next retrieval.
+    """
+    try:
+        manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        kb_path = manager.get_knowledge_base_path(resolved_name)
+        raw_dir = kb_path / "raw"
+        if not raw_dir.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        raw_resolved = raw_dir.resolve()
+        target = (raw_dir / filename).resolve()
+        try:
+            target.relative_to(raw_resolved)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        if not target.exists() or not target.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Remove the raw file
+        target.unlink()
+        logger.info(f"Deleted raw file '{filename}' from KB '{kb_name}'")
+
+        # Purge the current index so it gets rebuilt without this file
+        manager.clean_rag_storage(resolved_name, backup=False)
+
+        # Mark KB as needing reindex so retrieval triggers a rebuild
+        manager.update_kb_status(
+            name=resolved_name,
+            status="needs_reindex",
+            progress={
+                "stage": "needs_reindex",
+                "message": f"File '{filename}' deleted. Knowledge base needs reindex.",
+                "percent": 0,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+
+        return {"message": f"File '{filename}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class RenameRequest(BaseModel):
     """Request model for renaming a knowledge base."""
 

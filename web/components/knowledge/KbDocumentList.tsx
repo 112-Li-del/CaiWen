@@ -8,9 +8,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { invalidateClientCache } from "@/lib/client-cache";
 import {
+  deleteKnowledgeBaseFile,
   listKnowledgeBaseFiles,
   type KnowledgeBaseFile,
 } from "@/lib/knowledge-api";
@@ -38,6 +40,7 @@ export default function KbDocumentList({
   const [files, setFiles] = useState<KnowledgeBaseFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const load = useCallback(
     async (force = false) => {
@@ -56,6 +59,24 @@ export default function KbDocumentList({
       }
     },
     [kbName],
+  );
+
+  const handleDelete = useCallback(
+    async (filename: string) => {
+      if (!window.confirm(t("Are you sure you want to delete this document? This action cannot be undone."))) {
+        return;
+      }
+      setDeleting(filename);
+      try {
+        await deleteKnowledgeBaseFile(kbName, filename);
+        await load(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDeleting(null);
+      }
+    },
+    [kbName, load, t],
   );
 
   useEffect(() => {
@@ -96,24 +117,43 @@ export default function KbDocumentList({
             const spec = docIconFor(file.name);
             const Icon = spec.Icon;
             const active = selectedFile === file.name;
+            const isDeleting = deleting === file.name;
             return (
-              <button
-                key={file.name}
-                type="button"
-                onClick={() => onSelect(file)}
-                title={file.name}
-                aria-label={file.name}
-                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-                  active
-                    ? "bg-[var(--primary)]/12 ring-1 ring-[var(--primary)]/40"
-                    : "hover:bg-[var(--muted)]/60"
-                }`}
-              >
-                {active && (
-                  <span className="absolute -left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--primary)]" />
-                )}
-                <Icon size={13} strokeWidth={1.6} className={spec.tint} />
-              </button>
+              <div key={file.name} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => onSelect(file)}
+                  title={file.name}
+                  aria-label={file.name}
+                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+                    active
+                      ? "bg-[var(--primary)]/12 ring-1 ring-[var(--primary)]/40"
+                      : "hover:bg-[var(--muted)]/60"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute -left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--primary)]" />
+                  )}
+                  <Icon size={13} strokeWidth={1.6} className={spec.tint} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDelete(file.name);
+                  }}
+                  disabled={isDeleting}
+                  title={t("Delete document")}
+                  aria-label={t("Delete {{name}}", { name: file.name })}
+                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--card)] text-[var(--muted-foreground)] opacity-0 shadow-sm transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
+                >
+                  {isDeleting ? (
+                    <Loader2 size={9} strokeWidth={2} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={9} strokeWidth={2} />
+                  )}
+                </button>
+              </div>
             );
           })}
         </div>
@@ -191,35 +231,57 @@ export default function KbDocumentList({
               const spec = docIconFor(file.name);
               const Icon = spec.Icon;
               const active = selectedFile === file.name;
+              const isDeleting = deleting === file.name;
               return (
-                <li key={file.name}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(file)}
-                    title={file.name}
+                <li key={file.name} className="group">
+                  <div
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
                       active
                         ? "bg-[var(--primary)]/10 text-[var(--foreground)]"
                         : "hover:bg-[var(--muted)]/50"
                     }`}
                   >
-                    <Icon
-                      size={13}
-                      strokeWidth={1.6}
-                      className={`shrink-0 ${spec.tint}`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] font-medium text-[var(--foreground)]">
-                        {file.name}
+                    <button
+                      type="button"
+                      onClick={() => onSelect(file)}
+                      title={file.name}
+                      className="flex min-w-0 flex-1 items-center gap-2"
+                    >
+                      <Icon
+                        size={13}
+                        strokeWidth={1.6}
+                        className={`shrink-0 ${spec.tint}`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] font-medium text-[var(--foreground)]">
+                          {file.name}
+                        </div>
+                        <div className="truncate text-[10px] text-[var(--muted-foreground)]">
+                          {formatBytes(file.size)}
+                          {file.modified
+                            ? ` · ${formatRelative(file.modified)}`
+                            : ""}
+                        </div>
                       </div>
-                      <div className="truncate text-[10px] text-[var(--muted-foreground)]">
-                        {formatBytes(file.size)}
-                        {file.modified
-                          ? ` · ${formatRelative(file.modified)}`
-                          : ""}
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(file.name);
+                      }}
+                      disabled={isDeleting}
+                      title={t("Delete document")}
+                      aria-label={t("Delete {{name}}", { name: file.name })}
+                      className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
+                    >
+                      {isDeleting ? (
+                        <Loader2 size={13} strokeWidth={1.6} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={13} strokeWidth={1.6} />
+                      )}
+                    </button>
+                  </div>
                 </li>
               );
             })}

@@ -165,6 +165,27 @@ export function knowledgeBaseFilePath(
     .join("/")}`;
 }
 
+export async function deleteKnowledgeBaseFile(
+  kbName: string,
+  filename: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/files/${filename
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Delete file failed (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
 export interface KnowledgeTaskResponse {
   task_id?: string;
   message?: string;
