@@ -1281,10 +1281,10 @@ export default function ChatPage() {
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="text-center">
               <h1 className="font-serif text-[36px] font-medium tracking-[-0.01em] text-[var(--foreground)]">
-                {t("What would you like to learn?")}
+                {t("What would you like to ask?")}
               </h1>
               <p className="mt-4 text-[15px] text-[var(--muted-foreground)]">
-                {t("Ask anything — I'm here to help you understand.")}
+                {t("Ask anything — I'm here to help you answer.")}
               </p>
             </div>
           </div>
