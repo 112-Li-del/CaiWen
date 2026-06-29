@@ -25,6 +25,46 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _detect_lan_origins(frontend_port: int) -> list[str]:
+    """Detect LAN IPv4 addresses and return CORS origin URLs.
+
+    When the server is accessed from another machine on the same LAN (e.g.
+    ``http://172.16.129.61:3782``), the browser's origin differs from
+    ``localhost``.  Without the correct CORS_ORIGIN the backend rejects
+    credentialed cross-origin requests (login, etc.).
+
+    Returns a list of ``http://<ip>:<frontend_port>`` strings for every
+    non-loopback IPv4 address detected on this machine.
+    """
+    origins: list[str] = []
+    seen: set[str] = set()
+
+    # Method 1: hostname → IPs (works on most systems)
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not ip.startswith("127.") and ip not in seen:
+                origins.append(f"http://{ip}:{frontend_port}")
+                seen.add(ip)
+    except Exception:
+        pass
+
+    # Method 2: "connect to an external host" trick to discover the primary
+    # outbound interface IP (more reliable when hostname resolution is flaky).
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if not ip.startswith("127.") and ip not in seen:
+            origins.append(f"http://{ip}:{frontend_port}")
+            seen.add(ip)
+    except Exception:
+        pass
+
+    return origins
+
+
 def _load_runtime_deps():
     from _cli_kit import banner, bold, dim, log_error, log_info, log_success, log_warn
 
@@ -149,7 +189,7 @@ def _is_pid_alive(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
-    except OSError:
+    except Exception:
         return False
     return True
 
@@ -566,6 +606,15 @@ def main() -> None:
     if _cors:
         backend_env["CORS_ORIGIN"] = _cors
         frontend_env["CORS_ORIGIN"] = _cors
+    elif auth_enabled:
+        # When auth is enabled the backend requires explicit CORS origins
+        # (no wildcard regex).  Auto-detect LAN IPs so browsers on the
+        # same network can reach the API without manual configuration.
+        lan_origins = _detect_lan_origins(frontend_port)
+        if lan_origins:
+            auto_cors = ",".join(lan_origins)
+            backend_env["CORS_ORIGIN"] = auto_cors
+            frontend_env["CORS_ORIGIN"] = auto_cors
 
     backend_cmd = [sys.executable, "-m", "deeptutor.api.run_server"]
     frontend_cmd = [npm, "run", "dev", "--", "--port", str(frontend_port)]
