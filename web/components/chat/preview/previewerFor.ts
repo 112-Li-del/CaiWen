@@ -2,10 +2,10 @@
  * Maps a chat attachment to the preview renderer it should use.
  *
  * The drawer uses the returned ``kind`` to dynamically import the matching
- * renderer (see ``./previewers/*.tsx``). Office binaries (DOCX/XLSX/PPTX)
- * cannot be rendered natively in the browser, so we fall back to the
- * extractor's plain-text output when present, or to a download-only
- * affordance otherwise.
+ * renderer (see ``./previewers/*.tsx``). DOCX is rendered client-side via
+ * mammoth.js. Other Office binaries (XLSX/PPTX) cannot be rendered natively
+ * in the browser, so we fall back to the extractor's plain-text output when
+ * present, or to a download-only affordance otherwise.
  */
 
 import { langForFilename } from "@/lib/code-languages";
@@ -18,6 +18,7 @@ export type PreviewKind =
   | "markdown"
   | "code"
   | "text"
+  | "docx"
   | "office-text"
   | "fallback";
 
@@ -42,7 +43,8 @@ export interface FilePreviewSource {
   id?: string;
 }
 
-const OFFICE_BINARY_EXTS = new Set([".docx", ".xlsx", ".pptx"]);
+const OFFICE_BINARY_EXTS = new Set([".xlsx", ".pptx"]);
+const DOCX_EXTS = new Set([".docx"]);
 const MARKDOWN_EXTS = new Set([".md", ".markdown", ".rst", ".asciidoc"]);
 const PLAIN_TEXT_EXTS = new Set([
   ".txt",
@@ -85,6 +87,7 @@ export function previewKindFor(source: FilePreviewSource): PreviewKind {
   if (ext === ".svg" || mime === "image/svg+xml") return "svg";
   if (isImage(source, ext)) return "image";
   if (MARKDOWN_EXTS.has(ext) || mime === "text/markdown") return "markdown";
+  if (DOCX_EXTS.has(ext)) return "docx";
   if (OFFICE_BINARY_EXTS.has(ext)) return "office-text";
   // Catches both extension-based mappings (.js, .ts, .go, .vue, .lua, …)
   // and special filenames without extensions (Dockerfile, Makefile, …).

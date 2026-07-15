@@ -60,6 +60,113 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# Global concurrency control for KB background tasks
+# ---------------------------------------------------------------------------
+# Tracks which KB names currently have a running background task
+# (init / upload / reindex). Prevents double-processing and gives callers a
+# clear 409 when another operation is already in flight.
+_active_kb_tasks: dict[str, str] = {}  # kb_name -> task_id
+
+# Hard time limit for individual background tasks. After this threshold the
+# task is forcibly cancelled and the KB is marked as "error" so it doesn't
+# remain stuck in "initializing" / "processing" forever.
+KB_TASK_TIMEOUT_SECONDS = int(
+    os.environ.get("KB_TASK_TIMEOUT_SECONDS", "1800")  # 30 min default
+)
+
+# Grace period after which a "processing" / "initializing" status is
+# considered stale and the KB is eligible for a new operation.
+STALE_TASK_GRACE_SECONDS = int(
+    os.environ.get("KB_STALE_TASK_SECONDS", "3600")  # 1 hour default
+)
+
+
+def _register_active_task(kb_name: str, task_id: str) -> None:
+    """Register a running background task for a KB (concurrency guard)."""
+    _active_kb_tasks[kb_name] = task_id
+    logger.debug("Registered active task %s for KB '%s'", task_id, kb_name)
+
+
+def _unregister_active_task(kb_name: str, task_id: str) -> None:
+    """Remove a completed / failed task from the active set."""
+    current = _active_kb_tasks.get(kb_name)
+    if current == task_id:
+        del _active_kb_tasks[kb_name]
+        logger.debug("Unregistered task %s for KB '%s'", task_id, kb_name)
+
+
+def _check_kb_busy(kb_name: str) -> str | None:
+    """Return the active task_id if kb_name is currently being processed, else None."""
+    existing_task = _active_kb_tasks.get(kb_name)
+    if existing_task:
+        # Verify the task hasn't gone stale (crashed process, etc.)
+        task_manager = TaskIDManager.get_instance()
+        status = task_manager.get_task_status(existing_task)
+        if status and status.get("status") in ("running", "initializing"):
+            return existing_task
+        # Task is completed/error/missing — clean up stale entry
+        _unregister_active_task(kb_name, existing_task)
+    return None
+
+
+def _check_and_recover_stale_kb(kb_name: str) -> bool:
+    """Check if a KB has a stale live status and recover it to 'error'.
+
+    Returns True if the KB was recovered (was stale), False otherwise.
+    """
+    try:
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+        manager = KnowledgeBaseManager(base_dir=str(_current_kb_base_dir()))
+        status_info = manager.get_kb_status(kb_name)
+        if not status_info:
+            return False
+
+        status = status_info.get("status", "")
+        if status not in ("initializing", "processing"):
+            return False
+
+        progress = status_info.get("progress") or {}
+        timestamp_str = progress.get("timestamp") or status_info.get("updated_at")
+        if not timestamp_str:
+            return False
+
+        try:
+            ts = datetime.fromisoformat(timestamp_str)
+            age = (datetime.now() - ts).total_seconds()
+        except Exception:
+            return False
+
+        if age > STALE_TASK_GRACE_SECONDS:
+            logger.warning(
+                "KB '%s' status is '%s' but last progress update was %.0f seconds ago "
+                "(> %d s threshold). Marking as error to allow recovery.",
+                kb_name,
+                status,
+                age,
+                STALE_TASK_GRACE_SECONDS,
+            )
+            manager.update_kb_status(
+                name=kb_name,
+                status="error",
+                progress={
+                    "stage": "error",
+                    "message": (
+                        f"Task timed out after {age:.0f}s without a progress "
+                        "update. The process may have crashed."
+                    ),
+                    "percent": 0,
+                    "error": "stale_task_timeout",
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
+            return True
+    except Exception as exc:
+        logger.debug("Stale-check for KB '%s' failed (non-fatal): %s", kb_name, exc)
+    return False
+
+
 # Constants for byte conversions
 BYTES_PER_GB = 1024**3
 BYTES_PER_MB = 1024**2
@@ -377,12 +484,44 @@ def _load_kb_entry_or_404(manager: KnowledgeBaseManager, kb_name: str) -> dict:
 
 
 def _assert_kb_writable_or_409(kb_name: str, kb_entry: dict) -> None:
+    """Check whether the KB can accept a new write operation.
+
+    Blocks when:
+    * The KB has the legacy ``needs_reindex`` flag set.
+    * Another background task (init / upload / reindex) is already running.
+    * The KB has a stale live status — attempt automatic recovery first.
+    """
     if bool(kb_entry.get("needs_reindex", False)):
         raise HTTPException(
             status_code=409,
             detail=(
                 f"Knowledge base '{kb_name}' uses legacy index format and needs reindex "
                 "before accepting incremental uploads."
+            ),
+        )
+
+    # Auto-recover stale KBs before deciding whether to block.
+    _check_and_recover_stale_kb(kb_name)
+
+    # Check for an active background task.
+    active_task_id = _check_kb_busy(kb_name)
+    if active_task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Knowledge base '{kb_name}' is currently being processed "
+                f"(task {active_task_id}). Wait for it to finish or check its status."
+            ),
+        )
+
+    # Double-check: did we just recover from a stale state?
+    current_status = str(kb_entry.get("status", "")).lower()
+    if current_status in ("initializing", "processing"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Knowledge base '{kb_name}' is in '{current_status}' state. "
+                "Wait for it to finish or clear the stuck state."
             ),
         )
 
@@ -413,88 +552,133 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
 
-    with capture_task_logs(task_id):
-        try:
-            if not initializer.progress_tracker:
-                initializer.progress_tracker = ProgressTracker(
-                    initializer.kb_name, initializer.base_dir
+    kb_name = initializer.kb_name
+    _register_active_task(kb_name, task_id)
+
+    try:
+        with capture_task_logs(task_id):
+            try:
+                if not initializer.progress_tracker:
+                    initializer.progress_tracker = ProgressTracker(
+                        initializer.kb_name, initializer.base_dir
+                    )
+
+                initializer.progress_tracker.task_id = task_id
+
+                _task_log(task_id, f"Initializing knowledge base '{initializer.kb_name}'")
+
+                # Wrap the main processing step with a timeout so a hung embedding
+                # service or deadlocked pipeline doesn't leave the KB stuck forever.
+                await asyncio.wait_for(
+                    initializer.process_documents(),
+                    timeout=KB_TASK_TIMEOUT_SECONDS,
                 )
+                _task_log(task_id, "Document processing complete")
+                initializer.extract_numbered_items()
+                _task_log(task_id, "Finalizing initialization")
+                indexed_count = len(FileTypeRouter.collect_supported_files(initializer.raw_dir))
 
-            initializer.progress_tracker.task_id = task_id
-
-            _task_log(task_id, f"Initializing knowledge base '{initializer.kb_name}'")
-
-            await initializer.process_documents()
-            _task_log(task_id, "Document processing complete")
-            initializer.extract_numbered_items()
-            _task_log(task_id, "Finalizing initialization")
-            indexed_count = len(FileTypeRouter.collect_supported_files(initializer.raw_dir))
-
-            initializer.progress_tracker.update(
-                ProgressStage.COMPLETED,
-                "Knowledge base initialization complete!",
-                current=1,
-                total=1,
-                indexed_count=indexed_count,
-                index_changed=True,
-                index_action="create",
-            )
-
-            manager = get_kb_manager()
-            manager.update_kb_status(
-                name=initializer.kb_name,
-                status="ready",
-                progress={
-                    "stage": "completed",
-                    "message": "Knowledge base initialization complete!",
-                    "percent": 100,
-                    "current": 1,
-                    "total": 1,
-                    "task_id": task_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "indexed_count": indexed_count,
-                    "index_changed": True,
-                    "index_action": "create",
-                },
-            )
-
-            _task_log(
-                task_id, f"Knowledge base '{initializer.kb_name}' initialized", level="success"
-            )
-            task_manager.update_task_status(task_id, "completed")
-            task_stream_manager.emit_complete(
-                task_id, f"Knowledge base '{initializer.kb_name}' initialization complete"
-            )
-        except Exception as e:
-            import traceback as _tb
-
-            error_msg = str(e)
-            trace = _tb.format_exc()
-
-            _task_log(task_id, f"Initialization failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
-
-            task_manager.update_task_status(task_id, "error", error=error_msg)
-
-            manager = get_kb_manager()
-            manager.update_kb_status(
-                name=initializer.kb_name,
-                status="error",
-                progress={
-                    "stage": "error",
-                    "message": f"Initialization failed: {error_msg}",
-                    "percent": 0,
-                    "error": error_msg,
-                    "task_id": task_id,
-                    "timestamp": datetime.now().isoformat(),
-                },
-            )
-
-            if initializer.progress_tracker:
                 initializer.progress_tracker.update(
-                    ProgressStage.ERROR, f"Initialization failed: {error_msg}", error=error_msg
+                    ProgressStage.COMPLETED,
+                    "Knowledge base initialization complete!",
+                    current=1,
+                    total=1,
+                    indexed_count=indexed_count,
+                    index_changed=True,
+                    index_action="create",
                 )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+
+                manager = get_kb_manager()
+                manager.update_kb_status(
+                    name=initializer.kb_name,
+                    status="ready",
+                    progress={
+                        "stage": "completed",
+                        "message": "Knowledge base initialization complete!",
+                        "percent": 100,
+                        "current": 1,
+                        "total": 1,
+                        "task_id": task_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "indexed_count": indexed_count,
+                        "index_changed": True,
+                        "index_action": "create",
+                    },
+                )
+
+                _task_log(
+                    task_id, f"Knowledge base '{initializer.kb_name}' initialized", level="success"
+                )
+                task_manager.update_task_status(task_id, "completed")
+                task_stream_manager.emit_complete(
+                    task_id, f"Knowledge base '{initializer.kb_name}' initialization complete"
+                )
+            except asyncio.TimeoutError:
+                _task_log(
+                    task_id,
+                    f"Initialization timed out after {KB_TASK_TIMEOUT_SECONDS}s",
+                    level="error",
+                )
+                raise  # let the BaseException handler finalize the error state
+            except BaseException as e:
+                import traceback as _tb
+
+                # Distinguish cancellations from genuine crashes.
+                if isinstance(e, asyncio.CancelledError):
+                    _task_log(
+                        task_id,
+                        "Initialization task was cancelled (server shutdown or manual abort).",
+                        level="warning",
+                    )
+                    error_msg = "Task cancelled"
+                elif isinstance(e, asyncio.TimeoutError):
+                    error_msg = (
+                        f"Initialization timed out after {KB_TASK_TIMEOUT_SECONDS}s"
+                    )
+                else:
+                    error_msg = str(e)
+
+                trace = _tb.format_exc()
+
+                _task_log(task_id, f"Initialization failed: {error_msg}", level="error")
+                _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+
+                task_manager.update_task_status(task_id, "error", error=error_msg)
+
+                try:
+                    manager = get_kb_manager()
+                    manager.update_kb_status(
+                        name=initializer.kb_name,
+                        status="error",
+                        progress={
+                            "stage": "error",
+                            "message": f"Initialization failed: {error_msg}",
+                            "percent": 0,
+                            "error": error_msg,
+                            "task_id": task_id,
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                    )
+                except Exception as status_err:
+                    _task_log(
+                        task_id,
+                        f"Failed to persist error status: {status_err}",
+                        level="error",
+                    )
+
+                if initializer.progress_tracker:
+                    try:
+                        initializer.progress_tracker.update(
+                            ProgressStage.ERROR,
+                            f"Initialization failed: {error_msg}",
+                            error=error_msg,
+                        )
+                    except Exception:
+                        pass
+
+                task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+    finally:
+        _unregister_active_task(kb_name, task_id)
 
 
 async def run_upload_processing_task(
@@ -518,101 +702,172 @@ async def run_upload_processing_task(
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
 
-    progress_tracker = ProgressTracker(kb_name, Path(base_dir))
-    progress_tracker.task_id = task_id
+    _register_active_task(kb_name, task_id)
 
-    with capture_task_logs(task_id):
-        try:
-            _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
-            progress_tracker.update(
-                ProgressStage.PROCESSING_DOCUMENTS,
-                f"Processing {len(uploaded_file_paths)} files...",
-                current=0,
-                total=len(uploaded_file_paths),
-            )
+    try:
+        progress_tracker = ProgressTracker(kb_name, Path(base_dir))
+        progress_tracker.task_id = task_id
 
-            adder = DocumentAdder(
-                kb_name=kb_name,
-                base_dir=base_dir,
-                progress_tracker=progress_tracker,
-                rag_provider=rag_provider,
-            )
+        with capture_task_logs(task_id):
+            try:
+                _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
+                progress_tracker.update(
+                    ProgressStage.PROCESSING_DOCUMENTS,
+                    f"Processing {len(uploaded_file_paths)} files...",
+                    current=0,
+                    total=len(uploaded_file_paths),
+                )
 
-            staged_files = adder.add_documents(uploaded_file_paths, allow_duplicates=False)
-            _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
+                adder = DocumentAdder(
+                    kb_name=kb_name,
+                    base_dir=base_dir,
+                    progress_tracker=progress_tracker,
+                    rag_provider=rag_provider,
+                )
 
-            if not staged_files:
-                _task_log(task_id, "No new files to process (all duplicates or invalid)")
+                staged_files = adder.add_documents(uploaded_file_paths, allow_duplicates=False)
+                _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
+
+                if not staged_files:
+                    _task_log(task_id, "No new files to process (all duplicates or invalid)")
+                    progress_tracker.update(
+                        ProgressStage.COMPLETED,
+                        "No new files to process (all duplicates or invalid)",
+                        current=0,
+                        total=0,
+                    )
+                    # Redundant direct status update ensures the KB transitions to
+                    # "ready" even if _save_progress silently fails.
+                    manager = get_kb_manager()
+                    manager.update_kb_status(
+                        name=kb_name,
+                        status="ready",
+                        progress={
+                            "stage": "completed",
+                            "message": "No new files to process (all duplicates or invalid)",
+                            "percent": 100,
+                            "current": 0,
+                            "total": 0,
+                            "task_id": task_id,
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                    )
+                    task_manager.update_task_status(task_id, "completed")
+                    task_stream_manager.emit_complete(
+                        task_id, "No new files to process (all duplicates or invalid)"
+                    )
+                    return
+
+                # Wrap the main processing with a timeout so a hung embedding
+                # service doesn't leave the KB stuck forever.
+                processed_files = await asyncio.wait_for(
+                    adder.process_new_documents(staged_files),
+                    timeout=KB_TASK_TIMEOUT_SECONDS,
+                )
+                _task_log(task_id, f"Indexed {len(processed_files)} file(s)")
+
+                if processed_files:
+                    progress_tracker.update(
+                        ProgressStage.EXTRACTING_ITEMS,
+                        "Extracting numbered items...",
+                        current=0,
+                        total=len(processed_files),
+                    )
+                    adder.extract_numbered_items_for_new_docs(processed_files, batch_size=20)
+
+                adder.update_metadata(len(processed_files) if processed_files else 0)
+
+                if folder_id and processed_files:
+                    try:
+                        manager = get_kb_manager()
+                        manager.update_folder_sync_state(
+                            kb_name, folder_id, [str(f) for f in processed_files]
+                        )
+                        _task_log(task_id, f"Updated folder sync state: {folder_id}")
+                    except Exception as sync_err:
+                        _task_log(
+                            task_id, f"Folder sync state update failed: {sync_err}", level="warning"
+                        )
+
+                num_processed = len(processed_files) if processed_files else 0
                 progress_tracker.update(
                     ProgressStage.COMPLETED,
-                    "No new files to process (all duplicates or invalid)",
-                    current=0,
-                    total=0,
+                    f"Successfully processed {num_processed} files!",
+                    current=num_processed,
+                    total=num_processed,
+                    indexed_count=num_processed,
+                    index_changed=num_processed > 0,
+                    index_action="upload",
+                )
+
+                # Redundant direct status update ensures the KB transitions to
+                # "ready" even if _save_progress inside progress_tracker.update()
+                # silently fails (e.g. due to file lock contention, disk full, etc.).
+                manager = get_kb_manager()
+                manager.update_kb_status(
+                    name=kb_name,
+                    status="ready",
+                    progress={
+                        "stage": "completed",
+                        "message": f"Successfully processed {num_processed} files!",
+                        "percent": 100,
+                        "current": num_processed,
+                        "total": num_processed,
+                        "task_id": task_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "indexed_count": num_processed,
+                        "index_changed": num_processed > 0,
+                        "index_action": "upload",
+                    },
+                )
+
+                _task_log(
+                    task_id, f"Processed {num_processed} file(s) for '{kb_name}'", level="success"
                 )
                 task_manager.update_task_status(task_id, "completed")
                 task_stream_manager.emit_complete(
-                    task_id, "No new files to process (all duplicates or invalid)"
+                    task_id, f"Successfully processed {num_processed} files for '{kb_name}'"
                 )
-                return
-
-            processed_files = await adder.process_new_documents(staged_files)
-            _task_log(task_id, f"Indexed {len(processed_files)} file(s)")
-
-            if processed_files:
-                progress_tracker.update(
-                    ProgressStage.EXTRACTING_ITEMS,
-                    "Extracting numbered items...",
-                    current=0,
-                    total=len(processed_files),
+            except asyncio.TimeoutError:
+                _task_log(
+                    task_id,
+                    f"Upload processing timed out after {KB_TASK_TIMEOUT_SECONDS}s",
+                    level="error",
                 )
-                adder.extract_numbered_items_for_new_docs(processed_files, batch_size=20)
+                raise  # let the BaseException handler finalize
+            except BaseException as e:
+                import traceback as _tb
 
-            adder.update_metadata(len(processed_files) if processed_files else 0)
-
-            if folder_id and processed_files:
-                try:
-                    manager = get_kb_manager()
-                    manager.update_folder_sync_state(
-                        kb_name, folder_id, [str(f) for f in processed_files]
-                    )
-                    _task_log(task_id, f"Updated folder sync state: {folder_id}")
-                except Exception as sync_err:
+                if isinstance(e, asyncio.CancelledError):
                     _task_log(
-                        task_id, f"Folder sync state update failed: {sync_err}", level="warning"
+                        task_id,
+                        "Upload processing task was cancelled (server shutdown or manual abort).",
+                        level="warning",
                     )
+                    error_msg = "Task cancelled"
+                elif isinstance(e, asyncio.TimeoutError):
+                    error_msg = (
+                        f"Upload processing timed out after {KB_TASK_TIMEOUT_SECONDS}s"
+                    )
+                else:
+                    error_msg = f"Upload processing failed (KB '{kb_name}'): {e}"
 
-            num_processed = len(processed_files) if processed_files else 0
-            progress_tracker.update(
-                ProgressStage.COMPLETED,
-                f"Successfully processed {num_processed} files!",
-                current=num_processed,
-                total=num_processed,
-                indexed_count=num_processed,
-                index_changed=num_processed > 0,
-                index_action="upload",
-            )
+                trace = _tb.format_exc()
+                _task_log(task_id, error_msg, level="error")
+                _task_log(task_id, f"Stack trace:\n{trace}", level="error")
 
-            _task_log(
-                task_id, f"Processed {num_processed} file(s) for '{kb_name}'", level="success"
-            )
-            task_manager.update_task_status(task_id, "completed")
-            task_stream_manager.emit_complete(
-                task_id, f"Successfully processed {num_processed} files for '{kb_name}'"
-            )
-        except Exception as e:
-            import traceback as _tb
+                task_manager.update_task_status(task_id, "error", error=error_msg)
 
-            error_msg = f"Upload processing failed (KB '{kb_name}'): {e}"
-            trace = _tb.format_exc()
-            _task_log(task_id, error_msg, level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+                try:
+                    progress_tracker.update(
+                        ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
+                    )
+                except Exception:
+                    pass
 
-            task_manager.update_task_status(task_id, "error", error=error_msg)
-
-            progress_tracker.update(
-                ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
-            )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+                task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+    finally:
+        _unregister_active_task(kb_name, task_id)
 
 
 @router.get("/health")
@@ -1252,6 +1507,21 @@ async def create_knowledge_base(
 
         manager = get_kb_manager()
         kb_base_dir = _current_kb_base_dir()
+
+        # Auto-recover stale KB entries before checking if name is taken.
+        _check_and_recover_stale_kb(name)
+
+        # Check for an active task on this KB name.
+        active_task = _check_kb_busy(name)
+        if active_task:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"A task is already running for knowledge base '{name}' "
+                    f"(task {active_task}). Wait for it to finish before creating a new one."
+                ),
+            )
+
         if name in manager.list_knowledge_bases():
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
@@ -1350,6 +1620,8 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
 
+    _register_active_task(kb_name, task_id)
+
     MAX_RETRIES = 3
     BASE_DELAY_SECONDS = 2.0  # doubles each retry: 2 → 4 → 8
 
@@ -1414,6 +1686,8 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
         except Exception as emit_exc:
             logger.warning("Failed to emit complete event for task %s: %s", task_id, emit_exc)
 
+        _unregister_active_task(kb_name, task_id)
+
     def _finalize_failure(error_msg: str, trace: str = "") -> None:
         _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
         if trace:
@@ -1449,6 +1723,8 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             task_stream_manager.emit_failed(task_id, error_msg, details=trace)
         except Exception as emit_exc:
             logger.warning("Failed to emit failed event for task %s: %s", task_id, emit_exc)
+
+        _unregister_active_task(kb_name, task_id)
 
     def _is_transient_error(exc: Exception) -> bool:
         """Heuristic: classify whether the error is likely transient."""
@@ -1606,6 +1882,7 @@ async def reindex_knowledge_base(
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
+        _assert_kb_writable_or_409(kb_name, kb_entry)
         force_reindex = str(kb_entry.get("status") or "").lower() == "error"
 
         from deeptutor.services.rag.embedding_signature import signature_from_embedding_config

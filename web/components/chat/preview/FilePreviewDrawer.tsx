@@ -22,6 +22,7 @@ const TextPreview = dynamic(() => import("./previewers/TextPreview"));
 const OfficeTextPreview = dynamic(
   () => import("./previewers/OfficeTextPreview"),
 );
+const DocxPreview = dynamic(() => import("./previewers/DocxPreview"));
 const FallbackPreview = dynamic(() => import("./previewers/FallbackPreview"));
 
 const ANIM_MS = 220;
@@ -259,6 +260,12 @@ const PreviewBody = memo(function PreviewBody({
   kind: ReturnType<typeof previewKindFor> | null;
 }) {
   const filename = source.filename;
+
+  // Docx renders client-side via mammoth — needs the URL to fetch the file
+  // but handles missing URL gracefully internally.
+  if (kind === "docx") {
+    return <DocxPreview filename={filename} url={previewUrl} />;
+  }
 
   // Office docs lean on extracted_text and degrade gracefully via the
   // OfficeTextPreview, even when previewUrl is missing (legacy messages).

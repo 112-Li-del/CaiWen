@@ -39,6 +39,9 @@ const TextPreview = dynamic(
 const OfficeTextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
 );
+const DocxPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/DocxPreview"),
+);
 const FallbackPreview = dynamic(
   () => import("@/components/chat/preview/previewers/FallbackPreview"),
 );
@@ -232,6 +235,8 @@ export default function KbFilePreview({
             extractedText={source.extractedText}
             url={previewUrl}
           />
+        ) : kind === "docx" ? (
+          <DocxPreview filename={source.filename} url={previewUrl} />
         ) : kind === "pdf" ? (
           <PdfPreview url={previewUrl} filename={source.filename} />
         ) : kind === "image" ? (

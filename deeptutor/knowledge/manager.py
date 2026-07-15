@@ -30,7 +30,7 @@ def file_lock_shared(file_handle):
     if sys.platform == "win32":
         import msvcrt
 
-        msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_LOCK, 1)
         try:
             yield
         finally:
@@ -52,7 +52,7 @@ def file_lock_exclusive(file_handle):
     if sys.platform == "win32":
         import msvcrt
 
-        msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_LOCK, 1)
         try:
             yield
         finally:

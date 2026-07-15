@@ -80,8 +80,14 @@ class ProgressTracker:
             except Exception as e:
                 _logger_instance().debug("Progress callback error: %s", e)
 
-    def _save_progress(self, progress: dict):
-        """Save progress to kb_config.json and local .progress.json file"""
+    def _save_progress(self, progress: dict) -> bool:
+        """Save progress to kb_config.json and local .progress.json file.
+
+        Returns ``True`` when the authoritative kb_config.json write succeeded.
+        The caller can use this to decide whether a redundant direct
+        ``manager.update_kb_status()`` call is needed as a fallback.
+        """
+        config_saved = False
         # Save to kb_config.json (centralized config)
         try:
             from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -123,6 +129,7 @@ class ProgressTracker:
                     "index_action": progress.get("index_action"),
                 },
             )
+            config_saved = True
         except Exception as e:
             _logger_instance().warning("Failed to save progress to kb_config.json: %s", e)
 
@@ -139,6 +146,8 @@ class ProgressTracker:
             _logger_instance().warning(
                 "Failed to persist progress snapshot for '%s': %s", self.kb_name, e
             )
+
+        return config_saved
 
     def update(
         self,
