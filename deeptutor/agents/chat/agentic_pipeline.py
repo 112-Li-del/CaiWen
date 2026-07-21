@@ -196,6 +196,36 @@ class AgenticChatPipeline:
             thinking_text=thinking_text,
             stream=stream,
         )
+        # Hard guard: when RAG is the only tool called and every RAG result is
+        # empty, refuse to answer instead of letting the LLM hallucinate.
+        if self._should_refuse_for_empty_rag(tool_traces, enabled_tools):
+            refuse_msg = self._empty_rag_refuse_message()
+            refuse_trace = build_trace_metadata(
+                call_id=new_call_id("chat-responding"),
+                phase="responding",
+                label=self._t("labels.final_response", default="Final response"),
+                call_kind="llm_final_response",
+                trace_id="chat-responding",
+                trace_role="response",
+                trace_group="stage",
+            )
+            await stream.content(
+                refuse_msg,
+                source="chat",
+                stage="responding",
+                metadata=merge_trace_metadata(refuse_trace, {"trace_kind": "llm_chunk"}),
+            )
+            result_payload: dict[str, Any] = {
+                "response": refuse_msg,
+                "observation": "知识库未检索到相关内容，已触发拒答策略。",
+                "tool_traces": [asdict(trace) for trace in tool_traces],
+            }
+            cs = self._get_cost_summary()
+            if cs:
+                result_payload["metadata"] = {"cost_summary": cs}
+            await stream.result(result_payload, source="chat")
+            return
+
         observation = await self._stage_observing(
             context=context,
             enabled_tools=enabled_tools,
@@ -1396,6 +1426,63 @@ class AgenticChatPipeline:
         return (
             "RAG is enabled, but no knowledge base is selected; "
             "skipping KB retrieval for this turn."
+        )
+
+    def _should_refuse_for_empty_rag(
+        self,
+        tool_traces: list[ToolTrace],
+        enabled_tools: list[str],
+    ) -> bool:
+        """Return True when RAG was the only tool invoked and returned nothing.
+
+        Strategy: if the acting stage called at least one RAG tool, zero
+        non-RAG tools succeeded, and every RAG result is empty (no relevant
+        content), we refuse to answer — the question cannot be grounded in
+        the knowledge base and the model must not hallucinate.
+
+        When other tools (web_search, etc.) ran successfully alongside RAG,
+        we let the observing / responding stages decide, because those tools
+        may have found relevant information.
+        """
+        if "rag" not in enabled_tools:
+            return False  # RAG wasn't even available
+
+        rag_traces = [t for t in tool_traces if t.name == "rag"]
+        if not rag_traces:
+            return False  # No RAG tool was actually called
+
+        non_rag_success = [t for t in tool_traces if t.name != "rag" and t.success]
+        if non_rag_success:
+            return False  # Other tools contributed — let the pipeline decide
+
+        # Check whether every RAG trace returned no results.
+        rag_no_results_markers = [
+            "【知识库未找到相关内容】",
+            '"rag_status": "no_results"',
+            '"rag_status":"no_results"',
+            "未检索到匹配的信息",
+        ]
+        for rt in rag_traces:
+            result_str = str(rt.result or "")
+            is_empty = not result_str.strip() or any(
+                marker in result_str for marker in rag_no_results_markers
+            )
+            if not is_empty:
+                return False  # At least one RAG call found content
+
+        return True
+
+    def _empty_rag_refuse_message(self) -> str:
+        if getattr(self, "language", "en") == "zh":
+            return (
+                "抱歉，您咨询的问题在当前知识库中暂未收录相关信息，"
+                "我无法为您提供准确答复。\n\n"
+                "如需进一步帮助，请拨打咨询电话 86718791 了解详情。"
+            )
+        return (
+            "Sorry, the information you're looking for is not currently available "
+            "in the knowledge base, and I'm unable to provide an accurate answer.\n\n"
+            "For further assistance, please call 86718791."
         )
 
     def _observing_system_prompt(self, enabled_tools: list[str]) -> str:

@@ -213,13 +213,16 @@ class LlamaIndexPipeline:
             )
 
         content = "\n\n".join(context_parts) if context_parts else ""
-        return {
+        result: dict[str, Any] = {
             "query": query,
             "answer": content,
             "content": content,
             "sources": sources,
             "provider": "llamaindex",
         }
+        if not context_parts:
+            result["rag_status"] = "no_results"
+        return result
 
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")

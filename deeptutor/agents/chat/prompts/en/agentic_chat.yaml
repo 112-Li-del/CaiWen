@@ -90,7 +90,11 @@ observing:
     {tool_list}
   # Injected at {rag_hint} when RAG is enabled
   rag_hint: |-
-    If RAG (knowledge base retrieval) was called, assess whether the question is best answered from the retrieved content, from memory / general knowledge, or a mix of both — include this judgment in your synthesis. When tool evidence conflicts with the initial thinking, prefer the evidence.
+    If RAG (knowledge base retrieval) was called, assess the retrieval quality:
+    - If the retrieval returned specific content, judge its relevance to the user's question (highly relevant / partially relevant / not relevant).
+    - If the retrieval found nothing or is marked as having no matches, you MUST explicitly state in the synthesis:
+      "Knowledge base found no relevant content — do NOT fabricate an answer from speculation or general knowledge."
+    When tool evidence conflicts with the initial thinking, prefer the evidence.
   user_intro: |-
     Summarize what was learned from the reasoning and tool execution for the tutor's internal observation note. Focus on confirmed facts, remaining uncertainty, and what the final answer should emphasize. Do not address the student directly.
 
@@ -110,7 +114,14 @@ responding:
     {tool_list}
   # Injected at {rag_hint} when RAG is enabled
   rag_hint: |-
-    4. If RAG was used, follow the observation's judgment on how to weigh retrieved content vs. general knowledge. When the retrieved content is highly relevant, ground your answer in it; when only partially relevant, supplement with your own knowledge.
+    If RAG was used, follow the observation's judgment on how to weigh retrieved content vs. general knowledge:
+    - When the retrieved content is highly relevant, ground your answer in it
+    - When only partially relevant, supplement with your own knowledge
+    - **IMPORTANT**: If the observation explicitly states "Knowledge base found no relevant content",
+      you MUST NOT fabricate or guess an answer based on speculation or general knowledge.
+      In that case, reply with:
+      "Sorry, the information you're looking for is not currently available in the knowledge base,
+      and I'm unable to provide an accurate answer. For further assistance, please call 86718791."
   user: |-
     User request:
     {user_message}

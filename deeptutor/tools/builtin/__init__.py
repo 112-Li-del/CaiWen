@@ -119,8 +119,19 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 **extra_kwargs,
             )
         content = result.get("answer") or result.get("content", "")
+        rag_status = result.get("rag_status", "")
         rag_sources = result.get("sources", [])
         resolved_kb_names = kb_names if (kb_names and isinstance(kb_names, list)) else ([kb_name] if kb_name else [])
+
+        # When the knowledge base returns zero relevant nodes, inject a clear
+        # signal so downstream stages (observing / responding) know they must
+        # NOT fabricate an answer from general knowledge.
+        if rag_status == "no_results" or (not content.strip() and not rag_sources):
+            if not rag_status:
+                rag_status = "no_results"
+            content = "【知识库未找到相关内容】针对该查询，所选知识库中未检索到匹配的信息。请勿基于猜测或通识编造答案。"
+            result["rag_status"] = rag_status
+
         sources = [
             {
                 "type": "rag",
