@@ -201,14 +201,18 @@ class LlamaIndexPipeline:
         for i, node in enumerate(nodes):
             context_parts.append(node.node.text)
             meta = node.node.metadata or {}
+            score_val = node.score
             sources.append(
                 {
+                    "type": "rag",
                     "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
                     "content": node.node.text[:200],
+                    "content_preview": node.node.text[:200],
                     "source": meta.get("file_path", meta.get("file_name", "")),
+                    "source_file": meta.get("file_path", meta.get("file_name", "")),
                     "page": meta.get("page_label", meta.get("page", "")),
                     "chunk_id": node.node.node_id or str(i),
-                    "score": round(node.score, 4) if node.score is not None else "",
+                    "score": round(float(score_val), 4) if score_val is not None else 0,
                 }
             )
 
