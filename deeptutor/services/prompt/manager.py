@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from deeptutor.services.branding import substitute_brand_placeholders
 from deeptutor.services.config import PROJECT_ROOT, parse_language
 
 
@@ -106,7 +107,8 @@ class PromptManager:
                 if prompt_file and prompt_file.exists():
                     try:
                         with open(prompt_file, encoding="utf-8") as f:
-                            return yaml.safe_load(f) or {}
+                            data = yaml.safe_load(f) or {}
+                        return substitute_brand_placeholders(data)
                     except Exception as e:
                         print(f"Warning: Failed to load {prompt_file}: {e}")
                         continue

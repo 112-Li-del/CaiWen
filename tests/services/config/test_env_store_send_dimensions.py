@@ -190,6 +190,18 @@ def test_write_preserves_deployment_network_keys(tmp_path: Path) -> None:
     assert "DISABLE_SSL_VERIFY=true" in text
 
 
+def test_write_preserves_brand_name(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text("BRAND_NAME=财问\nLLM_MODEL=old\n", encoding="utf-8")
+    env = EnvStore(path=env_path)
+
+    env.write({"LLM_MODEL": "new"})
+
+    text = env_path.read_text(encoding="utf-8")
+    assert "BRAND_NAME=财问" in text
+    assert "LLM_MODEL=new" in text
+
+
 # ---------------------------------------------------------------------------
 # as_summary() — round-trip from .env back into the embedding dict
 # ---------------------------------------------------------------------------

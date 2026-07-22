@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 
 ENV_KEY_ORDER = (
+    "BRAND_NAME",
     "BACKEND_PORT",
     "FRONTEND_PORT",
     "NEXT_PUBLIC_API_BASE_EXTERNAL",

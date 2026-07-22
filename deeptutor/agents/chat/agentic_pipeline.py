@@ -21,6 +21,7 @@ from deeptutor.core.trace import (
     new_call_id,
 )
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.services.branding import get_brand_name, normalize_inherited_brand
 from deeptutor.services.config import get_chat_params
 from deeptutor.services.llm import (
     clean_thinking_tags,
@@ -107,6 +108,7 @@ class AgenticChatPipeline:
 
     def __init__(self, language: str = "en") -> None:
         self.language = "zh" if language.lower().startswith("zh") else "en"
+        self._brand = get_brand_name()
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
@@ -215,6 +217,10 @@ class AgenticChatPipeline:
                 stage="responding",
                 metadata=merge_trace_metadata(refuse_trace, {"trace_kind": "llm_chunk"}),
             )
+            # Clear sources from tool_traces — irrelevant documents should not
+            # appear as if they supported the answer.
+            for trace in tool_traces:
+                trace.sources = []
             result_payload: dict[str, Any] = {
                 "response": refuse_msg,
                 "observation": "知识库未检索到相关内容，已触发拒答策略。",
@@ -245,6 +251,17 @@ class AgenticChatPipeline:
         all_sources: list[dict[str, Any]] = []
         for trace in tool_traces:
             all_sources.extend(trace.sources)
+
+        # When the model refuses to answer because the knowledge base lacks
+        # relevant content, suppress sources — irrelevant documents should
+        # not be shown as if they supported the (non-existent) answer.
+        if self._is_refusal_response(final_response):
+            all_sources = []
+            # Also clear sources from the tool_traces in the result payload
+            # so the frontend doesn't pick them up from there either.
+            for trace in tool_traces:
+                trace.sources = []
+
         if all_sources:
             await stream.sources(
                 all_sources,
@@ -1002,12 +1019,25 @@ class AgenticChatPipeline:
         if context.skills_context:
             system_parts.append(context.skills_context)
 
-        messages: list[dict[str, Any]] = [{"role": "system", "content": "\n\n".join(system_parts)}]
+        brand = getattr(self, "_brand", None) or get_brand_name()
+        history_messages: list[dict[str, Any]] = []
         for item in context.conversation_history:
             role = item.get("role")
             content = item.get("content")
-            if role in {"user", "assistant"} and isinstance(content, (str, list)):
-                messages.append({"role": role, "content": content})
+            if role == "user" and isinstance(content, (str, list)):
+                history_messages.append({"role": role, "content": content})
+            elif role == "assistant" and isinstance(content, (str, list)):
+                history_messages.append(
+                    {
+                        "role": role,
+                        "content": normalize_inherited_brand(content, brand),
+                    }
+                )
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": "\n\n".join(system_parts)}
+        ]
+        messages.extend(history_messages)
         messages.append({"role": "user", "content": user_content})
         return messages
 
@@ -1472,6 +1502,24 @@ class AgenticChatPipeline:
 
         return True
 
+    @staticmethod
+    def _is_refusal_response(response: str) -> bool:
+        """Check whether the final response is a knowledge-base refusal.
+
+        Covers both the hard-guard refusal (produced by
+        ``_empty_rag_refuse_message``) and soft refusals the LLM generates
+        when the observing stage marks retrieval as irrelevant.
+        """
+        if not response.strip():
+            return False
+        markers = [
+            "知识库中暂未收录相关信息",
+            "知识库未检索到相关内容",
+            "not currently available in the knowledge base",
+            "no relevant content",
+        ]
+        return any(marker in response for marker in markers)
+
     def _empty_rag_refuse_message(self) -> str:
         if getattr(self, "language", "en") == "zh":
             return (
@@ -1512,7 +1560,14 @@ class AgenticChatPipeline:
             tool_list=tool_list or self._fallback_empty_tool_list(),
             rag_hint=rag_hint,
         )
-        return append_language_directive(system_prompt, self.language)
+        brand_note = (
+            f"\n\n你的名字是「{self._brand}」。"
+            f"在回答中请用「{self._brand}」指代本系统，不要使用其他名称。"
+            if self.language == "zh"
+            else f"\n\nYour name is \"{self._brand}\". "
+            f"Refer to this system as \"{self._brand}\" in your answers, not any other name."
+        )
+        return append_language_directive(system_prompt + brand_note, self.language)
 
     def _acting_user_prompt(self, context: UnifiedContext, thinking_text: str) -> str:
         return self._t(

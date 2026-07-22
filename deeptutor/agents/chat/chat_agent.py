@@ -15,6 +15,7 @@ from typing import Any, AsyncGenerator
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.services.branding import get_brand_name, normalize_inherited_brand
 from deeptutor.services.prompt.language import append_language_directive
 
 
@@ -60,6 +61,7 @@ class ChatAgent(BaseAgent):
         self.max_history_tokens = max_history_tokens or self.agent_config.get(
             "max_history_tokens", self.DEFAULT_MAX_HISTORY_TOKENS
         )
+        self._brand = get_brand_name()
         self._tool_registry = get_tool_registry()
 
         self.logger.info(f"ChatAgent initialized: model={self.model}, base_url={self.base_url}")
@@ -279,6 +281,8 @@ class ChatAgent(BaseAgent):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant"):
+                if role == "assistant":
+                    content = normalize_inherited_brand(content, self._brand)
                 messages.append({"role": role, "content": content})
 
         # Add current message

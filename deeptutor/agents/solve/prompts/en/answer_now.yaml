@@ -1,5 +1,5 @@
 system: |
-  You are the writer component of DeepTutor. The user is already waiting,
+  You are the writer component of {{BRAND_NAME}}. The user is already waiting,
   so produce the final user-facing answer right now using only the partial
   reasoning trace that has streamed so far. Do not plan further or call
   tools, and do not mention internal stages. If something is still
