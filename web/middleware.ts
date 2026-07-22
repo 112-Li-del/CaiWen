@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decodeJwt } from "jose";
 
 const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
 const LOGIN_PATH = "/login";
 const COOKIE_NAME = "dt_token";
+
+// Pages that require admin role
+const ADMIN_ROUTES = ["/knowledge", "/space"];
 
 // Static asset extensions that don't need auth
 const STATIC_EXT = /\.(jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|eot|css|js|json|map|txt)$/i;
 
 function isStaticAsset(pathname: string): boolean {
   return STATIC_EXT.test(pathname);
+}
+
+function isAdminRoute(pathname: string): boolean {
+  return ADMIN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/"),
+  );
 }
 
 export function middleware(req: NextRequest) {
@@ -36,6 +46,25 @@ export function middleware(req: NextRequest) {
     loginUrl.pathname = LOGIN_PATH;
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Admin-only routes: check the JWT role claim
+  if (isAdminRoute(pathname)) {
+    try {
+      const payload = decodeJwt(token);
+      if (payload.role !== "admin") {
+        // Non-admin user trying to access an admin-only page — redirect to /chat
+        const chatUrl = req.nextUrl.clone();
+        chatUrl.pathname = "/chat";
+        return NextResponse.redirect(chatUrl);
+      }
+    } catch {
+      // Invalid JWT — redirect to login
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = LOGIN_PATH;
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
   return NextResponse.next();

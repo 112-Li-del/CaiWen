@@ -38,6 +38,7 @@ from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
+    admin_kb_manager,
     assert_writable,
     current_kb_base_dir,
     current_kb_manager,
@@ -1084,15 +1085,17 @@ async def list_knowledge_bases():
         logger.debug(f"Returning {len(result)} knowledge bases")
         if not get_current_user().is_admin:
             own_ids = {item.id for item in result}
+            admin_default_kb = admin_kb_manager().get_default()
             for access in access_items:
                 if access.get("source") != "admin" or access.get("id") in own_ids:
                     continue
+                access_name = str(access.get("name") or "")
                 if not access.get("available", True):
                     result.append(
                         KnowledgeBaseInfo(
                             id=str(access.get("id") or ""),
-                            name=str(access.get("name") or ""),
-                            is_default=False,
+                            name=access_name,
+                            is_default=(admin_default_kb is not None and access_name == admin_default_kb),
                             statistics={},
                             metadata={},
                             path=None,
@@ -1114,7 +1117,7 @@ async def list_knowledge_bases():
                         KnowledgeBaseInfo(
                             id=resource.id,
                             name=info["name"],
-                            is_default=False,
+                            is_default=info.get("is_default", False),
                             statistics=info.get("statistics", {}),
                             metadata=info.get("metadata"),
                             path=None,
@@ -1131,7 +1134,7 @@ async def list_knowledge_bases():
                         KnowledgeBaseInfo(
                             id=resource.id,
                             name=resource.name,
-                            is_default=False,
+                            is_default=(admin_default_kb is not None and resource.name == admin_default_kb),
                             statistics={},
                             metadata={},
                             status="unknown",

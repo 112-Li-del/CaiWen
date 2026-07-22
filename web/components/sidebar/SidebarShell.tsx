@@ -84,7 +84,12 @@ interface SidebarShellProps {
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
   footerSlot?: ReactNode;
+  /** When false (default), Knowledge and Space nav items are hidden. */
+  isAdmin?: boolean;
 }
+
+/** Nav entries that are only visible to admin users. */
+const ADMIN_ONLY_HREFS = new Set(["/knowledge", "/space"]);
 
 export function SidebarShell({
   sessions = [],
@@ -97,7 +102,11 @@ export function SidebarShell({
   onRenameSession,
   onDeleteSession,
   footerSlot,
+  isAdmin = false,
 }: SidebarShellProps) {
+  const visibleNav = isAdmin
+    ? PRIMARY_NAV
+    : PRIMARY_NAV.filter((item) => !ADMIN_ONLY_HREFS.has(item.href));
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useTranslation();
@@ -155,7 +164,7 @@ export function SidebarShell({
 
         {/* Primary nav */}
         <nav className="flex w-full flex-col items-center gap-1 px-1.5">
-          {PRIMARY_NAV.map((item) => {
+          {visibleNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const description = item.tooltipKey
               ? t(item.tooltipKey)
@@ -267,7 +276,7 @@ export function SidebarShell({
             <span>{t("New Chat")}</span>
           </button>
 
-          {PRIMARY_NAV.map((item) => {
+          {visibleNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const hasSessionsBelow =
               item.href === "/chat" &&

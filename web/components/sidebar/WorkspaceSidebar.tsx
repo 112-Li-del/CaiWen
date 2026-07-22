@@ -7,6 +7,7 @@ import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { fetchAuthStatus, AUTH_ENABLED } from "@/lib/auth";
 import {
   deleteSession,
   listSessions,
@@ -25,7 +26,15 @@ export default function WorkspaceSidebar() {
   } = useUnifiedChat();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasLoadedSessionsRef = useRef(false);
+
+  useEffect(() => {
+    if (!AUTH_ENABLED) return;
+    fetchAuthStatus().then((status) => {
+      setIsAdmin(status?.role === "admin");
+    });
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     if (!hasLoadedSessionsRef.current) {
@@ -122,6 +131,7 @@ export default function WorkspaceSidebar() {
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
+      isAdmin={isAdmin}
       footerSlot={
         <>
           <AdminLink />

@@ -7,6 +7,7 @@ import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { useAppShell } from "@/context/AppShellContext";
+import { fetchAuthStatus, AUTH_ENABLED } from "@/lib/auth";
 import {
   deleteSession,
   listSessions,
@@ -20,7 +21,15 @@ export default function UtilitySidebar() {
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasLoadedSessionsRef = useRef(false);
+
+  useEffect(() => {
+    if (!AUTH_ENABLED) return;
+    fetchAuthStatus().then((status) => {
+      setIsAdmin(status?.role === "admin");
+    });
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     if (!hasLoadedSessionsRef.current) {
@@ -95,6 +104,7 @@ export default function UtilitySidebar() {
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
+      isAdmin={isAdmin}
       footerSlot={
         <>
           <AdminLink />

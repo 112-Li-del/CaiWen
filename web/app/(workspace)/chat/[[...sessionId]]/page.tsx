@@ -551,16 +551,17 @@ export default function ChatPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // For new users with no stored playground capability config, enable the
-  // knowledge-base (RAG) tool by default so the KB multi-select is immediately
-  // available on the first visit. Existing users' stored tool selections
-  // are preserved and never overwritten.
+  // knowledge-base (RAG) tool by default once KBs are loaded — but only if
+  // the user actually has knowledge bases available (e.g. granted by admin).
+  // Existing users' stored tool selections are preserved and never overwritten.
   useEffect(() => {
+    if (!knowledgeBases.length) return;
     const stored = loadCapabilityPlaygroundConfigs();
-    if (Object.keys(stored).length === 0) {
+    if (Object.keys(stored).length === 0 && !state.enabledTools.length) {
       setTools(["rag"]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [knowledgeBases.length]);
 
   // When URL param changes (sidebar navigation), load the corresponding session
   const prevSessionIdParam = useRef(sessionIdParam);

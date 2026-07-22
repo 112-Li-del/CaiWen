@@ -89,22 +89,52 @@ def allowed_llm_options() -> dict[str, Any]:
     user = get_current_user()
     if user.is_admin:
         return list_llm_options(admin_catalog())
-    options = [
-        {
-            "profile_id": item.get("profile_id"),
-            "model_id": item.get("model_id"),
-            "profile_name": item.get("name") or item.get("profile_id") or "LLM",
-            "model_name": item.get("name") or item.get("model") or item.get("model_id"),
-            "label": item.get("name") or item.get("model") or item.get("model_id"),
-            "model": item.get("model") or "",
-            "provider": "",
-            "source": "admin",
-            "is_active_default": False,
+
+    # Determine the admin's active default so we can inherit it for
+    # regular users who have been granted access to that model.
+    admin_default = list_llm_options(admin_catalog()).get("active") or {}
+    admin_default_pid = str(admin_default.get("profile_id") or "")
+    admin_default_mid = str(admin_default.get("model_id") or "")
+
+    active_default = None
+    options: list[dict[str, Any]] = []
+    for item in redacted_model_access(user.id).get("llm", []):
+        if not item.get("available"):
+            continue
+        pid = str(item.get("profile_id") or "")
+        mid = str(item.get("model_id") or "")
+        is_default = (
+            admin_default_pid and admin_default_mid
+            and pid == admin_default_pid
+            and mid == admin_default_mid
+        )
+        if is_default:
+            active_default = {"profile_id": pid, "model_id": mid}
+        options.append(
+            {
+                "profile_id": pid,
+                "model_id": mid,
+                "profile_name": item.get("name") or item.get("profile_id") or "LLM",
+                "model_name": item.get("name") or item.get("model") or item.get("model_id"),
+                "label": item.get("name") or item.get("model") or item.get("model_id"),
+                "model": item.get("model") or "",
+                "provider": "",
+                "source": "admin",
+                "is_active_default": is_default,
+            }
+        )
+
+    # If the admin has an active default and the user isn't granted that
+    # model, fall back to the first available option (if any).
+    if not active_default and options:
+        first = options[0]
+        active_default = {
+            "profile_id": first["profile_id"],
+            "model_id": first["model_id"],
         }
-        for item in redacted_model_access(user.id).get("llm", [])
-        if item.get("available")
-    ]
-    return {"active": None, "options": options}
+        first["is_active_default"] = True
+
+    return {"active": active_default, "options": options}
 
 
 def apply_allowed_llm_selection(selection: dict[str, Any] | None) -> dict[str, Any] | None:
