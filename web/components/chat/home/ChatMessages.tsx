@@ -10,10 +10,8 @@ import {
   Coins,
   Copy,
   FileText,
-  Globe,
   MessageSquare,
   RefreshCcw,
-  ScrollText,
   Wand2,
   X,
   Zap,
@@ -226,32 +224,21 @@ const SourcesPanel = memo(function SourcesPanel({
   const { t } = useTranslation();
   if (!sources || sources.length === 0) return null;
 
-  const iconForSource = (s: SourceItem) => {
-    const type = String(s.type ?? "");
-    if (type === "rag") return <FileText size={13} strokeWidth={1.8} />;
-    if (type === "web") return <Globe size={13} strokeWidth={1.8} />;
-    if (type === "paper") return <ScrollText size={13} strokeWidth={1.8} />;
-    return <FileText size={13} strokeWidth={1.8} />;
-  };
+  // Group sources by file, preserving insertion order
+  const fileGroups: { key: string; label: string; items: SourceItem[] }[] = [];
+  const seen = new Set();
+  for (const s of sources) {
+    const key = String(s.source_file ?? s.title ?? "");
+    if (!seen.has(key)) {
+      seen.add(key);
+      fileGroups.push({ key, label: String(s.title ?? key), items: [] });
+    }
+    fileGroups.find((g) => g.key === key)!.items.push(s);
+  }
 
-  const labelForSource = (s: SourceItem) => {
-    const type = String(s.type ?? "");
-    if (type === "rag") return t("Knowledge Base Document");
-    if (type === "web") return t("Web Search Result");
-    if (type === "paper") return t("Paper Search Result");
-    return t("Source");
-  };
-
-  const subtitleForSource = (s: SourceItem) => {
-    const parts: string[] = [];
-    const file = String(s.source_file ?? s.url ?? "");
-    if (file) parts.push(file);
-    const page = String(s.page ?? "");
-    if (page) parts.push(`p.${page}`);
-    const score = Number(s.score);
-    if (!Number.isNaN(score) && score > 0)
-      parts.push(`${(score * 100).toFixed(0)}%`);
-    return parts.join(" · ");
+  const scorePercent = (s: SourceItem) => {
+    const n = Number(s.score);
+    return !Number.isNaN(n) && n > 0 ? `${(n * 100).toFixed(0)}%` : "";
   };
 
   return (
@@ -259,47 +246,56 @@ const SourcesPanel = memo(function SourcesPanel({
       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[13px] font-medium text-[var(--foreground)]">
         <span className="inline-flex items-center gap-1.5">
           <FileText size={13} strokeWidth={1.8} className="text-[var(--muted-foreground)]" />
-          {t("Sources")} ({sources.length})
+          {t("Sources")} ({fileGroups.length})
         </span>
         <ChevronDown
           size={13}
           className="text-[var(--muted-foreground)] transition-transform group-open:rotate-180"
         />
       </summary>
-      <div className="border-t border-[var(--border)] px-3 py-2.5 space-y-2">
-        {sources.map((s, i) => {
-          const title = String(s.title ?? s.query ?? `${t("Source")} ${i + 1}`);
-          const contentPreview = String(s.content_preview ?? s.content ?? "");
-          const subtitle = subtitleForSource(s);
-
-          return (
-            <div
-              key={`src-${i}`}
-              className="rounded-md bg-[var(--muted)]/60 px-2.5 py-2 text-[12px]"
-            >
-              <div className="flex items-start gap-1.5">
-                <span className="mt-0.5 shrink-0 text-[var(--muted-foreground)]">
-                  {iconForSource(s)}
+      <div className="border-t border-[var(--border)] px-3 py-2.5 space-y-1.5">
+        {fileGroups.map((group) => (
+          <details key={group.key} className="group/file rounded-md bg-[var(--muted)]/60">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-[12px]">
+              <span className="inline-flex items-center gap-1.5 font-medium text-[var(--foreground)] min-w-0">
+                <FileText size={12} strokeWidth={1.8} className="shrink-0 text-[var(--muted-foreground)]" />
+                <span className="truncate">{group.label}</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 shrink-0 ml-2">
+                <span className="text-[11px] text-[var(--muted-foreground)]">
+                  {group.items.length} chunks
                 </span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-[var(--foreground)] leading-snug break-words">
-                    {title}
+                <ChevronDown
+                  size={10}
+                  className="text-[var(--muted-foreground)] transition-transform group-open/file:rotate-180"
+                />
+              </span>
+            </summary>
+            <div className="border-t border-[var(--border)]/50 px-2.5 py-1.5 space-y-1.5">
+              {group.items.map((s, i) => {
+                const page = String(s.page ?? "");
+                const pct = scorePercent(s);
+                const metaParts = [page ? `p.${page}` : "", pct].filter(Boolean);
+                const contentPreview = String(s.content_preview ?? s.content ?? "");
+
+                return (
+                  <div key={i} className="text-[11px]">
+                    {metaParts.length > 0 && (
+                      <div className="text-[var(--muted-foreground)] mb-0.5">
+                        {metaParts.join(" · ")}
+                      </div>
+                    )}
+                    {contentPreview && (
+                      <div className="leading-relaxed text-[var(--foreground)]/80 line-clamp-2">
+                        {contentPreview}
+                      </div>
+                    )}
                   </div>
-                  {subtitle && (
-                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)] break-all">
-                      {subtitle}
-                    </div>
-                  )}
-                  {contentPreview && (
-                    <div className="mt-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]/80 line-clamp-2">
-                      {contentPreview}
-                    </div>
-                  )}
-                </div>
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </details>
+        ))}
       </div>
     </details>
   );
