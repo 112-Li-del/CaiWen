@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 import traceback
 from typing import Any, Callable, Dict, List, Optional
@@ -32,6 +33,29 @@ DEFAULT_KB_BASE_DIR = str(
 )
 
 SignatureProvider = Callable[[], EmbeddingSignature | None]
+
+# Minimum cosine-similarity score for a retrieved chunk to be considered
+# relevant enough to include in results. Chunks below this threshold are
+# discarded. Tune via RAG_SCORE_THRESHOLD in .env (e.g. 0.3).
+
+
+def _load_rag_score_threshold() -> float:
+    """Read RAG_SCORE_THRESHOLD from os.environ, then .env, default 0.3."""
+    val = os.environ.get("RAG_SCORE_THRESHOLD")
+    if val:
+        return float(val)
+    env_path = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("RAG_SCORE_THRESHOLD="):
+                v = stripped.split("=", 1)[1].strip().strip("\"'")
+                if v:
+                    return float(v)
+    return 0.3
+
+
+_RAG_SCORE_THRESHOLD = _load_rag_score_threshold()
 
 
 class LlamaIndexPipeline:
@@ -198,10 +222,24 @@ class LlamaIndexPipeline:
     def _nodes_to_result(self, query: str, nodes: list[Any]) -> Dict[str, Any]:
         context_parts: list[str] = []
         sources: list[dict[str, Any]] = []
+
+        # DEBUG: log raw scores from LlamaIndex retriever
+        raw_scores = []
         for i, node in enumerate(nodes):
-            context_parts.append(node.node.text)
             meta = node.node.metadata or {}
             score_val = node.score
+            score = round(float(score_val), 4) if score_val is not None else 0.0
+            raw_scores.append(
+                f"  [{i}] file={meta.get('file_name', '?')} "
+                f"raw_score={score_val} final_score={score}"
+            )
+
+            # Discard chunks whose similarity score is below the configured
+            # threshold — they are noise, not genuine matches.
+            if score < _RAG_SCORE_THRESHOLD:
+                continue
+
+            context_parts.append(node.node.text)
             sources.append(
                 {
                     "type": "rag",
@@ -212,9 +250,19 @@ class LlamaIndexPipeline:
                     "source_file": meta.get("file_path", meta.get("file_name", "")),
                     "page": meta.get("page_label", meta.get("page", "")),
                     "chunk_id": node.node.node_id or str(i),
-                    "score": round(float(score_val), 4) if score_val is not None else 0,
+                    "score": score,
                 }
             )
+
+        # DEBUG: log score diagnostics
+        kept = len(context_parts)
+        discarded = len(nodes) - kept
+        self.logger.info(
+            f"RAG score debug: total={len(nodes)} kept={kept} discarded={discarded} "
+            f"threshold={_RAG_SCORE_THRESHOLD}"
+        )
+        for line in raw_scores:
+            self.logger.info(line)
 
         content = "\n\n".join(context_parts) if context_parts else ""
         result: dict[str, Any] = {
