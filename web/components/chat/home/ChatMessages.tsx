@@ -286,7 +286,7 @@ const SourcesPanel = memo(function SourcesPanel({
                     {title}
                   </div>
                   {subtitle && (
-                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)] truncate">
+                    <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)] break-all">
                       {subtitle}
                     </div>
                   )}

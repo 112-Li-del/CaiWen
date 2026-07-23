@@ -223,16 +223,10 @@ class LlamaIndexPipeline:
         context_parts: list[str] = []
         sources: list[dict[str, Any]] = []
 
-        # DEBUG: log raw scores from LlamaIndex retriever
-        raw_scores = []
         for i, node in enumerate(nodes):
             meta = node.node.metadata or {}
             score_val = node.score
             score = round(float(score_val), 4) if score_val is not None else 0.0
-            raw_scores.append(
-                f"  [{i}] file={meta.get('file_name', '?')} "
-                f"raw_score={score_val} final_score={score}"
-            )
 
             # Discard chunks whose similarity score is below the configured
             # threshold — they are noise, not genuine matches.
@@ -253,16 +247,6 @@ class LlamaIndexPipeline:
                     "score": score,
                 }
             )
-
-        # DEBUG: log score diagnostics
-        kept = len(context_parts)
-        discarded = len(nodes) - kept
-        self.logger.info(
-            f"RAG score debug: total={len(nodes)} kept={kept} discarded={discarded} "
-            f"threshold={_RAG_SCORE_THRESHOLD}"
-        )
-        for line in raw_scores:
-            self.logger.info(line)
 
         content = "\n\n".join(context_parts) if context_parts else ""
         result: dict[str, Any] = {
