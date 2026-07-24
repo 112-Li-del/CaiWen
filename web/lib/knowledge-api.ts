@@ -242,7 +242,13 @@ export async function uploadKnowledgeBaseFiles(
     { method: "POST", body: form },
   );
   if (!res.ok) {
-    throw new Error(await readErrorDetail(res, "Failed to upload files"));
+    const detail = await readErrorDetail(
+      res,
+      `Failed to upload files (${res.status})`,
+    );
+    throw new Error(
+      withDockerUpgradeHint(detail, res.status, "Knowledge file upload"),
+    );
   }
   invalidateKnowledgeCaches();
   return (await res.json()) as KnowledgeTaskResponse;

@@ -81,6 +81,9 @@ export default function KbDocumentsSection({
     try {
       await onUpload(selection.validFiles);
       setFiles([]);
+    } catch {
+      // Error is already surfaced by the parent via setError — don't
+      // let the promise rejection propagate from the onClick handler.
     } finally {
       setSubmitting(false);
     }

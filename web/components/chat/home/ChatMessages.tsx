@@ -10,8 +10,10 @@ import {
   Coins,
   Copy,
   FileText,
+  Globe,
   MessageSquare,
   RefreshCcw,
+  ScrollText,
   Wand2,
   X,
   Zap,
@@ -224,17 +226,31 @@ const SourcesPanel = memo(function SourcesPanel({
   const { t } = useTranslation();
   if (!sources || sources.length === 0) return null;
 
-  // Group sources by file, preserving insertion order
+  const ragSources = sources.filter((s) => String(s.type ?? "") === "rag");
+  const otherSources = sources.filter((s) => String(s.type ?? "") !== "rag");
+
+  // Only knowledge-base chunks are grouped by file. Web and paper results
+  // remain standalone sources because their URL is the useful destination.
   const fileGroups: { key: string; label: string; items: SourceItem[] }[] = [];
-  const seen = new Set();
-  for (const s of sources) {
-    const key = String(s.source_file ?? s.title ?? "");
-    if (!seen.has(key)) {
-      seen.add(key);
-      fileGroups.push({ key, label: String(s.title ?? key), items: [] });
+  const groupsByKey = new Map<string, (typeof fileGroups)[number]>();
+  for (const [index, s] of ragSources.entries()) {
+    const key = String(
+      s.source_file ?? s.source ?? s.title ?? s.chunk_id ?? `rag-${index}`,
+    );
+    let group = groupsByKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        label: String(s.title ?? s.source_file ?? s.source ?? t("Source")),
+        items: [],
+      };
+      groupsByKey.set(key, group);
+      fileGroups.push(group);
     }
-    fileGroups.find((g) => g.key === key)!.items.push(s);
+    group.items.push(s);
   }
+
+  const sourceCount = fileGroups.length + otherSources.length;
 
   const scorePercent = (s: SourceItem) => {
     const n = Number(s.score);
@@ -246,7 +262,7 @@ const SourcesPanel = memo(function SourcesPanel({
       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-[13px] font-medium text-[var(--foreground)]">
         <span className="inline-flex items-center gap-1.5">
           <FileText size={13} strokeWidth={1.8} className="text-[var(--muted-foreground)]" />
-          {t("Sources")} ({fileGroups.length})
+          {t("Sources")} ({sourceCount})
         </span>
         <ChevronDown
           size={13}
@@ -263,7 +279,7 @@ const SourcesPanel = memo(function SourcesPanel({
               </span>
               <span className="inline-flex items-center gap-1.5 shrink-0 ml-2">
                 <span className="text-[11px] text-[var(--muted-foreground)]">
-                  {group.items.length} chunks
+                  {group.items.length} {t("chunks")}
                 </span>
                 <ChevronDown
                   size={10}
@@ -296,6 +312,67 @@ const SourcesPanel = memo(function SourcesPanel({
             </div>
           </details>
         ))}
+        {otherSources.map((source, index) => {
+          const type = String(source.type ?? "");
+          const title = String(
+            source.title ?? source.query ?? `${t("Source")} ${index + 1}`,
+          );
+          const url = String(source.url ?? "");
+          const contentPreview = String(
+            source.content_preview ?? source.content ?? source.abstract ?? "",
+          );
+          const SourceIcon = type === "web" ? Globe : type === "paper" ? ScrollText : FileText;
+          const sourceTypeLabel =
+            type === "web"
+              ? t("Web Search Result")
+              : type === "paper"
+                ? t("Paper Search Result")
+                : t("Source");
+
+          return (
+            <div
+              key={`${type || "source"}-${url || title}-${index}`}
+              className="rounded-md bg-[var(--muted)]/60 px-2.5 py-2 text-[12px]"
+            >
+              <div className="flex items-start gap-1.5">
+                <SourceIcon
+                  size={12}
+                  strokeWidth={1.8}
+                  className="mt-0.5 shrink-0 text-[var(--muted-foreground)]"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] text-[var(--muted-foreground)]">
+                    {sourceTypeLabel}
+                  </div>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium leading-snug text-[var(--foreground)] break-words hover:text-[var(--primary)] hover:underline"
+                    >
+                      {title}
+                    </a>
+                  ) : (
+                    <div className="font-medium leading-snug text-[var(--foreground)] break-words">
+                      {title}
+                    </div>
+                  )}
+                  {url && (
+                    <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
+                      {url}
+                    </div>
+                  )}
+                  {contentPreview && (
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--foreground)]/80">
+                      {contentPreview}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </details>
   );
