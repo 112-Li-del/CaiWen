@@ -1,10 +1,10 @@
-"""Aliyun DashScope MultiModalEmbedding adapter.
+"""Aliyun DashScope embedding adapter.
 
-Uses the ``dashscope`` Python SDK (``dashscope.MultiModalEmbedding.call``)
-because DashScope's native API shape (`input.contents=[{text|image|video}]` +
-`parameters={dimension, enable_fusion}`) does not match the OpenAI contract.
-The SDK call is synchronous, so we run it in a thread pool to keep the rest
-of the embedding stack non-blocking.
+Routes text-only models (``text-embedding-v3``, ``text-embedding-v4``) to
+``dashscope.TextEmbedding.call`` and multimodal models
+(``qwen3-vl-embedding``, ``multimodal-embedding-v1``) to
+``dashscope.MultiModalEmbedding.call``. The SDK calls are synchronous, so we
+run them in a thread pool to keep the rest of the embedding stack non-blocking.
 """
 
 from __future__ import annotations
@@ -45,32 +45,78 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
         },
     }
 
+    def _is_multimodal(self, model_name: str | None = None) -> bool:
+        """Return True if the configured model is multimodal.
+
+        Unknown models default to multimodal because the aliyun provider's
+        default model (``qwen3-vl-embedding``) is multimodal.
+        """
+        model_key = model_name or self.model or ""
+        return bool(self.MODELS_INFO.get(model_key, {}).get("multimodal", True))
+
     def _build_contents(self, request: EmbeddingRequest) -> List[Dict[str, Any]]:
         if request.contents:
             return [item for item in request.contents if isinstance(item, dict)]
         return [{"text": text} for text in request.texts]
 
-    def _build_parameters(self, request: EmbeddingRequest) -> Dict[str, Any]:
-        params: Dict[str, Any] = {}
+    def _build_text_inputs(self, request: EmbeddingRequest) -> List[str]:
+        """Build plain string inputs for text-only embedding models."""
+        if request.contents:
+            return [
+                item.get("text", "")
+                for item in request.contents
+                if isinstance(item, dict) and item.get("text")
+            ]
+        return list(request.texts)
+
+    def _build_dimension_param(self, request: EmbeddingRequest) -> int | None:
         dim_value = request.dimensions or self.dimensions
-        if dim_value:
-            params["dimension"] = dim_value
+        return dim_value if dim_value else None
+
+    def _build_multimodal_parameters(self, request: EmbeddingRequest) -> Dict[str, Any]:
+        """Extra parameters only relevant to the multimodal API."""
+        params: Dict[str, Any] = {}
         if request.enable_fusion is not None:
             params["enable_fusion"] = bool(request.enable_fusion)
         return params
 
-    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
-        try:
-            from dashscope import MultiModalEmbedding
-        except ImportError as exc:
-            raise ImportError(
-                "dashscope SDK not installed. Run `pip install dashscope` "
-                "(or add to your project deps) to enable Aliyun DashScope."
-            ) from exc
+    async def _embed_via_text_api(
+        self, request: EmbeddingRequest, model_name: str
+    ) -> EmbeddingResponse:
+        from dashscope import TextEmbedding
+
+        inputs = self._build_text_inputs(request)
+        dim_value = self._build_dimension_param(request)
+
+        logger.debug(
+            "Calling dashscope.TextEmbedding.call "
+            f"(model={model_name}, items={len(inputs)}, dimension={dim_value})"
+        )
+
+        kwargs: Dict[str, Any] = {}
+        if dim_value:
+            kwargs["dimension"] = dim_value
+
+        resp = await asyncio.to_thread(
+            TextEmbedding.call,
+            api_key=self.api_key,
+            model=model_name,
+            input=inputs,
+            **kwargs,
+        )
+        self._raise_on_error(resp, model_name)
+        return self._parse_response(resp, model_name, request)
+
+    async def _embed_via_multimodal_api(
+        self, request: EmbeddingRequest, model_name: str
+    ) -> EmbeddingResponse:
+        from dashscope import MultiModalEmbedding
 
         contents = self._build_contents(request)
-        parameters = self._build_parameters(request)
-        model_name = request.model or self.model
+        parameters = self._build_multimodal_parameters(request)
+        dim_value = self._build_dimension_param(request)
+        if dim_value:
+            parameters["dimension"] = dim_value
 
         logger.debug(
             "Calling dashscope.MultiModalEmbedding.call "
@@ -90,9 +136,24 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
             input=contents,
             **parameters,
         )
-
         self._raise_on_error(resp, model_name)
         return self._parse_response(resp, model_name, request)
+
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        try:
+            from dashscope import MultiModalEmbedding  # noqa: F401 — verify SDK installed
+        except ImportError as exc:
+            raise ImportError(
+                "dashscope SDK not installed. Run `pip install dashscope` "
+                "(or add to your project deps) to enable Aliyun DashScope."
+            ) from exc
+
+        model_name = request.model or self.model
+
+        if self._is_multimodal(model_name):
+            return await self._embed_via_multimodal_api(request, model_name)
+        else:
+            return await self._embed_via_text_api(request, model_name)
 
     def _raise_on_error(self, resp: Any, model_name: str) -> None:
         status_code = getattr(resp, "status_code", None)
@@ -102,7 +163,7 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
         message = getattr(resp, "message", "") or ""
         request_id = getattr(resp, "request_id", "") or ""
         raise RuntimeError(
-            f"DashScope MultiModalEmbedding call failed: "
+            f"DashScope embedding call failed: "
             f"status={status_code}, code={code}, message={message}, "
             f"model={model_name}, request_id={request_id}"
         )
