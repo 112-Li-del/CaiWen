@@ -31,6 +31,7 @@ import {
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
+import { fetchAuthStatus, AUTH_ENABLED } from "@/lib/auth";
 
 interface AppShellContextValue {
   theme: Theme;
@@ -41,6 +42,7 @@ interface AppShellContextValue {
   setActiveSessionId: (sessionId: string | null) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  isAdmin: boolean;
 }
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
@@ -56,10 +58,16 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   );
   // Always start expanded to match SSR; hydrate from localStorage after mount
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState(!AUTH_ENABLED);
 
   useEffect(() => {
     setLanguageState(readStoredLanguage());
     setSidebarCollapsedState(readStoredSidebarCollapsed());
+    if (AUTH_ENABLED) {
+      fetchAuthStatus().then((status) => {
+        setIsAdmin(status?.role === "admin");
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -142,6 +150,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       setActiveSessionId,
       sidebarCollapsed,
       setSidebarCollapsed,
+      isAdmin,
     }),
     [
       activeSessionId,
@@ -152,6 +161,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       setTheme,
       sidebarCollapsed,
       theme,
+      isAdmin,
     ],
   );
 

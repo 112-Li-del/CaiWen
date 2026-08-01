@@ -18,6 +18,7 @@ from uuid import uuid4
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -28,6 +29,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from deeptutor.api.routers.auth import require_admin
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
@@ -943,7 +945,7 @@ async def get_kb_config(kb_name: str):
 
 
 @router.put("/{kb_name}/config")
-async def update_kb_config(kb_name: str, config: dict):
+async def update_kb_config(kb_name: str, config: dict, _admin: object = Depends(require_admin)):
     """Update configuration for a specific knowledge base."""
     try:
         from deeptutor.services.config import get_kb_config_service
@@ -988,7 +990,7 @@ async def get_default_kb():
 
 
 @router.put("/default/{kb_name}")
-async def set_default_kb(kb_name: str):
+async def set_default_kb(kb_name: str, _admin: object = Depends(require_admin)):
     """Set the default knowledge base."""
     try:
         manager, kb_name, _ = _writable_kb(kb_name)
@@ -1251,7 +1253,7 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
 
 
 @router.delete("/{kb_name}/files/{filename:path}")
-async def delete_kb_raw_file(kb_name: str, filename: str):
+async def delete_kb_raw_file(kb_name: str, filename: str, _admin: object = Depends(require_admin)):
     """Delete a single raw file from a knowledge base and surgically remove its chunks.
 
     The raw file is removed from the ``raw/`` directory and ONLY the vector
@@ -1383,7 +1385,7 @@ class RenameRequest(BaseModel):
 
 
 @router.put("/{kb_name}/rename")
-async def rename_knowledge_base(kb_name: str, new_name: str = Form(...)):
+async def rename_knowledge_base(kb_name: str, new_name: str = Form(...), _admin: object = Depends(require_admin)):
     """Rename a knowledge base."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -1402,7 +1404,7 @@ async def rename_knowledge_base(kb_name: str, new_name: str = Form(...)):
 
 
 @router.delete("/{kb_name}")
-async def delete_knowledge_base(kb_name: str):
+async def delete_knowledge_base(kb_name: str, _admin: object = Depends(require_admin)):
     """Delete a knowledge base."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -1435,6 +1437,7 @@ async def upload_files(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     rag_provider: str = Form(None),
+    _admin: object = Depends(require_admin),
 ):
     """Upload files to a knowledge base and process them in background."""
     try:
@@ -1500,6 +1503,7 @@ async def create_knowledge_base(
     name: str = Form(...),
     files: list[UploadFile] = File(...),
     rag_provider: str = Form(DEFAULT_PROVIDER),
+    _admin: object = Depends(require_admin),
 ):
     """Create a new knowledge base and initialize it with files."""
     try:
@@ -1875,6 +1879,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
 async def reindex_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
+    _admin: object = Depends(require_admin),
 ):
     """Re-index ``kb_name`` against the currently-active embedding model.
 
@@ -1977,7 +1982,7 @@ async def get_progress(kb_name: str):
 
 
 @router.post("/{kb_name}/progress/clear")
-async def clear_progress(kb_name: str):
+async def clear_progress(kb_name: str, _admin: object = Depends(require_admin)):
     """Clear progress file for a knowledge base (useful for stuck states)"""
     try:
         _, resolved_name, base_dir = _writable_kb(kb_name)
@@ -2124,7 +2129,7 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
 
 
 @router.post("/{kb_name}/link-folder", response_model=LinkedFolderInfo)
-async def link_folder(kb_name: str, request: LinkFolderRequest):
+async def link_folder(kb_name: str, request: LinkFolderRequest, _admin: object = Depends(require_admin)):
     """
     Link a local folder to a knowledge base.
 
@@ -2169,7 +2174,7 @@ async def get_linked_folders(kb_name: str):
 
 
 @router.delete("/{kb_name}/linked-folders/{folder_id}")
-async def unlink_folder(kb_name: str, folder_id: str):
+async def unlink_folder(kb_name: str, folder_id: str, _admin: object = Depends(require_admin)):
     """Unlink a folder from a knowledge base."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -2187,7 +2192,7 @@ async def unlink_folder(kb_name: str, folder_id: str):
 
 
 @router.post("/{kb_name}/sync-folder/{folder_id}")
-async def sync_folder(kb_name: str, folder_id: str, background_tasks: BackgroundTasks):
+async def sync_folder(kb_name: str, folder_id: str, background_tasks: BackgroundTasks, _admin: object = Depends(require_admin)):
     """
     Sync files from a linked folder to the knowledge base.
 

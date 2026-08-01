@@ -26,6 +26,7 @@ interface KbDocumentListProps {
   onSelect: (file: KnowledgeBaseFile) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  isAdmin?: boolean;
 }
 
 export default function KbDocumentList({
@@ -35,6 +36,7 @@ export default function KbDocumentList({
   onSelect,
   collapsed,
   onToggleCollapsed,
+  isAdmin = true,
 }: KbDocumentListProps) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<KnowledgeBaseFile[]>([]);
@@ -136,23 +138,25 @@ export default function KbDocumentList({
                   )}
                   <Icon size={13} strokeWidth={1.6} className={spec.tint} />
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleDelete(file.name);
-                  }}
-                  disabled={isDeleting}
-                  title={t("Delete document")}
-                  aria-label={t("Delete {{name}}", { name: file.name })}
-                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--card)] text-[var(--muted-foreground)] opacity-0 shadow-sm transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
-                >
-                  {isDeleting ? (
-                    <Loader2 size={9} strokeWidth={2} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={9} strokeWidth={2} />
-                  )}
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDelete(file.name);
+                    }}
+                    disabled={isDeleting}
+                    title={t("Delete document")}
+                    aria-label={t("Delete {{name}}", { name: file.name })}
+                    className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--card)] text-[var(--muted-foreground)] opacity-0 shadow-sm transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
+                  >
+                    {isDeleting ? (
+                      <Loader2 size={9} strokeWidth={2} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={9} strokeWidth={2} />
+                    )}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -264,23 +268,25 @@ export default function KbDocumentList({
                         </div>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDelete(file.name);
-                      }}
-                      disabled={isDeleting}
-                      title={t("Delete document")}
-                      aria-label={t("Delete {{name}}", { name: file.name })}
-                      className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
-                    >
-                      {isDeleting ? (
-                        <Loader2 size={13} strokeWidth={1.6} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={13} strokeWidth={1.6} />
-                      )}
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDelete(file.name);
+                        }}
+                        disabled={isDeleting}
+                        title={t("Delete document")}
+                        aria-label={t("Delete {{name}}", { name: file.name })}
+                        className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-30"
+                      >
+                        {isDeleting ? (
+                          <Loader2 size={13} strokeWidth={1.6} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={13} strokeWidth={1.6} />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </li>
               );

@@ -37,17 +37,19 @@ interface KnowledgeBaseDetailProps {
   onDelete: (kbName: string) => Promise<void>;
   onClearHistory: (kbName: string) => void;
   onRename: (oldName: string, newName: string) => Promise<void>;
+  isAdmin?: boolean;
 }
 
-const SECTIONS: {
+const ALL_SECTIONS: {
   key: DetailSection;
   label: string;
   Icon: typeof FileText;
+  adminOnly?: boolean;
 }[] = [
   { key: "files", label: "Files", Icon: FileText },
-  { key: "add", label: "Add documents", Icon: Upload },
+  { key: "add", label: "Add documents", Icon: Upload, adminOnly: true },
   { key: "versions", label: "Index versions", Icon: Layers },
-  { key: "settings", label: "Settings", Icon: SettingsIcon },
+  { key: "settings", label: "Settings", Icon: SettingsIcon, adminOnly: true },
 ];
 
 /** Sections that fill the detail body edge-to-edge (no max-w wrapper). */
@@ -65,8 +67,10 @@ export default function KnowledgeBaseDetail({
   onDelete,
   onClearHistory,
   onRename,
+  isAdmin = true,
 }: KnowledgeBaseDetailProps) {
   const { t } = useTranslation();
+  const visibleSections = ALL_SECTIONS.filter((s) => isAdmin || !s.adminOnly);
   const [section, setSection] = useState<DetailSection>("files");
 
   if (!kb) {
@@ -149,7 +153,7 @@ export default function KnowledgeBaseDetail({
 
         {/* Section nav */}
         <nav className="-mb-3 mt-3 flex gap-1 overflow-x-auto">
-          {SECTIONS.map(({ key, label, Icon }) => {
+          {visibleSections.map(({ key, label, Icon }) => {
             const active = section === key;
             return (
               <button
@@ -173,7 +177,7 @@ export default function KnowledgeBaseDetail({
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {section === "files" ? (
-          <KbFilesTab key={kb.name} kb={kb} task={task} />
+          <KbFilesTab key={kb.name} kb={kb} task={task} isAdmin={isAdmin} />
         ) : (
           <div className="h-full overflow-y-auto px-6 py-5">
             <div className={fullBleed ? "" : "mx-auto max-w-3xl"}>
@@ -196,9 +200,10 @@ export default function KnowledgeBaseDetail({
                   onReindex={() =>
                     kb.read_only ? Promise.resolve() : onReindex(kb.name)
                   }
+                  isAdmin={isAdmin}
                 />
               )}
-              {section === "settings" && (
+              {section === "settings" && isAdmin && (
                 <KbSettingsSection
                   kb={kb}
                   onSetDefault={() =>

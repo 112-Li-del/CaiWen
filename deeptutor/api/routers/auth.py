@@ -392,6 +392,11 @@ async def register(body: RegisterRequest) -> dict:
         logger.info(f"First user (admin) registered: '{body.username}'")
     else:
         logger.info(f"User '{body.username}' registered (pending approval)")
+        # Auto-assign default model + knowledge-base grants so the new user can
+        # start using the system immediately after admin approval.
+        if user_id:
+            from deeptutor.multi_user.auto_grant import auto_assign_defaults
+            auto_assign_defaults(user_id)
 
     return {
         "ok": True,
@@ -476,6 +481,12 @@ async def admin_create_user(
         f"Admin '{current.username if current else 'local'}' created user '{body.username}' "
         f"(role={role!r})"
     )
+    # Auto-assign default resource grants so the new user can use the system
+    # immediately without waiting for manual admin configuration.
+    if user_id and role != "admin":
+        from deeptutor.multi_user.auto_grant import auto_assign_defaults
+        auto_assign_defaults(user_id)
+
     return {
         "ok": True,
         "user_id": user_id,

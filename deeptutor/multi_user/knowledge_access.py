@@ -86,16 +86,19 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
             read_only=False,
         )
 
+    # ── Non-admin users: every knowledge base is read-only ──
+    if require_write:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can modify knowledge bases.",
+        )
+
     user_manager = user_kb_manager_for_current_user()
     assigned_names = _assigned_admin_names()
 
     if requested_source == "admin":
         if name not in assigned_names:
             raise HTTPException(status_code=403, detail="Knowledge base is not assigned to you")
-        if require_write:
-            raise HTTPException(
-                status_code=403, detail="Assigned admin knowledge bases are read-only"
-            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,
@@ -113,7 +116,7 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
             base_dir=current_kb_base_dir(),
             source="user",
             assigned=False,
-            read_only=False,
+            read_only=True,
         )
 
     if name.lower() in DEFAULT_KB_ALIASES:
@@ -124,7 +127,7 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
             base_dir=current_kb_base_dir(),
             source="user",
             assigned=False,
-            read_only=False,
+            read_only=True,
         )
 
     user_names = set(user_manager.list_knowledge_bases())
@@ -135,14 +138,10 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
             base_dir=current_kb_base_dir(),
             source="user",
             assigned=False,
-            read_only=False,
+            read_only=True,
         )
 
     if name in assigned_names:
-        if require_write:
-            raise HTTPException(
-                status_code=403, detail="Assigned admin knowledge bases are read-only"
-            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,
@@ -176,15 +175,20 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
     user = get_current_user()
     manager = current_kb_manager() if user.is_admin else user_kb_manager_for_current_user()
     items: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    provenance_label = "Admin workspace" if user.is_admin else "Created by you"
     for name in manager.list_knowledge_bases():
+        if name in seen_names:
+            continue
+        seen_names.add(name)
         items.append(
             {
                 "id": f"admin:kb:{name}" if user.is_admin else f"user:kb:{name}",
                 "name": name,
                 "source": "admin" if user.is_admin else "user",
                 "assigned": False,
-                "read_only": False,
-                "provenance_label": "Created by you" if not user.is_admin else "Admin workspace",
+                "read_only": not user.is_admin,
+                "provenance_label": provenance_label,
             }
         )
 
@@ -193,20 +197,17 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
 
     admin_manager = admin_kb_manager()
     admin_names = set(admin_manager.list_knowledge_bases())
-    existing_ids = {item["id"] for item in items}
     for item in load_grant(user.id).get("knowledge_bases", []) or []:
         name = str(item.get("name") or item.get("kb_name") or "").strip()
         resource_id = str(item.get("resource_id") or item.get("id") or "")
         if resource_id.startswith(ADMIN_PREFIX):
             name = resource_id[len(ADMIN_PREFIX) :]
-        if not name:
+        if not name or name in seen_names:
             continue
-        rid = f"admin:kb:{name}"
-        if rid in existing_ids:
-            continue
+        seen_names.add(name)
         items.append(
             {
-                "id": rid,
+                "id": f"admin:kb:{name}",
                 "name": name,
                 "source": "admin",
                 "assigned": True,
