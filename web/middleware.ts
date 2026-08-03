@@ -6,7 +6,7 @@ const LOGIN_PATH = "/login";
 const COOKIE_NAME = "dt_token";
 
 // Pages that require admin role
-const ADMIN_ROUTES = ["/space"];
+const ADMIN_ROUTES = ["/knowledge", "/space"];
 
 // Static asset extensions that don't need auth
 const STATIC_EXT = /\.(jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|eot|css|js|json|map|txt)$/i;

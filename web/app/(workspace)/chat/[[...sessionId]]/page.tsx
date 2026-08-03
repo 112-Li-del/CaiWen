@@ -592,16 +592,7 @@ export default function ChatPage() {
   const refreshKnowledgeBases = useCallback(
     async (options?: { force?: boolean }) => {
       try {
-        const rawList = await listKnowledgeBases({ force: options?.force });
-        // Deduplicate by id (preferred) or name to guard against any
-        // remaining server-side duplication.
-        const seen = new Set<string>();
-        const list = rawList.filter((kb) => {
-          const key = (kb as any).id || kb.name;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        const list = await listKnowledgeBases({ force: options?.force });
         setKnowledgeBases(list);
         if (
           !kbInitialAutoSelectDoneRef.current &&

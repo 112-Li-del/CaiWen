@@ -89,7 +89,7 @@ interface SidebarShellProps {
 }
 
 /** Nav entries that are only visible to admin users. */
-const ADMIN_ONLY_HREFS = new Set(["/space"]);
+const ADMIN_ONLY_HREFS = new Set(["/knowledge", "/space"]);
 
 export function SidebarShell({
   sessions = [],

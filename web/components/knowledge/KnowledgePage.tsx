@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
-import { useAppShell } from "@/context/AppShellContext";
 import KnowledgeBaseList from "./KnowledgeBaseList";
 import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
 import CreateKbModal from "./CreateKbModal";
@@ -15,7 +14,6 @@ export default function KnowledgePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialKb = searchParams.get("kb");
-  const { isAdmin } = useAppShell();
 
   const {
     kbs,
@@ -185,7 +183,6 @@ export default function KnowledgePage() {
             onSetDefault={handleSetDefault}
             onDelete={handleDelete}
             tasksByKb={tasksByKb}
-            isAdmin={isAdmin}
           />
           <KnowledgeBaseDetail
             kb={selectedKb}
@@ -199,7 +196,6 @@ export default function KnowledgePage() {
             onDelete={handleDelete}
             onClearHistory={clearHistory}
             onRename={handleRename}
-            isAdmin={isAdmin}
           />
         </div>
       )}

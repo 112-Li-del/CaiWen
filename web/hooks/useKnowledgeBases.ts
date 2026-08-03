@@ -130,26 +130,19 @@ export function useKnowledgeBases() {
   }, []);
 
   // Combined view: merge live progress into each KB so consumers see a
-  // single source of truth (status + progress). Also deduplicate by name
-  // to guard against any remaining server-side duplication.
-  const combinedKbs = useMemo<KnowledgeBase[]>(() => {
-    const seen = new Set<string>();
-    return kbs
-      .filter((kb) => {
-        const key = kb.name;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((kb) => ({
+  // single source of truth (status + progress).
+  const combinedKbs = useMemo<KnowledgeBase[]>(
+    () =>
+      kbs.map((kb) => ({
         ...kb,
         status: kb.status ?? kb.statistics?.status,
         progress:
           progress.progressByKb[kb.name] ||
           kb.progress ||
           kb.statistics?.progress,
-      }));
-  }, [kbs, progress.progressByKb]);
+      })),
+    [kbs, progress.progressByKb],
+  );
 
   const hasActiveWork = useMemo(
     () =>

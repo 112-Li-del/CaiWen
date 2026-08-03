@@ -15,7 +15,6 @@ import KbFilePreview from "./KbFilePreview";
 interface KbFilesTabProps {
   kb: KnowledgeBase;
   task?: TaskState;
-  isAdmin?: boolean;
 }
 
 /**
@@ -24,7 +23,7 @@ interface KbFilesTabProps {
  * `/knowledge`) and this file list can be collapsed to icon-only strips
  * to reclaim horizontal space for the actual preview content.
  */
-export default function KbFilesTab({ kb, task, isAdmin = true }: KbFilesTabProps) {
+export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
   const [selectedFile, setSelectedFile] = useState<KnowledgeBaseFile | null>(
     null,
   );
@@ -61,7 +60,6 @@ export default function KbFilesTab({ kb, task, isAdmin = true }: KbFilesTabProps
         onSelect={setSelectedFile}
         collapsed={fileListPanel.collapsed}
         onToggleCollapsed={fileListPanel.toggle}
-        isAdmin={isAdmin}
       />
       <div className="min-w-0 flex-1">
         <KbFilePreview

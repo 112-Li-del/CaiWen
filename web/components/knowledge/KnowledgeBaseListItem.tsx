@@ -18,7 +18,6 @@ interface KnowledgeBaseListItemProps {
   onSetDefault: () => void;
   onDelete: () => void;
   isReindexingLocally?: boolean;
-  isAdmin?: boolean;
 }
 
 export default function KnowledgeBaseListItem({
@@ -28,7 +27,6 @@ export default function KnowledgeBaseListItem({
   onSetDefault,
   onDelete,
   isReindexingLocally = false,
-  isAdmin = true,
 }: KnowledgeBaseListItemProps) {
   const { t } = useTranslation();
   const status = resolveKbStatus(kb);
@@ -94,38 +92,41 @@ export default function KnowledgeBaseListItem({
           </div>
         </div>
 
-        {isAdmin && (
-          <div
-            className={`flex shrink-0 items-center gap-0.5 ${
-              selected ? "" : "opacity-0 group-hover:opacity-100"
-            } transition-opacity`}
-          >
-            {!kb.is_default && !kb.read_only && (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSetDefault();
-                }}
-                title={t("Set default")}
-                className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-amber-500"
-              >
-                <Star className="h-3 w-3" />
-              </button>
-            )}
+        <div
+          className={`flex shrink-0 items-center gap-0.5 ${
+            selected ? "" : "opacity-0 group-hover:opacity-100"
+          } transition-opacity`}
+        >
+          {!kb.is_default && !kb.read_only && (
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                onDelete();
+                onSetDefault();
               }}
-              title={t("Delete")}
-              className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+              title={t("Set default")}
+              className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-amber-500"
             >
-              <Trash2 className="h-3 w-3" />
+              <Star className="h-3 w-3" />
             </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            disabled={kb.read_only}
+            title={
+              kb.read_only
+                ? t("Assigned knowledge bases are read-only")
+                : t("Delete")
+            }
+            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
       {isLive && (

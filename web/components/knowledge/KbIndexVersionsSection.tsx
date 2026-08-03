@@ -30,14 +30,12 @@ interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
   task?: TaskState;
   onReindex: () => Promise<void>;
-  isAdmin?: boolean;
 }
 
 export default function KbIndexVersionsSection({
   kb,
   task,
   onReindex,
-  isAdmin = true,
 }: KbIndexVersionsSectionProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
@@ -81,7 +79,7 @@ export default function KbIndexVersionsSection({
           </div>
         </div>
 
-        {showReindexCta && isAdmin && (
+        {showReindexCta && (
           <button
             type="button"
             onClick={handleReindex}
