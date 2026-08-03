@@ -14,6 +14,7 @@ import {
   type UserRecord,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
+import { AdminTabs } from "@/components/auth/AdminTabs";
 import {
   Shield,
   ShieldOff,
@@ -247,6 +248,8 @@ export default function AdminUsersPage() {
             {t("Refresh")}
           </button>
         </div>
+
+        <AdminTabs className="mb-5" />
 
         {actionError && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">

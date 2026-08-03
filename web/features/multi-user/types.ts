@@ -48,3 +48,19 @@ export type MultiUserResources = {
   }>;
   skills: Array<{ name: string; description?: string; tags?: string[] }>;
 };
+
+/** Per-instance defaults granted to every newly registered user. */
+export type DefaultGrantsConfig = {
+  version: number;
+  models: {
+    llm: Array<Record<string, unknown>>;
+    embedding: Array<Record<string, unknown>>;
+    search: Array<Record<string, unknown>>;
+  };
+  knowledge_bases: Array<Record<string, unknown>>;
+};
+
+export type DefaultGrantsResponse = {
+  config: DefaultGrantsConfig;
+  path?: string;
+};

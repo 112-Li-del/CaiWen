@@ -78,6 +78,7 @@ import {
   type ResearchSource,
 } from "@/lib/research-types";
 import { listKnowledgeBases } from "@/lib/knowledge-api";
+import { fetchAuthStatus } from "@/lib/auth";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import type { SpaceMemoryFile } from "@/lib/space-items";
@@ -232,6 +233,7 @@ const CAPABILITIES: CapabilityDef[] = [
 interface KnowledgeBase {
   name: string;
   is_default?: boolean;
+  available?: boolean;
 }
 
 interface PendingAttachment {
@@ -350,6 +352,8 @@ export default function ChatPage() {
   const kbBtnRef = useRef<HTMLButtonElement>(null);
   const initialLoadRef = useRef(false);
   const kbInitialAutoSelectDoneRef = useRef(false);
+  // null = role not yet resolved; drives KB default-selection per role.
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const activeCap = useMemo(
     () => getCapability(state.activeCapability),
@@ -595,22 +599,45 @@ export default function ChatPage() {
         const list = await listKnowledgeBases({ force: options?.force });
         setKnowledgeBases(list);
         if (
+          isAdmin !== null &&
           !kbInitialAutoSelectDoneRef.current &&
           !state.knowledgeBases.length &&
           list.length
         ) {
           kbInitialAutoSelectDoneRef.current = true;
-          const def = list.find((k: KnowledgeBase) => k.is_default);
-          if (def?.name) {
-            setKBs([def.name]);
+          if (isAdmin) {
+            // Admins keep the original behaviour: select the default KB when one
+            // is configured.
+            const def = list.find((k: KnowledgeBase) => k.is_default);
+            if (def?.name) {
+              setKBs([def.name]);
+            }
+          } else {
+            // Normal users: default-check the first available KB so a newly
+            // approved account immediately has a knowledge base selected. The
+            // selection stays fully manual afterwards.
+            const firstAvailable = list.find(
+              (k: KnowledgeBase) => k.available !== false,
+            );
+            if (firstAvailable?.name) {
+              setKBs([firstAvailable.name]);
+            }
           }
         }
       } catch {
         setKnowledgeBases([]);
       }
     },
-    [setKBs],
+    [isAdmin, setKBs],
   );
+
+  /* Resolve the current user's role once, so the KB default-selection below
+     can behave differently for admins vs normal users. */
+  useEffect(() => {
+    fetchAuthStatus().then((status) => {
+      if (status) setIsAdmin(status.role === "admin");
+    });
+  }, []);
 
   /* Load KBs */
   useEffect(() => {

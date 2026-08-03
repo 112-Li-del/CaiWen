@@ -1,5 +1,10 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import type { GrantPayload, MultiUserResources } from "./types";
+import type {
+  DefaultGrantsConfig,
+  DefaultGrantsResponse,
+  GrantPayload,
+  MultiUserResources,
+} from "./types";
 
 async function readError(res: Response, fallback: string): Promise<string> {
   try {
@@ -45,4 +50,24 @@ export async function saveUserGrant(
     throw new Error(await readError(res, "Failed to save user grant"));
   const data = await res.json();
   return data.grant as GrantPayload;
+}
+
+export async function fetchDefaultGrants(): Promise<DefaultGrantsResponse> {
+  const res = await apiFetch(apiUrl("/api/v1/multi-user/admin/default-grants"));
+  if (!res.ok)
+    throw new Error(await readError(res, "Failed to load default grants"));
+  return (await res.json()) as DefaultGrantsResponse;
+}
+
+export async function saveDefaultGrants(
+  config: DefaultGrantsConfig,
+): Promise<DefaultGrantsResponse> {
+  const res = await apiFetch(apiUrl("/api/v1/multi-user/admin/default-grants"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  });
+  if (!res.ok)
+    throw new Error(await readError(res, "Failed to save default grants"));
+  return (await res.json()) as DefaultGrantsResponse;
 }

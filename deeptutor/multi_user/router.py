@@ -17,6 +17,11 @@ from deeptutor.services.skill.service import SkillService
 
 from .audit import log_admin_action
 from .context import get_current_user
+from .default_grants import (
+    config_path,
+    load_default_config,
+    save_default_config,
+)
 from .grants import load_grant, save_grant
 from .identity import get_user_by_id, list_user_info
 from .knowledge_access import admin_kb_base_dir, list_visible_knowledge_bases
@@ -29,6 +34,12 @@ router = APIRouter()
 
 class GrantPayload(BaseModel):
     grant: dict[str, Any]
+
+
+class DefaultGrantsPayload(BaseModel):
+    """Per-instance defaults granted to every newly registered user."""
+
+    config: dict[str, Any]
 
 
 class SpaceAssignPayload(BaseModel):
@@ -133,6 +144,37 @@ async def admin_resources(_: object = Depends(require_admin)) -> dict[str, Any]:
         "knowledge_bases": _admin_kb_summary(),
         "skills": _admin_skill_summary(),
     }
+
+
+@router.get("/admin/default-grants")
+async def admin_default_grants(_: object = Depends(require_admin)) -> dict[str, Any]:
+    """Return this deployment's defaults for newly registered users."""
+    return {
+        "config": load_default_config(),
+        "path": str(config_path()),
+    }
+
+
+@router.put("/admin/default-grants")
+async def put_admin_default_grants(
+    payload: DefaultGrantsPayload,
+    _: object = Depends(require_admin),
+) -> dict[str, Any]:
+    """Persist this deployment's defaults for newly registered users."""
+    try:
+        saved = save_default_config(payload.config)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_admin_action(
+        "default_grants_set",
+        summary={
+            "model_count": sum(
+                len(saved.get("models", {}).get(s, [])) for s in ("llm", "embedding", "search")
+            ),
+            "kb_count": len(saved.get("knowledge_bases", []) or []),
+        },
+    )
+    return {"config": saved, "path": str(config_path())}
 
 
 @router.get("/users/{user_id}/grants")

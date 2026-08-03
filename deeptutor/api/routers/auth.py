@@ -13,6 +13,13 @@ from pydantic import BaseModel, field_validator
 _SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
 _SAMESITE = "none" if _SECURE else "lax"
 
+# When true (default), accounts created directly by an admin via POST /users
+# also receive this instance's default grants immediately. Self-registered
+# accounts always receive theirs at approval time (see admin_approve_user).
+AUTO_GRANT_ADMIN_CREATED_USERS = (
+    os.getenv("AUTO_GRANT_ADMIN_CREATED_USERS", "true").lower() == "true"
+)
+
 from deeptutor.services.auth import (
     AUTH_ENABLED,
     POCKETBASE_ENABLED,
@@ -392,6 +399,9 @@ async def register(body: RegisterRequest) -> dict:
         logger.info(f"First user (admin) registered: '{body.username}'")
     else:
         logger.info(f"User '{body.username}' registered (pending approval)")
+        # Grants are applied at activation time (admin_approve_user), not at
+        # registration, so they reflect the instance's default config on the
+        # day the account is actually approved.
 
     return {
         "ok": True,
@@ -476,6 +486,15 @@ async def admin_create_user(
         f"Admin '{current.username if current else 'local'}' created user '{body.username}' "
         f"(role={role!r})"
     )
+    # Optionally grant this instance's defaults immediately for admin-created
+    # accounts. Controlled by AUTO_GRANT_ADMIN_CREATED_USERS (default on) so a
+    # deployment can opt out. Self-registered accounts are granted on approval
+    # instead (see admin_approve_user).
+    if AUTO_GRANT_ADMIN_CREATED_USERS and user_id and role != "admin":
+        from deeptutor.multi_user.default_grants import apply_default_grant
+
+        apply_default_grant(user_id)
+
     return {
         "ok": True,
         "user_id": user_id,
@@ -522,6 +541,18 @@ async def admin_approve_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found or not in pending state",
         )
+
+    # approve_user() only returns True when the account actually transitioned
+    # pending → active, so the block below runs exactly once per activation.
+    # Apply the instance's default grants at activation time (not registration)
+    # so the account immediately has the configured models / public KBs.
+    from deeptutor.multi_user.default_grants import apply_default_grant
+    from deeptutor.multi_user.identity import get_user as _identity_get_user
+
+    _record = _identity_get_user(username) or {}
+    _user_id = str(_record.get("id") or "")
+    if _user_id:
+        apply_default_grant(_user_id)
 
     logger.info(
         f"Admin '{current.username if current else 'local'}' approved user '{username}'"
