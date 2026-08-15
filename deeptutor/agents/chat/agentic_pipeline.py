@@ -44,7 +44,10 @@ logger = logging.getLogger(__name__)
 CHAT_EXCLUDED_TOOLS = {"geogebra_analysis"}
 CHAT_OPTIONAL_TOOLS = [name for name in BUILTIN_TOOL_NAMES if name not in CHAT_EXCLUDED_TOOLS]
 MAX_PARALLEL_TOOL_CALLS = 8
-MAX_TOOL_RESULT_CHARS = 4000
+# Cap on a single tool result fed back into the LLM. Raised from 4000 so the
+# RAG fast path can hand the model complete passages (quality) without losing
+# the safety of a hard upper bound.
+MAX_TOOL_RESULT_CHARS = 8000
 
 CHAT_STAGE_KEYS: tuple[str, ...] = (
     "responding",
@@ -191,13 +194,33 @@ class AgenticChatPipeline:
                 stage="thinking",
                 metadata={"reason": "rag_without_kb"},
             )
-        thinking_text = await self._stage_thinking(context, enabled_tools, stream)
-        tool_traces = await self._stage_acting(
-            context=context,
-            enabled_tools=enabled_tools,
-            thinking_text=thinking_text,
-            stream=stream,
-        )
+        # ---- Fast paths (latency optimizations) -----------------------------
+        # Fast paths skip the serial thinking / acting / observing LLM
+        # round-trips when they would add latency without adding information.
+        skip_observing = False
+        if not enabled_tools:
+            # No tools enabled: single-call direct answer. Thinking / acting /
+            # observing would be pure LLM round-trips with nothing to plan or
+            # observe, so skip straight to the final response.
+            thinking_text = ""
+            tool_traces: list[ToolTrace] = []
+            skip_observing = True
+        elif enabled_tools == ["rag"] and self._selected_kbs(context):
+            # RAG-only turn with a selected KB: run deterministic retrieval
+            # (the user's question is the retrieval query) instead of an LLM
+            # tool-planning round-trip, then respond grounded in the passages.
+            # This removes two serial LLM calls from the common KB Q&A path.
+            thinking_text = ""
+            tool_traces = await self._run_direct_rag(context, stream)
+            skip_observing = True
+        else:
+            thinking_text = await self._stage_thinking(context, enabled_tools, stream)
+            tool_traces = await self._stage_acting(
+                context=context,
+                enabled_tools=enabled_tools,
+                thinking_text=thinking_text,
+                stream=stream,
+            )
         # Hard guard: when RAG is the only tool called and every RAG result is
         # empty, refuse to answer instead of letting the LLM hallucinate.
         if self._should_refuse_for_empty_rag(tool_traces, enabled_tools):
@@ -232,13 +255,19 @@ class AgenticChatPipeline:
             await stream.result(result_payload, source="chat")
             return
 
-        observation = await self._stage_observing(
-            context=context,
-            enabled_tools=enabled_tools,
-            thinking_text=thinking_text,
-            tool_traces=tool_traces,
-            stream=stream,
-        )
+        # Skip the observing stage when acting produced no tool traces (or the
+        # fast paths already answered from retrieved evidence directly): there
+        # is no new evidence to reason about, so a full LLM round-trip here
+        # would only add latency without changing the final answer.
+        observation = ""
+        if tool_traces and not skip_observing:
+            observation = await self._stage_observing(
+                context=context,
+                enabled_tools=enabled_tools,
+                thinking_text=thinking_text,
+                tool_traces=tool_traces,
+                stream=stream,
+            )
         final_response, responding_trace = await self._stage_responding(
             context=context,
             enabled_tools=enabled_tools,
@@ -388,6 +417,179 @@ class AgenticChatPipeline:
                 thinking_text=thinking_text,
                 stream=stream,
             )
+
+    async def _reformulate_rag_queries(self, user_message: str) -> list[str]:
+        """Rewrite the user's question into concise retrieval queries.
+
+        One short LLM call produces 1-2 concrete query phrases that match how
+        the knowledge base is actually worded, which materially improves recall
+        over using the raw conversational question. Any failure falls back to
+        the original message so retrieval never breaks.
+        """
+        message = (user_message or "").strip()
+        if not message:
+            return [message]
+        try:
+            from deeptutor.services.llm import complete
+
+            system = self._t(
+                "rag_fast.query_system",
+                default=(
+                    "Rewrite the user's question into 1-2 specific, concrete "
+                    "search queries for vector retrieval over a knowledge base. "
+                    "Output one query per line only, with no numbering and no "
+                    "explanation."
+                ),
+            )
+            kwargs: dict[str, Any] = {}
+            if self.model:
+                kwargs.update(get_token_limit_kwargs(self.model, 200))
+            raw = await complete(
+                prompt=message,
+                system_prompt=system,
+                model=self.model,
+                api_key=self.api_key,
+                base_url=self.base_url,
+                api_version=self.api_version,
+                binding=self.binding,
+                extra_headers=self.extra_headers or None,
+                **kwargs,
+            )
+            queries = [
+                q.strip().lstrip("0123456789.-) ").strip()
+                for q in (raw or "").splitlines()
+                if q.strip()
+            ]
+            return queries[:2] if queries else [message]
+        except Exception:
+            return [message]
+
+    async def _run_direct_rag(
+        self,
+        context: UnifiedContext,
+        stream: StreamBus,
+    ) -> list[ToolTrace]:
+        """RAG-only fast path: reformulate → retrieve → merge, no planning LLM.
+
+        Replaces the serial thinking + tool-planning + observing LLM calls with
+        one short query-reformulation call and parallel retrieval at a higher
+        top_k, so the final response keeps the fast latency while receiving
+        fuller, better-matched material.
+        """
+        tool_call_id = new_call_id("chat-rag-fast")
+        trace_meta = build_trace_metadata(
+            call_id=tool_call_id,
+            phase="acting",
+            label=self._t("labels.retrieve", default="Retrieve"),
+            call_kind="rag_retrieval",
+            trace_id="chat-rag-fast",
+            trace_role="retrieve",
+            trace_group="retrieve",
+        )
+        async with stream.stage("acting", source="chat", metadata=trace_meta):
+            raw_query = self._fallback_rag_query(context)
+            queries = await self._reformulate_rag_queries(raw_query)
+            await stream.tool_call(
+                tool_name="rag",
+                args={"query": raw_query},
+                source="chat",
+                stage="acting",
+                metadata=self._tool_trace_metadata(
+                    trace_meta,
+                    context=context,
+                    tool_call_id=tool_call_id,
+                    tool_name="rag",
+                    tool_index=0,
+                ),
+            )
+
+            async def _retrieve(query: str):
+                args = self._augment_tool_kwargs(
+                    "rag",
+                    {"query": query, "top_k": 8},
+                    context,
+                    "",
+                )
+                result = await self.registry.execute("rag", **args)
+                return (
+                    result.content or "",
+                    list(result.sources or []),
+                    dict(result.metadata or {}),
+                    bool(getattr(result, "success", True)),
+                )
+
+            async def _retrieve_safe(query: str):
+                try:
+                    return await _retrieve(query)
+                except Exception:
+                    return None
+
+            results = await asyncio.gather(*[_retrieve_safe(q) for q in queries])
+
+            passages: list[str] = []
+            sources: list[dict[str, Any]] = []
+            metadata: dict[str, Any] = {}
+            had_error = False
+            seen_passages: set[str] = set()
+            seen_sources: set[str] = set()
+            for item in results:
+                if item is None:
+                    had_error = True
+                    continue
+                content, srcs, meta, ok = item
+                if not ok:
+                    had_error = True
+                # Skip genuine no-results markers so the hard guard below can
+                # decide refusal based on whether any real passage was found.
+                if meta.get("rag_status") == "no_results" or not content.strip():
+                    continue
+                if content not in seen_passages:
+                    seen_passages.add(content)
+                    passages.append(content)
+                for src in srcs:
+                    key = str(
+                        src.get("source_file") or src.get("url") or src.get("title") or ""
+                    )
+                    if key and key in seen_sources:
+                        continue
+                    if key:
+                        seen_sources.add(key)
+                    sources.append(src)
+                metadata.update(meta)
+
+            if passages:
+                result_text = "\n\n---\n\n".join(passages)
+            else:
+                result_text = (
+                    "【知识库未找到相关内容】针对该查询，所选知识库中未检索到匹配的信息。"
+                    "请勿基于猜测或通识编造答案。"
+                )
+                metadata["rag_status"] = "no_results"
+
+            await stream.tool_result(
+                tool_name="rag",
+                result=result_text,
+                source="chat",
+                stage="acting",
+                metadata=self._tool_trace_metadata(
+                    trace_meta,
+                    context=context,
+                    tool_call_id=tool_call_id,
+                    tool_name="rag",
+                    tool_index=0,
+                    trace_kind="tool_result",
+                ),
+            )
+            return [
+                ToolTrace(
+                    name="rag",
+                    arguments={"query": raw_query},
+                    result=result_text,
+                    success=bool(passages) or not had_error,
+                    sources=sources,
+                    metadata=metadata,
+                )
+            ]
 
     async def _stage_observing(
         self,
