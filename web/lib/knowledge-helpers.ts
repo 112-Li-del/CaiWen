@@ -28,6 +28,7 @@ export interface ProgressInfo {
 }
 
 export interface IndexVersion {
+  version?: string;
   signature?: string;
   model?: string;
   dimension?: number;
@@ -35,6 +36,7 @@ export interface IndexVersion {
   created_at?: string;
   ready?: boolean;
   legacy?: boolean;
+  schema_version?: number;
 }
 
 export interface KnowledgeBase {

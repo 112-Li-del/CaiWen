@@ -1718,5 +1718,14 @@
   "Knowledge bases are granted read-only. Normal users still never see the knowledge page in the sidebar.": "Knowledge bases are granted read-only. Normal users still never see the knowledge page in the sidebar.",
   "This configuration is stored per deployment and does not affect other instances.": "This configuration is stored per deployment and does not affect other instances.",
   "Changes only affect accounts registered after saving.": "Changes only affect accounts registered after saving.",
-  "Untitled chat": "Untitled chat"
+  "Untitled chat": "Untitled chat",
+  "View original": "View original",
+  "Page {{page}}": "Page {{page}}",
+  "PDF preview converted from DOCX": "PDF preview converted from DOCX",
+  "PDF conversion failed": "PDF conversion failed",
+  "This document contains only images and cannot be indexed.": "This document contains only images and cannot be indexed.",
+  "This document contains images, so its index is incomplete.": "This document contains images, so its index is incomplete.",
+  "Current format": "Current format",
+  "Schema {{version}}": "Schema {{version}}",
+  "Preparing PDF preview": "Preparing PDF preview"
 }

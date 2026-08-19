@@ -19,11 +19,10 @@ def _signature() -> EmbeddingSignature:
 
 
 @pytest.mark.asyncio
-async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
+async def test_incremental_add_rejects_legacy_index_until_full_reindex(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
     from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
 
     sig = _signature()
@@ -41,46 +40,10 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
         encoding="utf-8",
     )
 
-    captured: dict[str, str] = {}
-
-    class _FakeStorageContext:
-        @classmethod
-        def from_defaults(cls, persist_dir: str):
-            captured["load_dir"] = persist_dir
-            return cls()
-
-        def persist(self, persist_dir: str) -> None:
-            captured["persist_dir"] = persist_dir
-            target = Path(persist_dir)
-            target.mkdir(parents=True, exist_ok=True)
-            (target / "docstore.json").write_text("{}", encoding="utf-8")
-
-    class _FakeIndex:
-        def __init__(self) -> None:
-            self.storage_context = _FakeStorageContext()
-            self.inserted = []
-
-        def insert(self, document) -> None:
-            self.inserted.append(document)
-
-    async def _verify_embedding_connectivity(self) -> None:
-        return None
-
     monkeypatch.setattr(
         LlamaIndexPipeline,
         "_configure_settings",
         lambda self: None,
-    )
-    monkeypatch.setattr(
-        LlamaIndexPipeline,
-        "_verify_embedding_connectivity",
-        _verify_embedding_connectivity,
-    )
-    monkeypatch.setattr(storage_module, "StorageContext", _FakeStorageContext)
-    monkeypatch.setattr(
-        storage_module,
-        "load_index_from_storage",
-        lambda _storage_context: _FakeIndex(),
     )
 
     pipeline = LlamaIndexPipeline(
@@ -88,10 +51,40 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
         signature_provider=lambda: sig,
     )
 
-    assert await pipeline.add_documents("kb", [str(raw_file)]) is True
+    with pytest.raises(ValueError, match="full reindex"):
+        await pipeline.add_documents("kb", [str(raw_file)])
 
-    flat_storage_dir = kb_dir / "version-1"
-    assert captured["load_dir"] == str(legacy_storage_dir)
-    assert captured["persist_dir"] == str(flat_storage_dir)
-    assert (flat_storage_dir / "docstore.json").exists()
-    assert json.loads((flat_storage_dir / "meta.json").read_text())["signature"] == sig.hash()
+    assert not (kb_dir / "version-1").exists()
+
+
+@pytest.mark.asyncio
+async def test_full_reindex_with_no_documents_does_not_allocate_empty_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    class _EmptyLoader:
+        async def load(self, _file_paths):
+            return []
+
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+    monkeypatch.setattr(
+        LlamaIndexPipeline,
+        "_verify_embedding_connectivity",
+        lambda self: _completed(),
+    )
+    pipeline = LlamaIndexPipeline(
+        kb_base_dir=str(tmp_path),
+        signature_provider=_signature,
+        document_loader=_EmptyLoader(),
+    )
+
+    success = await pipeline.initialize("kb", ["scan.pdf"])
+
+    assert success is False
+    assert not (tmp_path / "kb" / "version-1").exists()
+
+
+async def _completed() -> None:
+    return None

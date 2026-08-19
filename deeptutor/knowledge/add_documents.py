@@ -18,7 +18,10 @@ from dotenv import load_dotenv
 
 from deeptutor.services.rag.factory import DEFAULT_PROVIDER
 from deeptutor.services.rag.file_routing import FileTypeRouter
-from deeptutor.services.rag.index_versioning import list_kb_versions
+from deeptutor.services.rag.index_versioning import (
+    CURRENT_INDEX_SCHEMA_VERSION,
+    list_kb_versions,
+)
 from deeptutor.services.rag.service import RAGService
 
 logger = logging.getLogger(__name__)
@@ -51,7 +54,9 @@ class DocumentAdder:
         self.metadata_file = self.kb_dir / "metadata.json"
 
         has_llamaindex_index = any(
-            bool(version.get("ready")) for version in list_kb_versions(self.kb_dir)
+            bool(version.get("ready"))
+            and version.get("schema_version") == CURRENT_INDEX_SCHEMA_VERSION
+            for version in list_kb_versions(self.kb_dir)
         )
 
         if not has_llamaindex_index and self.legacy_rag_storage_dir.exists():
@@ -60,7 +65,10 @@ class DocumentAdder:
             )
 
         if not has_llamaindex_index:
-            raise ValueError(f"Knowledge base not initialized (llamaindex): {kb_name}")
+            raise ValueError(
+                f"Knowledge base '{kb_name}' requires reindex for page-aware sources "
+                "before documents can be added"
+            )
 
         if rag_provider and rag_provider != DEFAULT_PROVIDER:
             logger.warning(

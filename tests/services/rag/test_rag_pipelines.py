@@ -20,6 +20,12 @@ class _FakePipeline:
             "sources": [{"id": 1}],
             "provider": "lightrag",  # deliberately wrong; service must overwrite
         }
+        self.last_indexing_summary = {
+            "total_file_count": 6,
+            "indexed_file_count": 4,
+            "image_only_file_count": 2,
+            "skipped_file_count": 2,
+        }
 
     async def initialize(self, kb_name: str, file_paths, **kwargs) -> bool:
         self.calls.append({"op": "initialize", "kb_name": kb_name, "files": list(file_paths)})
@@ -50,6 +56,17 @@ def test_provider_argument_is_silently_ignored(tmp_path) -> None:
     """Constructor accepts ``provider`` for back-compat but always uses llamaindex."""
     service = RAGService(kb_base_dir=str(tmp_path), provider="lightrag")
     assert service.provider == "llamaindex"
+
+
+def test_service_exposes_last_indexing_summary(fake_service) -> None:
+    service, _pipeline = fake_service
+
+    assert service.get_last_indexing_summary() == {
+        "total_file_count": 6,
+        "indexed_file_count": 4,
+        "image_only_file_count": 2,
+        "skipped_file_count": 2,
+    }
 
 
 @pytest.mark.asyncio

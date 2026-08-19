@@ -252,6 +252,43 @@ def test_upload_returns_409_when_kb_needs_reindex(monkeypatch, tmp_path: Path) -
     assert "needs reindex" in response.json()["detail"].lower()
 
 
+def test_reindex_allows_kb_that_needs_reindex(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["legacy-kb"] = {
+        "path": "legacy-kb",
+        "rag_provider": "llamaindex",
+        "needs_reindex": True,
+        "status": "needs_reindex",
+    }
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+
+    class _Signature:
+        def hash(self) -> str:
+            return "sig"
+
+    embedding_signature = importlib.import_module("deeptutor.services.rag.embedding_signature")
+    index_versioning = importlib.import_module("deeptutor.services.rag.index_versioning")
+    monkeypatch.setattr(
+        embedding_signature, "signature_from_embedding_config", lambda: _Signature()
+    )
+    monkeypatch.setattr(index_versioning, "find_matching_version", lambda *_args, **_kwargs: None)
+
+    async def _noop_reindex_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
+
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/v1/knowledge/legacy-kb/reindex")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["noop"] is False
+    assert isinstance(body.get("task_id"), str) and body["task_id"]
+    assert manager.config["knowledge_bases"]["legacy-kb"]["status"] == "initializing"
+
+
 def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["ready-kb"] = {
@@ -317,6 +354,61 @@ def test_list_files_preserves_kb_named_default(monkeypatch, tmp_path: Path) -> N
 
     assert response.status_code == 200
     assert response.json()["files"][0]["name"] == "default.txt"
+
+
+def test_file_serving_inlines_pdf_and_downloads_original_docx_and_html(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["school"] = {"path": "school", "status": "ready"}
+    raw_dir = manager.base_dir / "school" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "handbook.pdf").write_bytes(b"%PDF-1.4\n")
+    (raw_dir / "handbook.docx").write_bytes(b"original-word-file")
+    (raw_dir / "unsafe.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        pdf_response = client.get("/api/v1/knowledge/school/files/handbook.pdf")
+        docx_response = client.get("/api/v1/knowledge/school/files/handbook.docx")
+        html_response = client.get("/api/v1/knowledge/school/files/unsafe.html")
+
+    assert pdf_response.status_code == 200
+    assert pdf_response.headers["content-disposition"].startswith("inline")
+    assert pdf_response.headers["x-content-type-options"] == "nosniff"
+    assert pdf_response.headers["cache-control"] == "private, no-store"
+    assert docx_response.status_code == 200
+    assert docx_response.content == b"original-word-file"
+    assert docx_response.headers["content-disposition"].startswith("attachment")
+    assert docx_response.headers["x-content-type-options"] == "nosniff"
+    assert html_response.status_code == 200
+    assert html_response.headers["content-disposition"].startswith("attachment")
+    assert html_response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_file_serving_allows_only_content_addressed_rendition_pdf(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["school"] = {"path": "school", "status": "ready"}
+    rendition_dir = manager.base_dir / "school" / "raw" / "renditions"
+    rendition_dir.mkdir(parents=True)
+    digest = "a" * 64
+    (rendition_dir / f"{digest}.pdf").write_bytes(b"%PDF-1.4\n")
+    (rendition_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        preview_response = client.get(
+            f"/api/v1/knowledge/school/files/renditions/{digest}.pdf"
+        )
+        manifest_response = client.get(
+            "/api/v1/knowledge/school/files/renditions/manifest.json"
+        )
+
+    assert preview_response.status_code == 200
+    assert preview_response.headers["content-disposition"].startswith("inline")
+    assert manifest_response.status_code == 404
 
 
 def test_reindex_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:

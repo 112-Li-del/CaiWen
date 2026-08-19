@@ -1718,5 +1718,14 @@
   "Knowledge bases are granted read-only. Normal users still never see the knowledge page in the sidebar.": "知识库以只读方式授予。普通用户侧边栏仍不显示知识库页面。",
   "This configuration is stored per deployment and does not affect other instances.": "该配置按部署独立存储，不影响其他实例。",
   "Changes only affect accounts registered after saving.": "修改仅影响保存后注册的新账号。",
-  "Untitled chat": "未命名对话"
+  "Untitled chat": "未命名对话",
+  "View original": "查看原文",
+  "Page {{page}}": "第 {{page}} 页",
+  "PDF preview converted from DOCX": "由 DOCX 转换的 PDF 预览",
+  "PDF conversion failed": "PDF 转换失败",
+  "This document contains only images and cannot be indexed.": "文档全是图片，无法建立索引",
+  "This document contains images, so its index is incomplete.": "该文档内含有图片，索引建立不完全",
+  "Current format": "新版索引",
+  "Schema {{version}}": "索引格式 {{version}}",
+  "Preparing PDF preview": "正在生成 PDF 预览"
 }

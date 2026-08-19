@@ -42,19 +42,25 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
 
   const previewSource = useMemo<FilePreviewSource | null>(() => {
     if (!selectedFile) return null;
+    const kbRef = kb.id || kb.name;
+    const previewPath = selectedFile.preview_path || selectedFile.name;
     return {
       filename: selectedFile.name,
-      mimeType: selectedFile.mime_type ?? undefined,
-      url: knowledgeBaseFilePath(kb.name, selectedFile.name),
+      mimeType: selectedFile.preview_mime || selectedFile.mime_type || undefined,
+      url: knowledgeBaseFilePath(kbRef, previewPath),
+      downloadUrl: knowledgeBaseFilePath(kbRef, selectedFile.name),
+      previewLabel: selectedFile.preview_path
+        ? "PDF preview converted from DOCX"
+        : undefined,
       size: selectedFile.size,
-      id: `${kb.name}/${selectedFile.name}`,
+      id: `${kbRef}/${selectedFile.name}`,
     };
-  }, [kb.name, selectedFile]);
+  }, [kb.id, kb.name, selectedFile]);
 
   return (
     <div className="flex h-full min-h-0">
       <KbDocumentList
-        kbName={kb.name}
+        kbName={kb.id || kb.name}
         refreshKey={refreshKey}
         selectedFile={selectedFile?.name ?? null}
         onSelect={setSelectedFile}

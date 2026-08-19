@@ -15,6 +15,15 @@ from deeptutor.services.rag.service import DEFAULT_KB_BASE_DIR, RAGService
 DEFAULT_KB_ALIASES = {"", "default", "current", "selected", "默认", "默认知识库", "当前知识库"}
 
 
+def _annotate_sources(result: dict, *, kb_name: str, kb_ref: str) -> dict:
+    """Attach the authorized KB identity without exposing storage paths."""
+    for source in result.get("sources", []):
+        if isinstance(source, dict):
+            source["kb_name"] = kb_name
+            source["kb_ref"] = kb_ref
+    return result
+
+
 def _resolve_kb_name(kb_name: Optional[str], kb_base_dir: Optional[str] = None) -> Optional[str]:
     """Resolve generic/default KB aliases to the configured default KB."""
     requested = str(kb_name or "").strip()
@@ -68,6 +77,7 @@ async def rag_search(
     if not query:
         raise ValueError("RAG query must be a non-empty string.")
 
+    resolved_kb_ref = str(kb_name or "").strip()
     if kb_base_dir is None:
         try:
             from deeptutor.multi_user.context import get_current_user
@@ -77,6 +87,7 @@ async def rag_search(
             if resource is not None:
                 kb_base_dir = str(resource.base_dir)
                 kb_name = resource.name
+                resolved_kb_ref = resource.id
             elif not get_current_user().is_admin:
                 # Non-admin users must never silently fall back to admin's KB
                 # directory. ``resolve_for_rag`` returning ``None`` means the
@@ -101,11 +112,16 @@ async def rag_search(
         raise ValueError("No knowledge base selected and no default knowledge base is configured.")
 
     try:
-        return await service.search(
+        result = await service.search(
             query=query,
             kb_name=resolved_kb_name,
             event_sink=event_sink,
             **kwargs,
+        )
+        return _annotate_sources(
+            result,
+            kb_name=resolved_kb_name,
+            kb_ref=resolved_kb_ref or resolved_kb_name,
         )
     except Exception as e:
         raise Exception(f"RAG search failed: {e}")
@@ -139,22 +155,57 @@ async def rag_multi_search(
     if kb_names is None:
         kb_names = []
 
-    # Resolve kb_base_dir and KB access (same logic as rag_search)
+    # Resolve KB access first. Multi-user resources may live under different
+    # storage roots, so query each authorized resource with its own service.
     if kb_base_dir is None:
         try:
             from deeptutor.multi_user.context import get_current_user
             from deeptutor.multi_user.knowledge_access import resolve_for_rag
 
-            # Resolve each kb_name through the access layer
-            resolved_names: list[str] = []
+            resolved_resources = []
             for name in kb_names:
                 resource = resolve_for_rag(name)
                 if resource is not None:
-                    if kb_base_dir is None:
-                        kb_base_dir = str(resource.base_dir)
-                    resolved_names.append(resource.name)
-            kb_names = resolved_names
-            if not kb_names and not get_current_user().is_admin:
+                    resolved_resources.append(resource)
+            if resolved_resources:
+                async def _search_resource(resource):
+                    service = RAGService(kb_base_dir=str(resource.base_dir), provider=provider)
+                    result = await service.search(
+                        query=query,
+                        kb_name=resource.name,
+                        event_sink=event_sink,
+                        **kwargs,
+                    )
+                    return resource, _annotate_sources(
+                        result, kb_name=resource.name, kb_ref=resource.id
+                    )
+
+                gathered = await asyncio.gather(
+                    *(_search_resource(resource) for resource in resolved_resources),
+                    return_exceptions=True,
+                )
+                answers: list[str] = []
+                sources: list[dict] = []
+                for item in gathered:
+                    if isinstance(item, Exception):
+                        continue
+                    resource, result = item
+                    answer = result.get("answer") or result.get("content") or ""
+                    if str(answer).strip():
+                        answers.append(f"【{resource.name}】\n{answer}")
+                    sources.extend(
+                        source for source in result.get("sources", []) if isinstance(source, dict)
+                    )
+                content = "\n\n".join(answers)
+                return {
+                    "query": query,
+                    "answer": content,
+                    "content": content,
+                    "sources": sources,
+                    "provider": provider or "llamaindex",
+                    **({"rag_status": "no_results"} if not content else {}),
+                }
+            if not get_current_user().is_admin:
                 raise ValueError(
                     "No knowledge base selected. Pass kb_names explicitly or set a default."
                 )
@@ -178,20 +229,26 @@ async def rag_multi_search(
         raise ValueError("No knowledge base selected and no default knowledge base is configured.")
 
     if len(resolved) == 1:
-        return await service.search(
+        result = await service.search(
             query=query,
             kb_name=resolved[0],
             event_sink=event_sink,
             **kwargs,
         )
+        return _annotate_sources(result, kb_name=resolved[0], kb_ref=resolved[0])
 
     try:
-        return await service.search_multi(
+        result = await service.search_multi(
             query=query,
             kb_names=resolved,
             event_sink=event_sink,
             **kwargs,
         )
+        for source in result.get("sources", []):
+            if isinstance(source, dict):
+                name = str(source.get("kb_name") or "")
+                source["kb_ref"] = name
+        return result
     except Exception as e:
         raise Exception(f"Multi-KB RAG search failed: {e}")
 

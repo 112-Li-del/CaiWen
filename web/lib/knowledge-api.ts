@@ -37,6 +37,14 @@ export interface KnowledgeBaseFile {
   size: number;
   modified: number;
   mime_type?: string | null;
+  rendition_status?: "converting" | "ready" | "failed" | string;
+  rendition_error?: string;
+  preview_path?: string;
+  preview_mime?: string;
+  page_count?: number;
+  indexing_status?: "image_only" | "partial_images" | "text_only" | string;
+  text_page_count?: number;
+  image_page_count?: number;
 }
 
 export async function listKnowledgeBases(options?: { force?: boolean }) {

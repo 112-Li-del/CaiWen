@@ -72,6 +72,7 @@ class LlamaIndexPipeline:
         self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
         self._signature_provider = signature_provider or signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
+        self.last_indexing_summary: dict[str, object] = {}
         self._configure_settings()
 
     def _configure_settings(self) -> None:
@@ -105,14 +106,19 @@ class LlamaIndexPipeline:
 
         kb_dir = Path(self.kb_base_dir) / kb_name
         signature = self._current_signature()
-        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
+        storage_dir: Path | None = None
 
         try:
             await self._verify_embedding_connectivity()
             documents = await self.document_loader.load(file_paths)
+            self.last_indexing_summary = dict(
+                getattr(self.document_loader, "last_load_summary", {})
+            )
             if not documents:
                 self.logger.error("No valid documents found")
                 return False
+
+            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
 
             self.logger.info(
                 f"Creating VectorStoreIndex with {len(documents)} documents "
@@ -138,7 +144,8 @@ class LlamaIndexPipeline:
         except Exception as exc:
             self.logger.error(f"Failed to initialize KB: {exc}")
             self.logger.error(traceback.format_exc())
-            self._cleanup_failed_version_dir(storage_dir, signature)
+            if storage_dir is not None:
+                self._cleanup_failed_version_dir(storage_dir, signature)
             raise
         finally:
             set_progress_callback(None)
@@ -234,15 +241,27 @@ class LlamaIndexPipeline:
                 continue
 
             context_parts.append(node.node.text)
+            raw_name = str(meta.get("raw_name") or meta.get("file_name") or "")
+            preview_path = str(meta.get("preview_path") or raw_name)
             sources.append(
                 {
                     "type": "rag",
-                    "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
+                    "title": raw_name or meta.get("title", f"Document {i + 1}"),
                     "content": node.node.text[:200],
                     "content_preview": node.node.text[:200],
-                    "source": meta.get("file_path", meta.get("file_name", "")),
-                    "source_file": meta.get("file_path", meta.get("file_name", "")),
-                    "page": meta.get("page_label", meta.get("page", "")),
+                    # Public source fields are deliberately relative. Absolute
+                    # server paths remain internal index metadata only.
+                    "source": raw_name,
+                    "source_file": raw_name,
+                    "file_name": raw_name,
+                    "raw_name": raw_name,
+                    "preview_path": preview_path,
+                    "preview_mime": meta.get("preview_mime", ""),
+                    "converted_from_docx": bool(meta.get("converted_from_docx")),
+                    "page": meta.get(
+                        "page_number", meta.get("page_label", meta.get("page", ""))
+                    ),
+                    "page_count": meta.get("page_count", ""),
                     "chunk_id": node.node.node_id or str(i),
                     "score": score,
                 }
@@ -276,6 +295,9 @@ class LlamaIndexPipeline:
                 set_progress_callback(progress_callback)
 
             documents = await self.document_loader.load(file_paths)
+            self.last_indexing_summary = dict(
+                getattr(self.document_loader, "last_load_summary", {})
+            )
             if not documents:
                 self.logger.warning("No valid documents to add")
                 return False

@@ -14,6 +14,7 @@ from deeptutor.services.embedding.validation import validate_embedding_batch
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
     find_matching_version,
+    list_kb_versions,
     resolve_storage_dir_for_read,
     resolve_storage_dir_for_write,
 )
@@ -41,6 +42,13 @@ def resolve_add_storage_plan(kb_dir: Path, signature: EmbeddingSignature | None)
     """Choose existing/new storage dirs for incremental adds."""
     matching_version = find_matching_version(kb_dir, signature) if signature is not None else None
     existing_storage = Path(str(matching_version["storage_path"])) if matching_version else None
+
+    if signature is not None and matching_version is None:
+        has_ready_index = any(bool(entry.get("ready")) for entry in list_kb_versions(kb_dir))
+        if has_ready_index:
+            raise ValueError(
+                "Knowledge base requires a full reindex before incremental documents can be added"
+            )
 
     if matching_version and matching_version.get("layout") == "flat":
         return AddStoragePlan(existing_storage=existing_storage, storage_dir=existing_storage)

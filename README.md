@@ -17,6 +17,7 @@
 - **AI Co-Writer** — 多文档 Markdown 工作区，AI 是一等协作者。选中文字即可重写、扩展或总结——从你的知识库和网络中汲取内容。每一个片段都能反哺到你的学习生态系统中。
 - **Book Engine** — 将你的学习材料转化为结构化、交互式的"活书"。多 Agent 管道设计大纲、检索相关来源、编译包含 13 种块类型的丰富页面——测验、闪卡、时间线、概念图、交互演示等。
 - **知识中心** — 上传 PDF、Markdown 和文本文件构建 RAG 就绪的知识库。在彩色标签的笔记本中整理知识点，在题库中回顾测验题目，创建自定义 Skills 来塑造 CaiWen 如何教你。你的文档不只是堆在那里——它们会为每一次对话提供动力。
+- **可核验来源** — RAG 来源可以在抽屉中打开原文件；PDF 按页索引，DOCX 由 LibreOffice 转成标准预览 PDF 后再索引，引用页码与抽屉显示来自同一份 PDF。
 - **持久化记忆** — CaiWen 构建你的动态学习画像：你学过什么、怎么学的、目标是什么。记忆在所有功能和所有 TutorBot 之间共享，每次互动都让它更加精准。
 - **个人 TutorBot** — 不是聊天机器人，是自主导师。每个 TutorBot 拥有自己的工作区、记忆、个性和技能集。它们设置提醒、学习新能力，与你共同成长。基于 [nanobot](https://github.com/HKUDS/nanobot) 构建。
 - **Agent 原生 CLI** — 所有能力、知识库、会话和 TutorBot 都只需一条命令。人类获得丰富的终端输出，AI Agent 获得结构化 JSON。把 [`SKILL.md`](SKILL.md) 交给 CaiWen，你的 Agent 就能自主操作它。
@@ -188,6 +189,20 @@ EMBEDDING_HOST=https://api.openai.com/v1/embeddings
 EMBEDDING_DIMENSION=
 ```
 
+#### 启用 DOCX 原文页预览
+
+本机安装 [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) 后，Windows 默认安装位置会被自动识别。**每一位直接在自己电脑上运行后端并上传或重新索引 DOCX 的开发者都需要安装**，不是只有首次开发该功能的人需要安装。可以先验证命令行转换器：
+
+```powershell
+& "C:\Program Files\LibreOffice\program\soffice.com" --headless --version
+```
+
+`.env` 保持 `DOC_CONVERTER_MODE=local` 即可；安装在非标准位置时，再填写 `LIBREOFFICE_PATH`。新建知识库或上传 DOCX 时，系统会保留原始 DOCX，并把按内容哈希生成的 PDF 写到同一知识库的 `raw/renditions/`。索引文本和用户看到的页码都取自这份 PDF。来源抽屉展示转换后的 PDF，但下载按钮下载的仍是未经修改的原始 Word 文件。
+
+知识库运行数据位于被 Git 忽略的 `data/` 目录，不会随 GitHub 同步。因此每位开发者在自己的电脑上传 DOCX 后，都会在本机独立转换并缓存一次。没有检测到 LibreOffice 时，原 DOCX 仍会保留，但该文件不会退回到没有可靠页码的旧式索引，也不会产生无法核验页码的 RAG 来源；安装完成后重新索引即可。
+
+已有知识库需要在知识库页面执行一次“重新索引”，旧索引不会被当作带准确页码的新索引继续使用。学校正式文件还应在运行机器上安装文件所用字体，并设置固定的 `DOC_FONT_ENV_VERSION` 标签；若排版必须与签发件逐像素一致，应优先上传学校签发的 PDF 作为权威原件。
+
 <details>
 <summary><b>支持的 LLM 提供商</b></summary>
 
@@ -291,6 +306,31 @@ cd web && npm run dev -- -p 3782
 
 Docker 将后端和前端打包到一个容器中——不需要本地安装 Python 或 Node.js。你只需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（或 Linux 上的 Docker Engine + Compose）。
 
+> 当前 Docker 镜像尚未内置 LibreOffice。宿主机安装的 LibreOffice 不能直接供容器使用；PDF 来源预览可以使用，DOCX 转 PDF 在直接本机运行后端时可用，服务器转换环境将在学校部署阶段补充。在此之前，Docker 中的 DOCX 会保留原文件但不会进入索引。
+
+> **你部署的到底是哪一个版本？** `docker compose up -d --build` 会读取当前目录的 `Dockerfile`，把你此刻检出的源码构建成 `caiwen:local`，因此部署的是当前财问代码。`docker-compose.ghcr.yml` 和下方的 `docker run` 则会拉取 `ghcr.io/112-li-del/caiwen`，部署已发布的财问镜像；它们不会再拉取 `hkuds/deeptutor`。
+
+#### 不克隆源码，一条命令启动（最方便）
+
+下面的命令会自动拉取财问镜像、创建持久化数据卷并启动容器：
+
+```bash
+docker run -d --name caiwen --restart unless-stopped -p 8001:8001 -p 3782:3782 -v caiwen-user:/app/data/user -v caiwen-memory:/app/data/memory -v caiwen-knowledge-bases:/app/data/knowledge_bases ghcr.io/112-li-del/caiwen:latest
+```
+
+启动后打开 [http://localhost:3782](http://localhost:3782)，在设置页面配置模型和 Embedding。Docker 会自动下载镜像内的前端、后端、Python、Node.js 和全部项目依赖。停止和更新命令：
+
+```bash
+docker stop caiwen
+docker rm caiwen
+docker pull ghcr.io/112-li-del/caiwen:latest
+# 再次执行上面那条 docker run 命令；命名卷中的数据不会丢失
+```
+
+如果你已经准备好 `.env`，可以在 `docker run` 中增加 `--env-file .env`。API 密钥不要写入 Dockerfile、Compose 文件或提交到 GitHub。
+
+#### 使用 Docker Compose
+
 **1. 配置环境变量**（以下两种方式都需要）
 
 ```bash
@@ -309,19 +349,19 @@ cp .env.example .env
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-如需固定特定版本，编辑 `docker-compose.ghcr.yml` 中的镜像标签：
+该命令读取 `.env` 中的 `CAIWEN_IMAGE`，默认拉取 `ghcr.io/112-li-del/caiwen:latest`。如需固定版本，只需修改 `.env`：
 
-```yaml
-image: ghcr.io/112-li-del/caiwen:1.3.4  # 或 :latest
+```dotenv
+CAIWEN_IMAGE=ghcr.io/112-li-del/caiwen:1.3.4
 ```
 
 **2b. 从源码构建**
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-这会从 `Dockerfile` 本地构建镜像并启动容器。
+这会从当前目录的 `Dockerfile` 强制重新构建 `caiwen:local` 并启动容器。修改财问代码后再次执行同一命令，就会部署最新的本地代码；不要省略 `--build`。
 
 **3. 验证和管理**
 
@@ -331,6 +371,28 @@ docker compose up -d
 docker compose logs -f   # 跟踪日志
 docker compose down       # 停止并移除容器
 ```
+
+<details>
+<summary><b>把财问镜像自动发布到 GitHub Container Registry</b></summary>
+
+仓库包含 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)。你把这些修改推送到 GitHub 后：
+
+- 推送到 `main`：自动构建 `linux/amd64` 和 `linux/arm64` 镜像，并发布 `latest`、`sha-...` 标签。
+- 推送 `v*` 标签（例如 `v1.4.0`）：额外发布同名版本镜像。
+- 也可以在 GitHub 仓库的 **Actions** 页面手动运行 `Publish CaiWen Docker image`。
+
+第一次发布后，到 GitHub 仓库右侧 **Packages → caiwen → Package settings → Change visibility**，把镜像设为 **Public**。只有公开镜像才能让学校服务器在不登录 GitHub 的情况下直接执行一键启动命令。
+
+发布新版本的示例：
+
+```bash
+git tag v1.4.0
+git push origin v1.4.0
+```
+
+GitHub Actions 构建成功后，可使用 `ghcr.io/112-li-del/caiwen:v1.4.0`。不要把包含 API 密钥的 `.env` 提交到 GitHub；镜像中也不会包含本地 `.env` 和 `data/`。
+
+</details>
 
 <details>
 <summary><b>云端 / 远程服务器部署</b></summary>
@@ -382,8 +444,8 @@ PocketBase 是一个可选的轻量级后端，替代内置的 SQLite/JSON 认�
 **快速开始（Docker Compose）：**
 
 ```bash
-# 使用 docker compose 时，PocketBase 会自动随 CaiWen 一起启动
-docker compose up -d
+# PocketBase 默认不启动；需要时通过 profile 显式启用
+docker compose --profile pocketbase up -d --build
 
 # 1. 打开管理面板并创建管理员账户
 open http://localhost:8090/_/
@@ -398,7 +460,7 @@ python scripts/pb_setup.py
 **需要添加到 `.env` 的配置：**
 
 ```dotenv
-POCKETBASE_URL=http://localhost:8090          # Docker 内使用 http://pocketbase:8090
+POCKETBASE_URL=http://pocketbase:8090
 POCKETBASE_ADMIN_EMAIL=admin@example.com
 POCKETBASE_ADMIN_PASSWORD=your-admin-password
 ```
@@ -439,7 +501,8 @@ FRONTEND_PORT=4000
 然后重启：
 
 ```bash
-docker compose up -d     # 或 docker compose -f docker-compose.ghcr.yml up -d
+docker compose up -d --build     # 源码构建
+# 或：docker compose -f docker-compose.ghcr.yml up -d  # 拉取已发布镜像
 ```
 
 </details>
@@ -455,7 +518,7 @@ docker compose up -d     # 或 docker compose -f docker-compose.ghcr.yml up -d
 | `/app/data/memory` | `./data/memory` | 共享长期记忆（`SUMMARY.md`、`PROFILE.md`） |
 | `/app/data/knowledge_bases` | `./data/knowledge_bases` | 上传的文档和向量索引 |
 
-这些目录在 `docker compose down` 之后仍然存在，下次 `docker compose up` 时会继续使用。
+这些目录在 `docker compose down` 之后仍然存在，下次启动容器时会继续使用。
 
 </details>
 
@@ -484,6 +547,7 @@ docker compose up -d     # 或 docker compose -f docker-compose.ghcr.yml up -d
 | `SEARCH_PROXY` | 否 | 可选 HTTP/HTTPS 代理用于外发搜索流量 |
 | `BACKEND_PORT` | 否 | 后端端口（默认 `8001`） |
 | `FRONTEND_PORT` | 否 | 前端端口（默认 `3782`） |
+| `CAIWEN_IMAGE` | 否 | `docker-compose.ghcr.yml` 拉取的财问镜像（默认 `ghcr.io/112-li-del/caiwen:latest`） |
 | `POCKETBASE_PORT` | 否 | 可选 PocketBase 边车的 Docker 端口映射（默认 `8090`） |
 | `NEXT_PUBLIC_API_BASE_EXTERNAL` | 否 | 云端部署时的后端公网 URL |
 | `NEXT_PUBLIC_API_BASE` | 否 | Next.js 客户端的后端 URL 直接覆盖 |
@@ -501,6 +565,10 @@ docker compose up -d     # 或 docker compose -f docker-compose.ghcr.yml up -d
 | `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` | 否 | Python 后端管理 PocketBase collections 的管理员凭据 |
 | `POCKETBASE_EXTERNAL_URL` | 否 | OAuth 重定向的 PocketBase 公网 URL（仅远程部署） |
 | `CHAT_ATTACHMENT_DIR` | 否 | 覆盖聊天附件存储根目录 |
+| `DOC_CONVERTER_MODE` | 否 | `local` 使用本机 LibreOffice 转换知识库 DOCX；`none` 禁用转换 |
+| `LIBREOFFICE_PATH` | 否 | LibreOffice 命令行程序路径；标准安装目录会自动检测 |
+| `DOC_CONVERSION_TIMEOUT_SECONDS` | 否 | 单个 DOCX 转换超时秒数（默认 `120`） |
+| `DOC_FONT_ENV_VERSION` | 否 | 记录到 rendition manifest 的字体环境版本标签 |
 
 </details>
 
@@ -868,4 +936,3 @@ multi-user/
 ---
 
 基于 [Apache License 2.0](LICENSE) 许可。
-

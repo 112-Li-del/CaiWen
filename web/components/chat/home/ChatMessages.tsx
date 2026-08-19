@@ -107,6 +107,7 @@ const AssistantMessage = memo(function AssistantMessage({
   language,
   onConfirmOutline,
   onAnswerNow,
+  onPreviewSource,
 }: {
   msg: { content: string; capability?: string; events?: StreamEvent[] };
   isStreaming?: boolean;
@@ -119,6 +120,7 @@ const AssistantMessage = memo(function AssistantMessage({
     researchConfig?: Record<string, unknown> | null,
   ) => void;
   onAnswerNow?: () => void;
+  onPreviewSource?: (source: SourceItem) => void;
 }) {
   const events = useMemo(() => msg.events ?? [], [msg.events]);
   const hasCallTrace = useMemo(
@@ -209,7 +211,9 @@ const AssistantMessage = memo(function AssistantMessage({
       ) : (
         <AssistantResponse content={msg.content} />
       )}
-      {showSources && <SourcesPanel sources={allSources} />}
+      {showSources && (
+        <SourcesPanel sources={allSources} onPreviewSource={onPreviewSource} />
+      )}
     </>
   );
 });
@@ -220,8 +224,10 @@ type SourceItem = Record<string, unknown>;
 
 const SourcesPanel = memo(function SourcesPanel({
   sources,
+  onPreviewSource,
 }: {
   sources: SourceItem[];
+  onPreviewSource?: (source: SourceItem) => void;
 }) {
   const { t } = useTranslation();
   if (!sources || sources.length === 0) return null;
@@ -234,9 +240,11 @@ const SourcesPanel = memo(function SourcesPanel({
   const fileGroups: { key: string; label: string; items: SourceItem[] }[] = [];
   const groupsByKey = new Map<string, (typeof fileGroups)[number]>();
   for (const [index, s] of ragSources.entries()) {
-    const key = String(
-      s.source_file ?? s.source ?? s.title ?? s.chunk_id ?? `rag-${index}`,
+    const kbRef = String(s.kb_ref ?? s.kb_name ?? "");
+    const rawName = String(
+      s.raw_name ?? s.source_file ?? s.source ?? s.title ?? s.chunk_id ?? `rag-${index}`,
     );
+    const key = `${kbRef}\u0000${rawName}`;
     let group = groupsByKey.get(key);
     if (!group) {
       group = {
@@ -278,6 +286,23 @@ const SourcesPanel = memo(function SourcesPanel({
                 <span className="truncate">{group.label}</span>
               </span>
               <span className="inline-flex items-center gap-1.5 shrink-0 ml-2">
+                {group.items.some((item) => item.preview_path && item.kb_ref) && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onPreviewSource?.(
+                        group.items.find(
+                          (item) => item.preview_path && item.kb_ref,
+                        ) || group.items[0],
+                      );
+                    }}
+                    className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[var(--primary)] transition-transform hover:bg-[var(--primary)]/10 active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
+                  >
+                    {t("View original")}
+                  </button>
+                )}
                 <span className="text-[11px] text-[var(--muted-foreground)]">
                   {group.items.length} {t("chunks")}
                 </span>
@@ -295,10 +320,18 @@ const SourcesPanel = memo(function SourcesPanel({
                 const contentPreview = String(s.content_preview ?? s.content ?? "");
 
                 return (
-                  <div key={i} className="text-[11px]">
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={!s.preview_path || !s.kb_ref}
+                    onClick={() => onPreviewSource?.(s)}
+                    className="block w-full rounded px-1 py-0.5 text-left text-[11px] transition-transform enabled:hover:bg-[var(--background)]/70 enabled:active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--primary)] disabled:cursor-default"
+                  >
                     {metaParts.length > 0 && (
                       <div className="text-[var(--muted-foreground)] mb-0.5">
-                        {metaParts.join(" · ")}
+                        {page ? t("Page {{page}}", { page }) : ""}
+                        {page && pct ? " · " : ""}
+                        {pct}
                       </div>
                     )}
                     {contentPreview && (
@@ -306,7 +339,7 @@ const SourcesPanel = memo(function SourcesPanel({
                         {contentPreview}
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -837,6 +870,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onRegenerateMessage,
   onConfirmOutline,
   onPreviewAttachment,
+  onPreviewSource,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -854,6 +888,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     researchConfig?: Record<string, unknown> | null,
   ) => void;
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
+  onPreviewSource?: (source: SourceItem) => void;
 }) {
   const { t } = useTranslation();
   const outlineStatusByIndex = useMemo(() => {
@@ -986,6 +1021,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               language={language}
               onConfirmOutline={onConfirmOutline}
               onAnswerNow={handleTraceAnswerNow}
+              onPreviewSource={onPreviewSource}
             />
             {(showActions || costSummary) && (
               <div className="mt-2 flex items-center">

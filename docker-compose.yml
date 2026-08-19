@@ -1,10 +1,10 @@
 # ============================================
-# DeepTutor Docker Compose Configuration
+# CaiWen Docker Compose Configuration (build current source)
 # ============================================
-# This file provides orchestration for DeepTutor services
+# This file always builds the CaiWen code in the current checkout.
 #
 # Usage:
-#   Production:  docker compose up -d
+#   Production:  docker compose up -d --build
 #   Development: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #   Build only:  docker compose build
 #
@@ -25,7 +25,8 @@ services:
   # ============================================
   pocketbase:
     image: ghcr.io/muchobien/pocketbase:latest
-    container_name: pocketbase
+    container_name: caiwen-pocketbase
+    profiles: ["pocketbase"]
     restart: unless-stopped
     ports:
       - "${POCKETBASE_PORT:-8090}:8090"
@@ -41,9 +42,10 @@ services:
       start_period: 10s
 
   # ============================================
-  # All-in-One DeepTutor Service
+  # All-in-One CaiWen Service
   # ============================================
   deeptutor:
+    image: caiwen:local
     build:
       context: .
       dockerfile: Dockerfile
@@ -51,7 +53,7 @@ services:
       args:
         # Pass backend port at build time for Next.js static optimization
         - BACKEND_PORT=${BACKEND_PORT:-8001}
-    container_name: deeptutor
+    container_name: caiwen
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
@@ -121,10 +123,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-    depends_on:
-      pocketbase:
-        condition: service_healthy
 
     networks:
       - deeptutor-network

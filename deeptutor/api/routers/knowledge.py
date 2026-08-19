@@ -36,6 +36,7 @@ from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.knowledge.renditions import DocumentConversionError, RenditionManager
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
     admin_kb_manager,
@@ -484,15 +485,21 @@ def _load_kb_entry_or_404(manager: KnowledgeBaseManager, kb_name: str) -> dict:
     return kb_entry
 
 
-def _assert_kb_writable_or_409(kb_name: str, kb_entry: dict) -> None:
+def _assert_kb_writable_or_409(
+    kb_name: str,
+    kb_entry: dict,
+    *,
+    allow_needs_reindex: bool = False,
+) -> None:
     """Check whether the KB can accept a new write operation.
 
     Blocks when:
-    * The KB has the legacy ``needs_reindex`` flag set.
+    * The KB has the legacy ``needs_reindex`` flag set, unless the caller is
+      the re-index recovery operation.
     * Another background task (init / upload / reindex) is already running.
     * The KB has a stale live status — attempt automatic recovery first.
     """
-    if bool(kb_entry.get("needs_reindex", False)):
+    if bool(kb_entry.get("needs_reindex", False)) and not allow_needs_reindex:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1201,6 +1208,7 @@ async def list_kb_raw_files(kb_name: str):
         return {"files": []}
 
     files = []
+    rendition_manager = RenditionManager(raw_dir)
     for entry in sorted(raw_dir.iterdir(), key=lambda p: p.name.lower()):
         if not entry.is_file():
             continue
@@ -1209,14 +1217,42 @@ async def list_kb_raw_files(kb_name: str):
         except OSError:
             continue
         media_type, _ = mimetypes.guess_type(entry.name)
-        files.append(
-            {
-                "name": entry.name,
-                "size": stat.st_size,
-                "modified": stat.st_mtime,
-                "mime_type": media_type,
-            }
-        )
+        item = {
+            "name": entry.name,
+            "size": stat.st_size,
+            "modified": stat.st_mtime,
+            "mime_type": media_type,
+        }
+        rendition = rendition_manager.entry_for(entry.name)
+        if not (rendition or {}).get("indexing_status"):
+            inspection_pdf: Path | None = entry if entry.suffix.lower() == ".pdf" else None
+            if (
+                entry.suffix.lower() == ".docx"
+                and rendition
+                and rendition.get("status") == "ready"
+                and rendition.get("preview_file")
+            ):
+                inspection_pdf = raw_dir / "renditions" / str(rendition["preview_file"])
+            if inspection_pdf is not None and inspection_pdf.is_file():
+                try:
+                    rendition = rendition_manager.inspect_pdf_for_indexing(
+                        entry.name, inspection_pdf
+                    )
+                except DocumentConversionError as exc:
+                    logger.warning("Failed to inspect %s for indexing: %s", entry.name, exc)
+        if rendition:
+            item["indexing_status"] = rendition.get("indexing_status", "")
+            item["text_page_count"] = rendition.get("text_page_count", 0)
+            item["image_page_count"] = rendition.get("image_page_count", 0)
+        if entry.suffix.lower() == ".docx":
+            if rendition:
+                item["rendition_status"] = rendition.get("status", "")
+                item["rendition_error"] = rendition.get("error", "")
+                if rendition.get("status") == "ready" and rendition.get("preview_file"):
+                    item["preview_path"] = f"renditions/{rendition['preview_file']}"
+                    item["preview_mime"] = "application/pdf"
+                    item["page_count"] = rendition.get("page_count", 0)
+        files.append(item)
     return {"files": files}
 
 
@@ -1241,12 +1277,37 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
+    relative = target.relative_to(raw_resolved)
+    if len(relative.parts) > 1:
+        is_rendition_pdf = (
+            len(relative.parts) == 2
+            and relative.parts[0] == "renditions"
+            and relative.suffix.lower() == ".pdf"
+            and len(relative.stem) == 64
+            and all(char in "0123456789abcdef" for char in relative.stem.lower())
+        )
+        if not is_rendition_pdf:
+            raise HTTPException(status_code=404, detail="File not found")
+
     media_type, _ = mimetypes.guess_type(target.name)
+    resolved_media_type = media_type or "application/octet-stream"
+    inline = (
+        resolved_media_type == "application/pdf"
+        or resolved_media_type in {"text/plain", "text/markdown", "text/csv"}
+        or (
+            resolved_media_type.startswith("image/")
+            and resolved_media_type != "image/svg+xml"
+        )
+    )
     return FileResponse(
         target,
-        media_type=media_type or "application/octet-stream",
+        media_type=resolved_media_type,
         filename=target.name,
-        content_disposition_type="inline",
+        content_disposition_type="inline" if inline else "attachment",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -1275,6 +1336,8 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
 
         if not target.exists() or not target.is_file():
             raise HTTPException(status_code=404, detail="File not found")
+        if target.parent != raw_resolved:
+            raise HTTPException(status_code=403, detail="Only original files can be deleted")
 
         # Remember the absolute path before unlinking so we can match
         # against node metadata stored during indexing.
@@ -1282,6 +1345,7 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
 
         # Remove the raw file from disk
         target.unlink()
+        RenditionManager(raw_dir).remove_for(target.name)
         logger.info(f"Deleted raw file '{filename}' from KB '{kb_name}'")
 
         # Surgically remove the file's chunks from every ready index version.
@@ -1629,7 +1693,13 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
     BASE_DELAY_SECONDS = 2.0  # doubles each retry: 2 → 4 → 8
 
     # ---- helpers -----------------------------------------------------------
-    def _finalize_success(file_count: int) -> None:
+    def _finalize_success(
+        *,
+        total_file_count: int,
+        indexed_file_count: int,
+        image_only_file_count: int,
+        skipped_file_count: int,
+    ) -> None:
         completed_at = datetime.now().isoformat()
         kb_dir = Path(base_dir) / kb_name
         metadata_file = kb_dir / "metadata.json"
@@ -1642,7 +1712,10 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                     metadata = loaded_metadata
             metadata["last_updated"] = completed_at
             metadata["last_indexed_at"] = completed_at
-            metadata["last_indexed_count"] = file_count
+            metadata["last_indexed_count"] = indexed_file_count
+            metadata["last_indexed_total_count"] = total_file_count
+            metadata["last_indexed_image_only_count"] = image_only_file_count
+            metadata["last_indexed_skipped_count"] = skipped_file_count
             metadata["last_indexed_action"] = "reindex"
             with open(metadata_file, "w", encoding="utf-8") as handle:
                 json.dump(metadata, handle, indent=2, ensure_ascii=False)
@@ -1659,13 +1732,21 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             status="ready",
             progress={
                 "stage": "completed",
-                "message": "Re-index complete",
+                "message": (
+                    f"Re-index complete: {total_file_count} total, "
+                    f"{indexed_file_count} indexed, "
+                    f"{skipped_file_count} skipped "
+                    f"({image_only_file_count} image-only)"
+                ),
                 "percent": 100,
-                "current": file_count,
-                "total": file_count,
+                "current": indexed_file_count,
+                "total": total_file_count,
                 "task_id": task_id,
                 "timestamp": completed_at,
-                "indexed_count": file_count,
+                "indexed_count": indexed_file_count,
+                "total_file_count": total_file_count,
+                "image_only_file_count": image_only_file_count,
+                "skipped_file_count": skipped_file_count,
                 "index_changed": True,
                 "index_action": "reindex",
             },
@@ -1682,10 +1763,16 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
         if mutated:
             manager._save_config()
 
-        _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
+        completion_message = (
+            f"Re-index of '{kb_name}' complete: {total_file_count} total, "
+            f"{indexed_file_count} indexed, "
+            f"{skipped_file_count} skipped "
+            f"({image_only_file_count} image-only)"
+        )
+        _task_log(task_id, completion_message, level="success")
         task_manager.update_task_status(task_id, "completed")
         try:
-            task_stream_manager.emit_complete(task_id, f"Re-index of '{kb_name}' complete")
+            task_stream_manager.emit_complete(task_id, completion_message)
         except Exception as emit_exc:
             logger.warning("Failed to emit complete event for task %s: %s", task_id, emit_exc)
 
@@ -1804,8 +1891,22 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                         f"Re-index found no valid documents to index in '{kb_name}'."
                     )
 
-                # Success — exit retry loop.
-                _finalize_success(len(file_paths))
+                summary = rag_service.get_last_indexing_summary()
+                total_file_count = int(summary.get("total_file_count") or len(file_paths))
+                indexed_file_count = int(summary.get("indexed_file_count") or 0)
+                image_only_file_count = int(summary.get("image_only_file_count") or 0)
+                skipped_file_count = int(
+                    summary.get("skipped_file_count")
+                    or max(total_file_count - indexed_file_count, 0)
+                )
+
+                # Success — exit retry loop using files that actually produced chunks.
+                _finalize_success(
+                    total_file_count=total_file_count,
+                    indexed_file_count=indexed_file_count,
+                    image_only_file_count=image_only_file_count,
+                    skipped_file_count=skipped_file_count,
+                )
                 return
 
             except Exception as exc:
@@ -1824,24 +1925,12 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                 # Clean up the (likely incomplete) version dir that was
                 # created for this attempt so the next retry starts fresh.
                 try:
-                    from deeptutor.services.rag.embedding_signature import (
-                        signature_from_embedding_config,
-                    )
-                    from deeptutor.services.rag.index_versioning import (
-                        resolve_storage_dir_for_rebuild,
-                    )
-
-                    sig = signature_from_embedding_config()
-                    # resolve_storage_dir_for_rebuild always returns a *new*
-                    # next-version dir — but the pipeline may have created a
-                    # stale dir that we can scavenge. The recreate below is a
-                    # best-effort cleanup.
-                    candidate = resolve_storage_dir_for_rebuild(kb_dir, sig)
                     from deeptutor.services.rag.pipelines.llamaindex.storage import (
                         cleanup_failed_version_dir,
                     )
 
-                    # Walk back from the candidate to find the actual stale dir.
+                    # Only inspect existing directories. Cleanup must never
+                    # allocate a new version while handling an earlier failure.
                     for version_dir in sorted(
                         kb_dir.glob("version-*"), key=lambda p: p.name, reverse=True
                     ):
@@ -1885,7 +1974,10 @@ async def reindex_knowledge_base(
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
-        _assert_kb_writable_or_409(kb_name, kb_entry)
+        # Re-indexing is the recovery path for a legacy index, so it must be
+        # allowed through the legacy-write gate. Busy/stale task checks below
+        # still apply and prevent concurrent mutations.
+        _assert_kb_writable_or_409(kb_name, kb_entry, allow_needs_reindex=True)
         force_reindex = str(kb_entry.get("status") or "").lower() == "error"
 
         from deeptutor.services.rag.embedding_signature import signature_from_embedding_config

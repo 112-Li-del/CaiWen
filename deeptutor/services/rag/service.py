@@ -52,6 +52,12 @@ class RAGService:
         pipeline = self._get_pipeline()
         return await pipeline.initialize(kb_name=kb_name, file_paths=file_paths, **kwargs)
 
+    def get_last_indexing_summary(self) -> dict[str, object]:
+        """Return per-file counts from the most recent indexing operation."""
+        pipeline = self._get_pipeline()
+        summary = getattr(pipeline, "last_indexing_summary", {})
+        return dict(summary) if isinstance(summary, dict) else {}
+
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self.logger.info(f"Adding {len(file_paths)} document(s) to KB '{kb_name}'")
         pipeline = self._get_pipeline()

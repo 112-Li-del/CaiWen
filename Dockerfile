@@ -1,11 +1,11 @@
 # ============================================
-# DeepTutor Multi-Stage Dockerfile
+# CaiWen Multi-Stage Dockerfile
 # ============================================
-# This Dockerfile builds a production-ready image for DeepTutor
+# This Dockerfile builds a production-ready image for CaiWen
 # containing both the FastAPI backend and Next.js frontend
 #
 # Build: docker compose build
-# Run:   docker compose up -d
+# Run:   docker compose up -d --build
 #
 # Prerequisites:
 #   1. Copy .env.example to .env and configure your API keys
@@ -106,9 +106,11 @@ FROM python:3.11-slim AS production
 ARG APP_VERSION=""
 
 # Labels
-LABEL maintainer="DeepTutor Team" \
-      description="DeepTutor: AI-Powered Personalized Learning Assistant" \
-      version="1.0.0"
+LABEL org.opencontainers.image.title="CaiWen" \
+      org.opencontainers.image.description="CaiWen: a campus financial Q&A assistant based on DeepTutor" \
+      org.opencontainers.image.source="https://github.com/112-Li-del/CaiWen" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -285,7 +287,7 @@ RUN cat > /app/entrypoint.sh <<'EOF'
 set -e
 
 echo "============================================"
-echo "🚀 Starting DeepTutor"
+echo "🚀 Starting CaiWen"
 echo "============================================"
 
 # Set default ports if not provided

@@ -12,6 +12,7 @@ from deeptutor.services.rag.factory import (
 )
 from deeptutor.tools.rag_tool import (
     RAGService,
+    _annotate_sources,
     _resolve_kb_name,
     get_available_providers,
     get_current_provider,
@@ -86,6 +87,18 @@ class TestRAGServiceClassHelpers:
 class TestToolLayerExports:
     def test_get_available_providers_matches_class_method(self) -> None:
         assert get_available_providers() == RAGService.list_providers()
+
+    def test_annotate_sources_uses_authorized_resource_id(self) -> None:
+        result = {"sources": [{"raw_name": "rules.docx", "page": 3}]}
+
+        annotated = _annotate_sources(
+            result,
+            kb_name="rules",
+            kb_ref="admin:rules",
+        )
+
+        assert annotated["sources"][0]["kb_name"] == "rules"
+        assert annotated["sources"][0]["kb_ref"] == "admin:rules"
 
     def test_resolve_default_alias_to_configured_default(self, tmp_path) -> None:
         from deeptutor.knowledge.manager import KnowledgeBaseManager

@@ -22,7 +22,6 @@ const TextPreview = dynamic(() => import("./previewers/TextPreview"));
 const OfficeTextPreview = dynamic(
   () => import("./previewers/OfficeTextPreview"),
 );
-const DocxPreview = dynamic(() => import("./previewers/DocxPreview"));
 const FallbackPreview = dynamic(() => import("./previewers/FallbackPreview"));
 
 const ANIM_MS = 220;
@@ -129,7 +128,11 @@ export default function FilePreviewDrawer({
   const previewUrl = renderedSource
     ? resolveSourceUrl(renderedSource, apiUrl)
     : null;
-  const downloadUrl = previewUrl;
+  const downloadUrl = renderedSource?.downloadUrl
+    ? renderedSource.downloadUrl.startsWith("http")
+      ? renderedSource.downloadUrl
+      : apiUrl(renderedSource.downloadUrl)
+    : previewUrl;
   const previewKind = renderedSource ? previewKindFor(renderedSource) : null;
 
   const [copied, setCopied] = useState(false);
@@ -157,7 +160,7 @@ export default function FilePreviewDrawer({
       role="dialog"
       aria-hidden={!visible}
       aria-label={t("File preview: {{name}}", { name: filename })}
-      className={`fixed right-0 top-0 z-[90] flex h-full w-[min(560px,92vw)] flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-2xl transition-transform ease-out ${
+      className={`fixed right-0 top-0 z-[90] flex h-full w-[min(560px,92vw)] flex-col overscroll-contain border-l border-[var(--border)] bg-[var(--card)] shadow-2xl transition-transform ease-out ${
         visible ? "translate-x-0" : "translate-x-full"
       }`}
       style={{
@@ -181,7 +184,11 @@ export default function FilePreviewDrawer({
                 {filename}
               </div>
               <div className="truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-                {sizeLabel ? `${spec.label} · ${sizeLabel}` : spec.label}
+                {renderedSource.previewLabel
+                  ? t(renderedSource.previewLabel)
+                  : sizeLabel
+                    ? `${spec.label} · ${sizeLabel}`
+                    : spec.label}
               </div>
             </div>
 
@@ -260,12 +267,6 @@ const PreviewBody = memo(function PreviewBody({
   kind: ReturnType<typeof previewKindFor> | null;
 }) {
   const filename = source.filename;
-
-  // Docx renders client-side via mammoth — needs the URL to fetch the file
-  // but handles missing URL gracefully internally.
-  if (kind === "docx") {
-    return <DocxPreview filename={filename} url={previewUrl} />;
-  }
 
   // Office docs lean on extracted_text and degrade gracefully via the
   // OfficeTextPreview, even when previewUrl is missing (legacy messages).

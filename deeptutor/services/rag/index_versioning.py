@@ -39,6 +39,7 @@ VERSION_PREFIX = "version-"
 LEGACY_VERSION_DIRNAME = "index_versions"
 LEGACY_STORAGE_DIRNAME = "llamaindex_storage"
 META_FILENAME = "meta.json"
+CURRENT_INDEX_SCHEMA_VERSION = 2
 
 _VERSION_RE = re.compile(r"^version-(\d+)$")
 
@@ -117,6 +118,7 @@ def _entry_from_flat_version(version_dir: Path) -> dict[str, Any]:
     meta = _read_json(version_dir / META_FILENAME) or {}
     meta.setdefault("version", version_dir.name)
     meta.setdefault("signature", meta.get("signature") or version_dir.name)
+    meta.setdefault("schema_version", 1)
     meta["ready"] = _is_storage_ready(version_dir)
     meta["storage_path"] = str(version_dir)
     meta["version_path"] = str(version_dir)
@@ -129,6 +131,7 @@ def _entry_from_legacy_nested(kb_dir: Path, version_dir: Path) -> dict[str, Any]
     meta = _read_json(version_dir / META_FILENAME) or {"signature": version_dir.name}
     meta.setdefault("version", version_dir.name)
     meta.setdefault("signature", version_dir.name)
+    meta.setdefault("schema_version", 1)
     meta["ready"] = _is_storage_ready(storage)
     meta["storage_path"] = str(storage)
     meta["version_path"] = str(version_dir)
@@ -149,6 +152,7 @@ def _entry_from_root_legacy(kb_dir: Path) -> dict[str, Any]:
         "version_path": str(storage),
         "layout": "root_legacy",
         "legacy": True,
+        "schema_version": 1,
     }
 
 
@@ -175,7 +179,11 @@ def list_kb_versions(kb_dir: Path) -> list[dict[str, Any]]:
     versions: list[dict[str, Any]] = []
 
     for version_dir in _flat_version_dirs(kb_dir):
-        versions.append(_entry_from_flat_version(version_dir))
+        entry = _entry_from_flat_version(version_dir)
+        # Failed runs from older releases could leave completely empty
+        # version-N directories. They are allocation artifacts, not versions.
+        if entry.get("ready") or (version_dir / META_FILENAME).is_file():
+            versions.append(entry)
 
     legacy_versions_root = kb_versions_dir(kb_dir)
     if legacy_versions_root.is_dir():
@@ -229,7 +237,9 @@ def find_matching_version(kb_dir: Path, signature: EmbeddingSignature) -> Option
     matches = [
         entry
         for entry in list_kb_versions(kb_dir)
-        if entry.get("signature") == target and entry.get("ready")
+        if entry.get("signature") == target
+        and entry.get("ready")
+        and entry.get("schema_version") == CURRENT_INDEX_SCHEMA_VERSION
     ]
     if not matches:
         return None
@@ -269,6 +279,7 @@ def write_version_meta(
     payload: dict[str, Any] = {
         "version": target.name,
         "signature": signature.hash(),
+        "schema_version": CURRENT_INDEX_SCHEMA_VERSION,
         **asdict(signature),
         "layout": "flat" if target.parent == kb_dir else "nested_legacy",
         "created_at": datetime.utcnow().isoformat() + "Z",
@@ -285,6 +296,9 @@ def resolve_storage_dir_for_read(
         match = find_matching_version(kb_dir, signature)
         if match:
             return Path(str(match["storage_path"]))
+        # A signature-matching legacy/schema-v1 index has no trustworthy page
+        # metadata. Do not silently serve it; the UI will request re-indexing.
+        return None
     else:
         latest_flat = _latest_ready_flat_version(kb_dir)
         if latest_flat:

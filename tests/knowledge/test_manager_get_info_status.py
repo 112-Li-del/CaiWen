@@ -44,7 +44,13 @@ def _create_ready_version(
     version_dir.mkdir(parents=True, exist_ok=True)
     (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
     (version_dir / "meta.json").write_text(
-        json.dumps({"signature": signature, "version": f"version-{version}"}),
+        json.dumps(
+            {
+                "signature": signature,
+                "version": f"version-{version}",
+                "schema_version": 2,
+            }
+        ),
         encoding="utf-8",
     )
 

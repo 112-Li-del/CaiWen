@@ -262,6 +262,29 @@ export default function KbDocumentList({
                             ? ` · ${formatRelative(file.modified)}`
                             : ""}
                         </div>
+                        {file.rendition_status === "failed" && (
+                          <div
+                            className="truncate text-[10px] text-red-500"
+                            title={file.rendition_error || undefined}
+                          >
+                            {t("PDF conversion failed")}
+                          </div>
+                        )}
+                        {file.rendition_status === "converting" && (
+                          <div className="truncate text-[10px] text-amber-600">
+                            {t("Preparing PDF preview")}
+                          </div>
+                        )}
+                        {file.indexing_status === "image_only" && (
+                          <div className="mt-0.5 text-[10px] leading-snug text-red-600 dark:text-red-400">
+                            {t("This document contains only images and cannot be indexed.")}
+                          </div>
+                        )}
+                        {file.indexing_status === "partial_images" && (
+                          <div className="mt-0.5 text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+                            {t("This document contains images, so its index is incomplete.")}
+                          </div>
+                        )}
                       </div>
                     </button>
                     <button

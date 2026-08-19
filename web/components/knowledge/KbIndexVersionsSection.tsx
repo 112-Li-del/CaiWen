@@ -41,6 +41,12 @@ export default function KbIndexVersionsSection({
   const [submitting, setSubmitting] = useState(false);
   const versions = kb.statistics?.index_versions ?? [];
   const activeSig = kb.statistics?.active_signature ?? null;
+  const activeVersion = versions.find(
+    (version) =>
+      version.signature === activeSig &&
+      version.ready === true &&
+      version.schema_version === 2,
+  );
   const needsReindex = kbNeedsReindex(kb);
   const mismatch = Boolean(kb.metadata?.embedding_mismatch);
   const isReindexingHere = task?.kind === "reindex" && task.executing;
@@ -133,14 +139,11 @@ export default function KbIndexVersionsSection({
 
       {versions.length > 0 ? (
         <ul className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--background)]">
-          {versions.map((version) => (
+          {versions.map((version, index) => (
             <IndexVersionRow
-              key={
-                version.signature ??
-                `${version.model}-${version.dimension}-${version.created_at}`
-              }
+              key={`${version.version ?? "unknown"}:${version.signature ?? index}`}
               version={version}
-              activeSignature={activeSig}
+              activeVersionName={activeVersion?.version ?? null}
             />
           ))}
         </ul>
@@ -192,17 +195,15 @@ export default function KbIndexVersionsSection({
 
 function IndexVersionRow({
   version,
-  activeSignature,
+  activeVersionName,
 }: {
   version: IndexVersion;
-  activeSignature: string | null;
+  activeVersionName: string | null;
 }) {
   const { t } = useTranslation();
-  const matchesActive =
-    !!version.signature && version.signature === activeSignature;
-  const isActive = matchesActive && version.ready === true;
-  const isPhantom = matchesActive && version.ready !== true;
-  const isLegacy = !!version.legacy;
+  const isActive = !!version.version && version.version === activeVersionName;
+  const isPhantom = version.ready !== true;
+  const isLegacy = !!version.legacy || (version.schema_version ?? 1) < 2;
 
   const title = isLegacy
     ? t("Legacy index")
@@ -269,8 +270,17 @@ function IndexVersionRow({
               {t("Legacy")}
             </span>
           )}
+          {!isLegacy && (
+            <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+              {t("Current format")}
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[var(--muted-foreground)]">
+          {version.version && <span className="font-medium">{version.version}</span>}
+          <span>
+            {t("Schema {{version}}", { version: version.schema_version ?? 1 })}
+          </span>
           {typeof version.dimension === "number" && (
             <span>
               {version.dimension}

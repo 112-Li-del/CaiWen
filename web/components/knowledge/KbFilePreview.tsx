@@ -39,9 +39,6 @@ const TextPreview = dynamic(
 const OfficeTextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
 );
-const DocxPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/DocxPreview"),
-);
 const FallbackPreview = dynamic(
   () => import("@/components/chat/preview/previewers/FallbackPreview"),
 );
@@ -89,6 +86,12 @@ export default function KbFilePreview({
     () => (source ? previewKindFor(source) : null),
     [source],
   );
+  const downloadUrl = useMemo(() => {
+    if (!source?.downloadUrl) return previewUrl;
+    return source.downloadUrl.startsWith("http")
+      ? source.downloadUrl
+      : apiUrl(source.downloadUrl);
+  }, [previewUrl, source]);
 
   if (!source) {
     return (
@@ -138,9 +141,9 @@ export default function KbFilePreview({
   const sizeLabel = source.size ? formatBytes(source.size) : "";
 
   const handleCopy = async () => {
-    if (!previewUrl) return;
+    if (!downloadUrl) return;
     try {
-      await navigator.clipboard.writeText(previewUrl);
+      await navigator.clipboard.writeText(downloadUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -179,7 +182,11 @@ export default function KbFilePreview({
             {source.filename}
           </div>
           <div className="truncate text-[10.5px] uppercase tracking-wide text-[var(--muted-foreground)]">
-            {sizeLabel ? `${spec.label} · ${sizeLabel}` : spec.label}
+            {source.previewLabel
+              ? t(source.previewLabel)
+              : sizeLabel
+                ? `${spec.label} · ${sizeLabel}`
+                : spec.label}
           </div>
         </div>
 
@@ -189,10 +196,10 @@ export default function KbFilePreview({
           </div>
         )}
 
-        {previewUrl && (
+        {downloadUrl && (
           <>
             <a
-              href={previewUrl}
+              href={downloadUrl}
               download={source.filename}
               title={t("Download")}
               aria-label={t("Download")}
@@ -235,8 +242,6 @@ export default function KbFilePreview({
             extractedText={source.extractedText}
             url={previewUrl}
           />
-        ) : kind === "docx" ? (
-          <DocxPreview filename={source.filename} url={previewUrl} />
         ) : kind === "pdf" ? (
           <PdfPreview url={previewUrl} filename={source.filename} />
         ) : kind === "image" ? (

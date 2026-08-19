@@ -77,7 +77,10 @@ import {
   type OutlineItem,
   type ResearchSource,
 } from "@/lib/research-types";
-import { listKnowledgeBases } from "@/lib/knowledge-api";
+import {
+  knowledgeBaseFilePath,
+  listKnowledgeBases,
+} from "@/lib/knowledge-api";
 import { fetchAuthStatus } from "@/lib/auth";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import { downloadChatMarkdown } from "@/lib/chat-export";
@@ -927,6 +930,32 @@ export default function ChatPage() {
     });
   }, []);
 
+  const handlePreviewKnowledgeSource = useCallback(
+    (source: Record<string, unknown>) => {
+      const kbRef = String(source.kb_ref ?? "").trim();
+      const rawName = String(
+        source.raw_name ?? source.file_name ?? source.title ?? "",
+      ).trim();
+      const previewPath = String(source.preview_path ?? "").trim();
+      if (!kbRef || !rawName || !previewPath) return;
+
+      const pageValue = Number(source.page);
+      const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : null;
+      const previewRoute = knowledgeBaseFilePath(kbRef, previewPath);
+      setPreviewSource({
+        filename: rawName,
+        mimeType: String(source.preview_mime || "application/pdf"),
+        url: page ? `${previewRoute}#page=${page}` : previewRoute,
+        downloadUrl: knowledgeBaseFilePath(kbRef, rawName),
+        previewLabel: source.converted_from_docx
+          ? "PDF preview converted from DOCX"
+          : undefined,
+        id: `${kbRef}/${previewPath}/${page || 1}`,
+      });
+    },
+    [],
+  );
+
   const handleClosePreview = useCallback(() => {
     setPreviewSource(null);
   }, []);
@@ -1346,6 +1375,7 @@ export default function ChatPage() {
               onRegenerateMessage={handleRegenerateMessage}
               onConfirmOutline={handleConfirmOutline}
               onPreviewAttachment={handlePreviewMessageAttachment}
+              onPreviewSource={handlePreviewKnowledgeSource}
             />
             <div ref={messagesEndRef} className="h-px w-full shrink-0" />
           </div>

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from deeptutor.services.rag.index_versioning import (
+    CURRENT_INDEX_SCHEMA_VERSION,
     EmbeddingSignature,
     find_matching_version,
     list_kb_versions,
@@ -99,7 +100,13 @@ def test_read_prefers_flat_version_over_legacy_nested_with_same_signature(
     flat.mkdir(parents=True)
     (flat / "docstore.json").write_text("{}", encoding="utf-8")
     (flat / "meta.json").write_text(
-        json.dumps({"signature": sig.hash(), "version": "version-1"}),
+        json.dumps(
+            {
+                "signature": sig.hash(),
+                "version": "version-1",
+                "schema_version": CURRENT_INDEX_SCHEMA_VERSION,
+            }
+        ),
         encoding="utf-8",
     )
     legacy = kb_dir / "index_versions" / sig.hash()
@@ -113,6 +120,21 @@ def test_read_prefers_flat_version_over_legacy_nested_with_same_signature(
 
     assert resolve_storage_dir_for_read(kb_dir, sig) == flat
     assert find_matching_version(kb_dir, sig)["layout"] == "flat"
+
+
+def test_read_rejects_schema_v1_index_until_reindexed(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    sig = _signature()
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (version_dir / "meta.json").write_text(
+        json.dumps({"signature": sig.hash(), "version": "version-1"}),
+        encoding="utf-8",
+    )
+
+    assert find_matching_version(kb_dir, sig) is None
+    assert resolve_storage_dir_for_read(kb_dir, sig) is None
 
 
 def test_list_kb_versions_includes_legacy_nested_and_root_layouts(tmp_path: Path) -> None:
@@ -130,3 +152,16 @@ def test_list_kb_versions_includes_legacy_nested_and_root_layouts(tmp_path: Path
     layouts = {entry["layout"] for entry in list_kb_versions(kb_dir)}
 
     assert {"nested_legacy", "root_legacy"} <= layouts
+
+
+def test_list_kb_versions_hides_empty_failed_allocation_dirs(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    empty = kb_dir / "version-1"
+    empty.mkdir(parents=True)
+    ready = kb_dir / "version-2"
+    ready.mkdir()
+    (ready / "docstore.json").write_text("{}", encoding="utf-8")
+
+    versions = list_kb_versions(kb_dir)
+
+    assert [entry["version"] for entry in versions] == ["version-2"]
