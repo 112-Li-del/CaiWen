@@ -6,8 +6,11 @@ from pathlib import Path
 from deeptutor.services.rag.index_versioning import (
     CURRENT_INDEX_SCHEMA_VERSION,
     EmbeddingSignature,
+    advance_corpus_revision,
     find_matching_version,
+    get_corpus_revision,
     list_kb_versions,
+    mark_version_corpus_revision,
     resolve_storage_dir_for_read,
     resolve_storage_dir_for_rebuild,
     resolve_storage_dir_for_write,
@@ -165,3 +168,25 @@ def test_list_kb_versions_hides_empty_failed_allocation_dirs(tmp_path: Path) -> 
     versions = list_kb_versions(kb_dir)
 
     assert [entry["version"] for entry in versions] == ["version-2"]
+
+
+def test_corpus_revision_invalidates_old_indexes_until_synchronized(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    sig = _signature()
+    version_dir = resolve_storage_dir_for_write(kb_dir, sig)
+    (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    write_version_meta(kb_dir, sig, storage_dir=version_dir)
+
+    assert get_corpus_revision(kb_dir) == 0
+    assert find_matching_version(kb_dir, sig) is not None
+
+    revision = advance_corpus_revision(kb_dir)
+
+    assert revision == 1
+    assert find_matching_version(kb_dir, sig) is None
+    stale = list_kb_versions(kb_dir)[0]
+    assert stale["corpus_current"] is False
+
+    assert mark_version_corpus_revision(version_dir, revision) is True
+    assert find_matching_version(kb_dir, sig)["version"] == "version-1"
+    assert list_kb_versions(kb_dir)[0]["corpus_current"] is True

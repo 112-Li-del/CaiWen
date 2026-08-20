@@ -14,6 +14,9 @@ from deeptutor.services.embedding import get_embedding_config
 from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
+    advance_corpus_revision,
+    get_corpus_revision,
+    mark_version_corpus_revision,
     resolve_storage_dir_for_read,
     resolve_storage_dir_for_rebuild,
     write_version_meta,
@@ -72,7 +75,6 @@ class LlamaIndexPipeline:
         self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
         self._signature_provider = signature_provider or signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
-        self.last_indexing_summary: dict[str, object] = {}
         self._configure_settings()
 
     def _configure_settings(self) -> None:
@@ -98,6 +100,7 @@ class LlamaIndexPipeline:
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")
+        summary_callback = kwargs.get("summary_callback")
         self._configure_settings()
 
         self.logger.info(
@@ -111,9 +114,9 @@ class LlamaIndexPipeline:
         try:
             await self._verify_embedding_connectivity()
             documents = await self.document_loader.load(file_paths)
-            self.last_indexing_summary = dict(
-                getattr(self.document_loader, "last_load_summary", {})
-            )
+            indexing_summary = dict(getattr(self.document_loader, "last_load_summary", {}))
+            if callable(summary_callback):
+                summary_callback(indexing_summary)
             if not documents:
                 self.logger.error("No valid documents found")
                 return False
@@ -281,6 +284,7 @@ class LlamaIndexPipeline:
 
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")
+        summary_callback = kwargs.get("summary_callback")
         self._configure_settings()
 
         self.logger.info(f"Adding {len(file_paths)} documents to KB '{kb_name}' using LlamaIndex")
@@ -295,14 +299,18 @@ class LlamaIndexPipeline:
                 set_progress_callback(progress_callback)
 
             documents = await self.document_loader.load(file_paths)
-            self.last_indexing_summary = dict(
-                getattr(self.document_loader, "last_load_summary", {})
-            )
+            indexing_summary = dict(getattr(self.document_loader, "last_load_summary", {}))
+            if callable(summary_callback):
+                summary_callback(indexing_summary)
             if not documents:
                 self.logger.warning("No valid documents to add")
                 return False
 
             loop = asyncio.get_event_loop()
+            # Advancing first makes every older embedding index stale while the
+            # active index is being mutated. If persistence fails, no partial
+            # index can be selected and the KB safely requires a rebuild.
+            corpus_revision = advance_corpus_revision(kb_dir)
 
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")
@@ -313,8 +321,6 @@ class LlamaIndexPipeline:
                     ),
                 )
                 self.logger.info(f"Added {num_added} documents to existing index")
-                if signature is not None and plan.storage_dir != plan.existing_storage:
-                    write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
             else:
                 self.logger.info(f"Creating new index with {len(documents)} documents...")
                 plan.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -323,8 +329,11 @@ class LlamaIndexPipeline:
                     lambda: storage.create_index(documents, plan.storage_dir, show_progress=True),
                 )
                 self.logger.info(f"Created new index with {num_added} documents")
-                if signature is not None:
-                    write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
+
+            if signature is not None and not mark_version_corpus_revision(
+                plan.storage_dir, corpus_revision
+            ):
+                write_version_meta(kb_dir, signature, storage_dir=plan.storage_dir)
 
             self.logger.info(f"Successfully added documents to KB '{kb_name}'")
             return True
@@ -338,7 +347,13 @@ class LlamaIndexPipeline:
         finally:
             set_progress_callback(None)
 
-    async def remove_document(self, kb_name: str, file_path: str) -> dict[str, Any]:
+    async def remove_document(
+        self,
+        kb_name: str,
+        file_path: str,
+        *,
+        corpus_revision: int | None = None,
+    ) -> dict[str, Any]:
         """Surgically remove a single document's chunks from all ready index versions.
 
         Returns a dict with:
@@ -360,20 +375,25 @@ class LlamaIndexPipeline:
                 "removed": 0,
                 "versions_checked": 0,
                 "versions_modified": 0,
+                "versions_synchronized": 0,
                 "errors": [],
             }
 
         total_removed = 0
         versions_modified = 0
+        versions_synchronized = 0
         errors: list[str] = []
+        target_revision = (
+            get_corpus_revision(kb_dir) if corpus_revision is None else corpus_revision
+        )
 
         for version_entry in ready_versions:
             storage_dir = Path(str(version_entry["storage_path"]))
             version_label = version_entry.get("version", str(storage_dir))
             if not storage_dir.is_dir():
-                self.logger.warning(
-                    "Version '%s' storage dir %s is missing; skipping.", version_label, storage_dir
-                )
+                err_msg = f"Version '{version_label}': storage directory is missing"
+                self.logger.warning("%s (%s)", err_msg, storage_dir)
+                errors.append(err_msg)
                 continue
 
             try:
@@ -381,6 +401,8 @@ class LlamaIndexPipeline:
                 total_removed += removed
                 if removed > 0:
                     versions_modified += 1
+                if mark_version_corpus_revision(storage_dir, target_revision):
+                    versions_synchronized += 1
             except Exception as exc:
                 err_msg = f"Version '{version_label}': {exc}"
                 self.logger.warning(
@@ -392,6 +414,7 @@ class LlamaIndexPipeline:
             "removed": total_removed,
             "versions_checked": len(ready_versions),
             "versions_modified": versions_modified,
+            "versions_synchronized": versions_synchronized,
             "errors": errors,
         }
 

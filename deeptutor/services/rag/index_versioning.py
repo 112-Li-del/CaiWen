@@ -29,9 +29,12 @@ from datetime import datetime
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import re
+import threading
 from typing import Any, Optional
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +42,11 @@ VERSION_PREFIX = "version-"
 LEGACY_VERSION_DIRNAME = "index_versions"
 LEGACY_STORAGE_DIRNAME = "llamaindex_storage"
 META_FILENAME = "meta.json"
+KB_METADATA_FILENAME = "metadata.json"
 CURRENT_INDEX_SCHEMA_VERSION = 2
+INITIAL_CORPUS_REVISION = 0
+
+_CORPUS_REVISION_LOCK = threading.Lock()
 
 _VERSION_RE = re.compile(r"^version-(\d+)$")
 
@@ -95,6 +102,56 @@ def _read_json(path: Path) -> Optional[dict[str, Any]]:
         return None
 
 
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Replace a JSON file atomically so readers never observe a partial write."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+def get_corpus_revision(kb_dir: Path) -> int:
+    """Return the indexed-content revision for a knowledge base.
+
+    Existing knowledge bases predate this field, so revision zero is the
+    backward-compatible baseline for their current schema-v2 indexes.
+    """
+    metadata = _read_json(kb_dir / KB_METADATA_FILENAME) or {}
+    try:
+        return max(int(metadata.get("corpus_revision", INITIAL_CORPUS_REVISION)), 0)
+    except (TypeError, ValueError):
+        return INITIAL_CORPUS_REVISION
+
+
+def advance_corpus_revision(kb_dir: Path) -> int:
+    """Atomically advance and persist the knowledge base content revision."""
+    with _CORPUS_REVISION_LOCK:
+        metadata_path = kb_dir / KB_METADATA_FILENAME
+        metadata = _read_json(metadata_path) or {}
+        revision = get_corpus_revision(kb_dir) + 1
+        metadata["corpus_revision"] = revision
+        _atomic_write_json(metadata_path, metadata)
+        return revision
+
+
+def mark_version_corpus_revision(version_dir: Path, revision: int) -> bool:
+    """Mark a successfully synchronized schema-v2 index as corpus-current."""
+    meta_path = version_dir / META_FILENAME
+    metadata = _read_json(meta_path)
+    if not metadata or metadata.get("schema_version") != CURRENT_INDEX_SCHEMA_VERSION:
+        return False
+    metadata["corpus_revision"] = revision
+    _atomic_write_json(meta_path, metadata)
+    return True
+
+
 def _flat_version_number(path: Path) -> int:
     match = _VERSION_RE.match(path.name)
     return int(match.group(1)) if match else 0
@@ -119,6 +176,8 @@ def _entry_from_flat_version(version_dir: Path) -> dict[str, Any]:
     meta.setdefault("version", version_dir.name)
     meta.setdefault("signature", meta.get("signature") or version_dir.name)
     meta.setdefault("schema_version", 1)
+    if meta.get("schema_version") == CURRENT_INDEX_SCHEMA_VERSION:
+        meta.setdefault("corpus_revision", INITIAL_CORPUS_REVISION)
     meta["ready"] = _is_storage_ready(version_dir)
     meta["storage_path"] = str(version_dir)
     meta["version_path"] = str(version_dir)
@@ -195,6 +254,13 @@ def list_kb_versions(kb_dir: Path) -> list[dict[str, Any]]:
     if root_legacy.is_dir() and any(root_legacy.iterdir()):
         versions.append(_entry_from_root_legacy(kb_dir))
 
+    corpus_revision = get_corpus_revision(kb_dir)
+    for entry in versions:
+        entry["corpus_current"] = bool(
+            entry.get("schema_version") == CURRENT_INDEX_SCHEMA_VERSION
+            and entry.get("corpus_revision", INITIAL_CORPUS_REVISION) == corpus_revision
+        )
+
     return _sort_versions(versions)
 
 
@@ -240,6 +306,7 @@ def find_matching_version(kb_dir: Path, signature: EmbeddingSignature) -> Option
         if entry.get("signature") == target
         and entry.get("ready")
         and entry.get("schema_version") == CURRENT_INDEX_SCHEMA_VERSION
+        and entry.get("corpus_current") is True
     ]
     if not matches:
         return None
@@ -283,9 +350,9 @@ def write_version_meta(
         **asdict(signature),
         "layout": "flat" if target.parent == kb_dir else "nested_legacy",
         "created_at": datetime.utcnow().isoformat() + "Z",
+        "corpus_revision": get_corpus_revision(kb_dir),
     }
-    with open(target / META_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
+    _atomic_write_json(target / META_FILENAME, payload)
 
 
 def resolve_storage_dir_for_read(

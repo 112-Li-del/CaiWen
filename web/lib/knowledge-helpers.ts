@@ -37,6 +37,8 @@ export interface IndexVersion {
   ready?: boolean;
   legacy?: boolean;
   schema_version?: number;
+  corpus_revision?: number;
+  corpus_current?: boolean;
 }
 
 export interface KnowledgeBase {

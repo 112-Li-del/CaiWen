@@ -52,12 +52,6 @@ class RAGService:
         pipeline = self._get_pipeline()
         return await pipeline.initialize(kb_name=kb_name, file_paths=file_paths, **kwargs)
 
-    def get_last_indexing_summary(self) -> dict[str, object]:
-        """Return per-file counts from the most recent indexing operation."""
-        pipeline = self._get_pipeline()
-        summary = getattr(pipeline, "last_indexing_summary", {})
-        return dict(summary) if isinstance(summary, dict) else {}
-
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self.logger.info(f"Adding {len(file_paths)} document(s) to KB '{kb_name}'")
         pipeline = self._get_pipeline()
@@ -267,19 +261,30 @@ class RAGService:
 
         return capture_process_logs(emit, min_level=logging.INFO)
 
-    async def remove_document(self, kb_name: str, file_path: str) -> dict[str, Any]:
+    async def remove_document(
+        self,
+        kb_name: str,
+        file_path: str,
+        *,
+        corpus_revision: int | None = None,
+    ) -> dict[str, Any]:
         """Surgically remove a single document from all ready index versions."""
         self.logger.info(f"Removing document '{file_path}' from KB '{kb_name}'")
         pipeline = self._get_pipeline()
 
         if hasattr(pipeline, "remove_document"):
-            return await pipeline.remove_document(kb_name=kb_name, file_path=file_path)
+            return await pipeline.remove_document(
+                kb_name=kb_name,
+                file_path=file_path,
+                corpus_revision=corpus_revision,
+            )
 
         # Fallback for pipelines without surgical removal support
         return {
             "removed": 0,
             "versions_checked": 0,
             "versions_modified": 0,
+            "versions_synchronized": 0,
             "errors": ["Pipeline does not support surgical document removal"],
         }
 

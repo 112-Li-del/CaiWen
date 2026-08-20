@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
-from deeptutor.knowledge.add_documents import DocumentAdder
+from deeptutor.knowledge.add_documents import DocumentAdder, remove_ingested_file_hash
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
@@ -298,6 +298,7 @@ def _save_uploaded_files(
     try:
         for file in files:
             file_path = None
+            created_file = False
             original_filename = file.filename or "upload"
             try:
                 sanitized_filename = DocumentValidator.validate_upload_safety(
@@ -312,7 +313,10 @@ def _save_uploaded_files(
                 written_bytes = 0
 
                 file.file.seek(0)
-                with open(file_path, "wb") as buffer:
+                # Exclusive creation is the final guard against two concurrent
+                # requests racing past the preflight filename check.
+                with open(file_path, "xb") as buffer:
+                    created_file = True
                     for chunk in iter(lambda: file.file.read(8192), b""):
                         written_bytes += len(chunk)
                         if written_bytes > max_size:
@@ -343,8 +347,16 @@ def _save_uploaded_files(
                             sanitized_filename,
                             pb_exc,
                         )
+            except FileExistsError as e:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"File already exists: '{file_path.name if file_path else original_filename}'. "
+                        "Delete the existing file before uploading a replacement."
+                    ),
+                ) from e
             except Exception as e:
-                if file_path and file_path.exists():
+                if created_file and file_path and file_path.exists():
                     try:
                         os.unlink(file_path)
                     except OSError:
@@ -419,6 +431,29 @@ def _validate_upload_batch(
         )
 
     return validated
+
+
+def _reject_existing_upload_names(
+    raw_dir: Path, validated_files: list[dict[str, int | str | None]]
+) -> None:
+    """Reject replacement uploads until an explicit replace workflow exists."""
+    existing_names = {
+        child.name.casefold(): child.name for child in raw_dir.iterdir() if child.is_file()
+    }
+    collisions = []
+    for item in validated_files:
+        sanitized_name = str(item["sanitized_filename"])
+        if sanitized_name.casefold() in existing_names:
+            collisions.append(existing_names[sanitized_name.casefold()])
+    if collisions:
+        names = ", ".join(f"'{name}'" for name in sorted(set(collisions)))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"File already exists: {names}. Delete the existing file before "
+                "uploading a replacement."
+            ),
+        )
 
 
 def _upload_file_to_pb(kb_name: str, filename: str, file_path: Path) -> None:
@@ -503,7 +538,7 @@ def _assert_kb_writable_or_409(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Knowledge base '{kb_name}' uses legacy index format and needs reindex "
+                f"Knowledge base '{kb_name}' needs reindex "
                 "before accepting incremental uploads."
             ),
         )
@@ -784,6 +819,7 @@ async def run_upload_processing_task(
                     adder.extract_numbered_items_for_new_docs(processed_files, batch_size=20)
 
                 adder.update_metadata(len(processed_files) if processed_files else 0)
+                needs_reindex = bool(adder.indexing_errors)
 
                 if folder_id and processed_files:
                     try:
@@ -798,9 +834,17 @@ async def run_upload_processing_task(
                         )
 
                 num_processed = len(processed_files) if processed_files else 0
+                completion_status = "needs_reindex" if needs_reindex else "ready"
+                completion_stage = "needs_reindex" if needs_reindex else "completed"
+                completion_message = (
+                    f"Indexed {num_processed} file(s), but an indexing error left the "
+                    "stored index incomplete. Re-index is required."
+                    if needs_reindex
+                    else f"Successfully processed {num_processed} files!"
+                )
                 progress_tracker.update(
-                    ProgressStage.COMPLETED,
-                    f"Successfully processed {num_processed} files!",
+                    ProgressStage.ERROR if needs_reindex else ProgressStage.COMPLETED,
+                    completion_message,
                     current=num_processed,
                     total=num_processed,
                     indexed_count=num_processed,
@@ -814,11 +858,11 @@ async def run_upload_processing_task(
                 manager = get_kb_manager()
                 manager.update_kb_status(
                     name=kb_name,
-                    status="ready",
+                    status=completion_status,
                     progress={
-                        "stage": "completed",
-                        "message": f"Successfully processed {num_processed} files!",
-                        "percent": 100,
+                        "stage": completion_stage,
+                        "message": completion_message,
+                        "percent": 0 if needs_reindex else 100,
                         "current": num_processed,
                         "total": num_processed,
                         "task_id": task_id,
@@ -826,16 +870,27 @@ async def run_upload_processing_task(
                         "indexed_count": num_processed,
                         "index_changed": num_processed > 0,
                         "index_action": "upload",
+                        "errors": list(adder.indexing_errors),
                     },
                 )
 
                 _task_log(
-                    task_id, f"Processed {num_processed} file(s) for '{kb_name}'", level="success"
+                    task_id,
+                    completion_message,
+                    level="error" if needs_reindex else "success",
                 )
-                task_manager.update_task_status(task_id, "completed")
-                task_stream_manager.emit_complete(
-                    task_id, f"Successfully processed {num_processed} files for '{kb_name}'"
-                )
+                if needs_reindex:
+                    task_manager.update_task_status(
+                        task_id, "error", error="; ".join(adder.indexing_errors)
+                    )
+                    task_stream_manager.emit_failed(
+                        task_id,
+                        completion_message,
+                        details="\n".join(adder.indexing_errors),
+                    )
+                else:
+                    task_manager.update_task_status(task_id, "completed")
+                    task_stream_manager.emit_complete(task_id, completion_message)
             except asyncio.TimeoutError:
                 _task_log(
                     task_id,
@@ -1322,6 +1377,8 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
     """
     try:
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        kb_entry = _load_kb_entry_or_404(manager, resolved_name)
+        _assert_kb_writable_or_409(resolved_name, kb_entry)
         kb_path = manager.get_knowledge_base_path(resolved_name)
         raw_dir = kb_path / "raw"
         if not raw_dir.exists():
@@ -1343,8 +1400,13 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
         # against node metadata stored during indexing.
         target_abs_path = str(target)
 
-        # Remove the raw file from disk
+        # Invalidate every index before mutating the source corpus. Each index
+        # version is marked current again only after its surgical cleanup succeeds.
+        from deeptutor.services.rag.index_versioning import advance_corpus_revision
+
+        corpus_revision = advance_corpus_revision(kb_path)
         target.unlink()
+        remove_ingested_file_hash(kb_path, target.name)
         RenditionManager(raw_dir).remove_for(target.name)
         logger.info(f"Deleted raw file '{filename}' from KB '{kb_name}'")
 
@@ -1353,11 +1415,14 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
 
         rag_service = RAGService(kb_base_dir=str(kb_base_dir))
         result = await rag_service.remove_document(
-            kb_name=resolved_name, file_path=target_abs_path
+            kb_name=resolved_name,
+            file_path=target_abs_path,
+            corpus_revision=corpus_revision,
         )
 
         versions_checked = result.get("versions_checked", 0)
         versions_modified = result.get("versions_modified", 0)
+        versions_synchronized = result.get("versions_synchronized", 0)
         total_removed = result.get("removed", 0)
         errors = result.get("errors", [])
 
@@ -1388,13 +1453,21 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
                 f"File '{filename}' deleted. No index versions found — "
                 "upload new files to build the index."
             )
-        elif versions_modified > 0:
-            # At least one version was successfully cleaned — KB stays ready.
+        elif versions_synchronized > 0:
+            # Successfully cleaned versions are current; failed versions remain
+            # stale and cannot be selected by retrieval.
             status = "ready"
-            progress_msg = (
-                f"File '{filename}' deleted and removed from "
-                f"{versions_modified} index version(s)."
-            )
+            if total_removed > 0:
+                progress_msg = (
+                    f"File '{filename}' deleted and removed from "
+                    f"{versions_modified} index version(s); "
+                    f"{versions_synchronized} version(s) synchronized."
+                )
+            else:
+                progress_msg = (
+                    f"File '{filename}' deleted (no index chunks found); "
+                    f"{versions_synchronized} version(s) synchronized."
+                )
         elif total_removed == 0 and not errors:
             # File was removed from disk but had no chunks in any version.
             # This is normal for newly uploaded files that weren't indexed yet.
@@ -1432,6 +1505,8 @@ async def delete_kb_raw_file(kb_name: str, filename: str):
             "message": f"File '{filename}' deleted successfully",
             "index_removed": total_removed,
             "versions_modified": versions_modified,
+            "versions_synchronized": versions_synchronized,
+            "versions_invalidated": len(errors),
             "versions_checked": versions_checked,
         }
     except HTTPException:
@@ -1525,7 +1600,8 @@ async def upload_files(
                 ),
             )
         allowed_extensions = FileTypeRouter.get_supported_extensions()
-        _validate_upload_batch(files, allowed_extensions=allowed_extensions)
+        validated_files = _validate_upload_batch(files, allowed_extensions=allowed_extensions)
+        _reject_existing_upload_names(raw_dir, validated_files)
         uploaded_files, uploaded_file_paths = _save_uploaded_files(
             files, raw_dir, allowed_extensions=allowed_extensions
         )
@@ -1673,8 +1749,9 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
 
     Each ``(profile, model, dimension, base_url)`` combination gets its own
     flat ``<kb>/version-N/`` storage directory. Prior versions are preserved
-    untouched so switching the active embedding model back to a
-    previously-indexed one reuses the existing version with no extra work.
+    untouched. Switching back to a previously indexed embedding model reuses
+    its version only when the knowledge-base files have not changed since that
+    version was built.
 
     The core indexing operation is retried up to **3 times** with exponential
     backoff on transient errors (embedding API failures, network timeouts).
@@ -1881,17 +1958,24 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                         total=total_batches,
                     )
 
+                indexing_summary: dict[str, object] = {}
+
+                def _on_summary(summary: dict[str, object]) -> None:
+                    indexing_summary.clear()
+                    indexing_summary.update(summary)
+
                 success = await rag_service.initialize(
                     kb_name=kb_name,
                     file_paths=file_paths,
                     progress_callback=_on_progress,
+                    summary_callback=_on_summary,
                 )
                 if not success:
                     raise RuntimeError(
                         f"Re-index found no valid documents to index in '{kb_name}'."
                     )
 
-                summary = rag_service.get_last_indexing_summary()
+                summary = indexing_summary
                 total_file_count = int(summary.get("total_file_count") or len(file_paths))
                 indexed_file_count = int(summary.get("indexed_file_count") or 0)
                 image_only_file_count = int(summary.get("image_only_file_count") or 0)

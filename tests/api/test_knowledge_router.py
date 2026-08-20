@@ -313,6 +313,80 @@ def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     assert isinstance(body.get("task_id"), str) and body["task_id"]
 
 
+def test_upload_rejects_existing_filename_without_overwriting(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["ready-kb"] = {
+        "path": "ready-kb",
+        "rag_provider": "llamaindex",
+        "needs_reindex": False,
+        "status": "ready",
+    }
+    raw_dir = manager.base_dir / "ready-kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    existing = raw_dir / "demo.txt"
+    existing.write_bytes(b"original")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/v1/knowledge/ready-kb/upload", files=_upload_payload())
+
+    assert response.status_code == 409
+    assert "delete the existing file" in response.json()["detail"].lower()
+    assert existing.read_bytes() == b"original"
+
+
+def test_delete_file_clears_hash_and_advances_corpus_revision(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["ready-kb"] = {
+        "path": "ready-kb",
+        "rag_provider": "llamaindex",
+        "needs_reindex": False,
+        "status": "ready",
+    }
+    kb_dir = manager.base_dir / "ready-kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    target = raw_dir / "demo.txt"
+    target.write_bytes(b"original")
+    (kb_dir / "metadata.json").write_text(
+        json.dumps({"file_hashes": {"demo.txt": "abc"}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+
+    captured: dict[str, object] = {}
+
+    class _FakeRAGService:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def remove_document(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "removed": 1,
+                "versions_checked": 1,
+                "versions_modified": 1,
+                "versions_synchronized": 1,
+                "errors": [],
+            }
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _FakeRAGService)
+
+    with TestClient(_build_app()) as client:
+        response = client.delete("/api/v1/knowledge/ready-kb/files/demo.txt")
+
+    assert response.status_code == 200
+    metadata = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["file_hashes"] == {}
+    assert metadata["corpus_revision"] == 1
+    assert captured["corpus_revision"] == 1
+    assert not target.exists()
+
+
 def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["actual-kb"] = {

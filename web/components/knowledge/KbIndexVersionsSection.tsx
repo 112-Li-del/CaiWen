@@ -45,7 +45,8 @@ export default function KbIndexVersionsSection({
     (version) =>
       version.signature === activeSig &&
       version.ready === true &&
-      version.schema_version === 2,
+      version.schema_version === 2 &&
+      version.corpus_current !== false,
   );
   const needsReindex = kbNeedsReindex(kb);
   const mismatch = Boolean(kb.metadata?.embedding_mismatch);
@@ -110,7 +111,7 @@ export default function KbIndexVersionsSection({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {t(
-              "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
+              "No ready index matches both the active embedding configuration and the current knowledge-base files. Re-index to rebuild it.",
             )}
           </span>
         </div>
@@ -204,6 +205,8 @@ function IndexVersionRow({
   const isActive = !!version.version && version.version === activeVersionName;
   const isPhantom = version.ready !== true;
   const isLegacy = !!version.legacy || (version.schema_version ?? 1) < 2;
+  const isCorpusStale = !isLegacy && version.corpus_current === false;
+  const isStale = isPhantom || isCorpusStale;
 
   const title = isLegacy
     ? t("Legacy index")
@@ -219,15 +222,17 @@ function IndexVersionRow({
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
           isActive
             ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300"
-            : isPhantom
+            : isStale
               ? "bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300"
               : "bg-[var(--muted)] text-[var(--muted-foreground)]"
         }`}
         title={
           isActive
             ? t("Active version")
-            : isPhantom
-              ? t("Stale (matches active config but storage is empty)")
+            : isCorpusStale
+              ? t("Outdated after knowledge base files changed")
+              : isPhantom
+                ? t("Stale (matches active config but storage is empty)")
               : isLegacy
                 ? t("Legacy index format")
                 : t("Inactive version")
@@ -235,7 +240,7 @@ function IndexVersionRow({
       >
         {isActive ? (
           <Star className="h-3.5 w-3.5" fill="currentColor" />
-        ) : isPhantom ? (
+        ) : isStale ? (
           <AlertTriangle className="h-3.5 w-3.5" />
         ) : isLegacy ? (
           <Clock className="h-3.5 w-3.5" />
@@ -248,7 +253,7 @@ function IndexVersionRow({
         <div className="flex items-center gap-2">
           <span
             className={`truncate text-[12.5px] font-medium ${
-              isPhantom
+              isStale
                 ? "text-amber-700 line-through decoration-amber-400/70 dark:text-amber-300"
                 : "text-[var(--foreground)]"
             }`}
@@ -260,9 +265,9 @@ function IndexVersionRow({
               {t("Active")}
             </span>
           )}
-          {isPhantom && (
+          {isStale && (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-              {t("Stale")}
+              {t(isCorpusStale ? "Content outdated" : "Stale")}
             </span>
           )}
           {isLegacy && !isActive && (

@@ -20,7 +20,7 @@ class _FakePipeline:
             "sources": [{"id": 1}],
             "provider": "lightrag",  # deliberately wrong; service must overwrite
         }
-        self.last_indexing_summary = {
+        self.indexing_summary = {
             "total_file_count": 6,
             "indexed_file_count": 4,
             "image_only_file_count": 2,
@@ -29,6 +29,9 @@ class _FakePipeline:
 
     async def initialize(self, kb_name: str, file_paths, **kwargs) -> bool:
         self.calls.append({"op": "initialize", "kb_name": kb_name, "files": list(file_paths)})
+        summary_callback = kwargs.get("summary_callback")
+        if callable(summary_callback):
+            summary_callback(dict(self.indexing_summary))
         return True
 
     async def add_documents(self, kb_name: str, file_paths, **kwargs) -> bool:
@@ -58,10 +61,18 @@ def test_provider_argument_is_silently_ignored(tmp_path) -> None:
     assert service.provider == "llamaindex"
 
 
-def test_service_exposes_last_indexing_summary(fake_service) -> None:
+@pytest.mark.asyncio
+async def test_initialize_returns_summary_through_operation_local_callback(fake_service) -> None:
     service, _pipeline = fake_service
+    captured: dict[str, object] = {}
 
-    assert service.get_last_indexing_summary() == {
+    await service.initialize(
+        "kb",
+        ["doc.txt"],
+        summary_callback=lambda summary: captured.update(summary),
+    )
+
+    assert captured == {
         "total_file_count": 6,
         "indexed_file_count": 4,
         "image_only_file_count": 2,

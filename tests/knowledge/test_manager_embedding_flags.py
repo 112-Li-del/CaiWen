@@ -90,6 +90,45 @@ def test_ready_version_without_active_signature_marks_reindex(
     assert entry["embedding_mismatch"] is True
 
 
+def test_ready_signature_with_stale_corpus_marks_reindex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_active_embedding(monkeypatch, sig_hash="active-signature")
+
+    kb_dir = tmp_path / "stale-kb"
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (version_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "signature": "active-signature",
+                "version": "version-1",
+                "schema_version": 2,
+                "corpus_revision": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (kb_dir / "metadata.json").write_text(
+        json.dumps({"corpus_revision": 2}), encoding="utf-8"
+    )
+
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config.setdefault("knowledge_bases", {})["stale-kb"] = {
+        "path": "stale-kb",
+        "rag_provider": "llamaindex",
+    }
+    manager._save_config()
+
+    reloaded = KnowledgeBaseManager(base_dir=str(tmp_path))
+    entry = reloaded.config["knowledge_bases"]["stale-kb"]
+    assert entry["needs_reindex"] is True
+    assert entry["embedding_mismatch"] is True
+    assert reloaded.get_info("stale-kb")["statistics"]["active_match"] is False
+
+
 def test_ready_status_records_last_indexed_only_when_index_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

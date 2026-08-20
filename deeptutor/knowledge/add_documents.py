@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 from typing import List, Optional
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -27,6 +28,36 @@ from deeptutor.services.rag.service import RAGService
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_DIR = "./data/knowledge_bases"
+
+
+def remove_ingested_file_hash(kb_dir: Path, filename: str) -> bool:
+    """Forget a deleted document so identical content can be uploaded again."""
+    metadata_file = kb_dir / "metadata.json"
+    if not metadata_file.exists():
+        return False
+    try:
+        with open(metadata_file, encoding="utf-8") as handle:
+            metadata = json.load(handle)
+    except Exception:
+        return False
+    if not isinstance(metadata, dict):
+        return False
+
+    file_hashes = metadata.get("file_hashes")
+    if not isinstance(file_hashes, dict) or filename not in file_hashes:
+        return False
+    file_hashes.pop(filename, None)
+
+    temp_file = metadata_file.with_name(f".{metadata_file.name}.{uuid4().hex}.tmp")
+    try:
+        with open(temp_file, "w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, indent=2, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_file, metadata_file)
+    finally:
+        temp_file.unlink(missing_ok=True)
+    return True
 
 
 class DocumentAdder:
@@ -78,6 +109,7 @@ class DocumentAdder:
         self.api_key = api_key
         self.base_url = base_url
         self.progress_tracker = progress_tracker
+        self.indexing_errors: list[str] = []
 
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,6 +195,7 @@ class DocumentAdder:
                     logger.error(f"Failed to index: {doc_file.name}")
             except Exception as e:
                 logger.exception(f"Failed {doc_file.name}: {e}")
+                self.indexing_errors.append(f"{doc_file.name}: {e}")
 
         return processed_files
 
@@ -200,7 +233,7 @@ class DocumentAdder:
                 metadata = {}
 
         metadata["rag_provider"] = DEFAULT_PROVIDER
-        metadata["needs_reindex"] = False
+        metadata["needs_reindex"] = bool(self.indexing_errors)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         metadata["last_updated"] = timestamp
         if added_count > 0:
@@ -278,14 +311,20 @@ async def add_documents(
         processed = await adder.process_new_documents(new_files)
         adder.extract_numbered_items_for_new_docs(processed)
         adder.update_metadata(len(processed))
+        needs_reindex = bool(adder.indexing_errors)
 
         manager.update_kb_status(
             name=kb_name,
-            status="ready",
+            status="needs_reindex" if needs_reindex else "ready",
             progress={
-                "stage": "completed",
-                "message": f"Successfully processed {len(processed)} files!",
-                "percent": 100,
+                "stage": "needs_reindex" if needs_reindex else "completed",
+                "message": (
+                    f"Indexed {len(processed)} file(s), but re-index is required: "
+                    + "; ".join(adder.indexing_errors)
+                    if needs_reindex
+                    else f"Successfully processed {len(processed)} files!"
+                ),
+                "percent": 0 if needs_reindex else 100,
                 "current": len(processed),
                 "total": max(len(new_files), 1),
                 "file_name": "",
