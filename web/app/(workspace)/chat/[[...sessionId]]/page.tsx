@@ -24,6 +24,7 @@ import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
+import GlitchPromptTitle from "@/components/chat/home/GlitchPromptTitle";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
@@ -1336,13 +1337,11 @@ export default function ChatPage() {
       <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
-            <div className="text-center">
-              <h1 className="font-serif text-[36px] font-medium tracking-[-0.01em] text-[var(--foreground)]">
-                {t("What would you like to ask?")}
-              </h1>
-              <p className="mt-4 text-[15px] text-[var(--muted-foreground)]">
-                {t("Ask anything — I'm here to help you answer.")}
-              </p>
+            <div className="flex w-full justify-center">
+              <GlitchPromptTitle
+                title={t("What would you like to ask?")}
+                subtitle={t("Ask anything — I'm here to help you answer.")}
+              />
             </div>
           </div>
         ) : (
