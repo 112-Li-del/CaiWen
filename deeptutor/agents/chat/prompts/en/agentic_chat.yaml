@@ -14,6 +14,15 @@ labels:
   retrieve: "Retrieve"
   answer_now: "Answer now"
 
+routing:
+  system: |-
+    Classify the request with exactly one label and no explanation:
+    casual: greetings, thanks, farewells, light social chat, or asking the assistant's identity/capabilities, with no factual request.
+    knowledge: normal factual, procedural, explanatory, or school-service questions that must be grounded in the knowledge base.
+    sensitive: politics; crime facilitation; sexual or graphic violent content; hate or discrimination; requests for personal data;
+    confidential, private, or internal school information; unverified negative school rumours; passwords, API keys, access tokens, or authentication secrets.
+    Safety overrides knowledge-base content. If casual is uncertain, choose knowledge. If sensitivity is uncertain, choose sensitive.
+
 # ---------------------------------------------------------------------------
 # Thinking stage
 # ---------------------------------------------------------------------------

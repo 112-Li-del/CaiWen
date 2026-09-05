@@ -76,6 +76,15 @@ class TaskIDManager:
         with self._lock:
             return self._task_metadata.get(task_id, {}).copy()
 
+    def get_task_status(self, task_id: str) -> dict | None:
+        """Get the current task status and its associated metadata.
+
+        Knowledge-base concurrency checks use this name to determine whether
+        an existing task is still active. Keep the returned value isolated
+        from the manager's internal state, as with ``get_task_metadata``.
+        """
+        return self.get_task_metadata(task_id)
+
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """Clean up old tasks (completed tasks older than specified hours)"""
         with self._lock:

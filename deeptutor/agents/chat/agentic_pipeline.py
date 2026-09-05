@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 import json
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -48,6 +49,18 @@ MAX_PARALLEL_TOOL_CALLS = 8
 # RAG fast path can hand the model complete passages (quality) without losing
 # the safety of a hard upper bound.
 MAX_TOOL_RESULT_CHARS = 8000
+
+_CASUAL_EXACT_MESSAGES = {
+    "你好", "您好", "嗨", "哈喽", "hello", "hi", "hey",
+    "早上好", "上午好", "中午好", "下午好", "晚上好", "晚安",
+    "谢谢", "感谢", "多谢", "再见", "拜拜", "你好吗", "最近怎么样",
+    "你是谁", "你叫什么", "你能做什么",
+}
+_SENSITIVE_REQUEST_PATTERNS = (
+    r"(?i)(api[ _-]?key|access[ _-]?token|secret[ _-]?key|password|passwd|密码|密钥|令牌).{0,24}(是什么|多少|给我|告诉|显示|查看|泄露|发给|提供|导出)",
+    r"(?i)(是什么|多少|给我|告诉|显示|查看|泄露|发给|提供|导出).{0,24}(api[ _-]?key|access[ _-]?token|secret[ _-]?key|password|passwd|密码|密钥|令牌)",
+    r"(?i)\b(sk-[a-z0-9_-]{12,}|bearer\s+[a-z0-9._-]{12,})\b",
+)
 
 CHAT_STAGE_KEYS: tuple[str, ...] = (
     "responding",
@@ -194,6 +207,22 @@ class AgenticChatPipeline:
                 stage="thinking",
                 metadata={"reason": "rag_without_kb"},
             )
+
+        if enabled_tools == ["rag"] and self._selected_kbs(context):
+            route = await self._classify_rag_turn(context.user_message)
+            if route == "sensitive":
+                refusal = self._sensitive_refuse_message()
+                await stream.content(refusal, source="chat", stage="responding")
+                await stream.result(
+                    {"response": refusal, "policy_route": "sensitive"},
+                    source="chat",
+                )
+                return
+            if route == "casual":
+                # Social conversation should remain conversational even while
+                # a KB is selected. Removing RAG for this turn prevents the
+                # empty-retrieval guard from rejecting greetings and thanks.
+                enabled_tools = []
         # ---- Fast paths (latency optimizations) -----------------------------
         # Fast paths skip the serial thinking / acting / observing LLM
         # round-trips when they would add latency without adding information.
@@ -463,6 +492,75 @@ class AgenticChatPipeline:
             return queries[:2] if queries else [message]
         except Exception:
             return [message]
+
+    @staticmethod
+    def _matches_hard_sensitive_rule(user_message: str) -> bool:
+        """Block explicit secret requests before sending text to any model."""
+        message = " ".join(str(user_message or "").split())
+        return any(re.search(pattern, message) for pattern in _SENSITIVE_REQUEST_PATTERNS)
+
+    @staticmethod
+    def _is_obvious_casual_message(user_message: str) -> bool:
+        message = " ".join(str(user_message or "").strip().lower().split())
+        message = message.strip("，。！？!?~～. ")
+        return message in _CASUAL_EXACT_MESSAGES
+
+    async def _classify_rag_turn(self, user_message: str) -> str:
+        """Route a KB-backed turn to casual chat, grounded QA, or refusal.
+
+        Hard secret patterns are handled locally. Ambiguous semantic cases use
+        a small model classification call; failures default to ``knowledge`` so
+        factual answers stay grounded rather than falling back to model memory.
+        """
+        message = str(user_message or "").strip()
+        if self._matches_hard_sensitive_rule(message):
+            return "sensitive"
+        if self._is_obvious_casual_message(message):
+            return "casual"
+        if not message:
+            return "casual"
+
+        try:
+            from deeptutor.services.llm import complete
+
+            system = self._t(
+                "routing.system",
+                default=(
+                    "Classify the user message as exactly one label: casual, knowledge, "
+                    "or sensitive. Sensitive includes politics, crime facilitation, sexual "
+                    "or graphic violence, hate, requests for personal/private data, school "
+                    "internal information or negative-rumour discussion, and credentials or "
+                    "API secrets. Casual is only social conversation without a factual claim. "
+                    "Everything else is knowledge. Output the label only."
+                ),
+            )
+            kwargs: dict[str, Any] = {}
+            if self.model:
+                kwargs.update(get_token_limit_kwargs(self.model, 20))
+            raw = await complete(
+                prompt=message,
+                system_prompt=system,
+                model=self.model,
+                api_key=self.api_key,
+                base_url=self.base_url,
+                api_version=self.api_version,
+                binding=self.binding,
+                extra_headers=self.extra_headers or None,
+                **kwargs,
+            )
+            label = str(raw or "").strip().lower().split()[0].strip("`.,:;，。")
+            return label if label in {"casual", "knowledge", "sensitive"} else "knowledge"
+        except Exception as exc:
+            logger.warning("Chat policy routing failed; defaulting to grounded QA: %s", exc)
+            return "knowledge"
+
+    def _sensitive_refuse_message(self) -> str:
+        if getattr(self, "language", "en") == "zh":
+            return "抱歉，该问题涉及敏感、隐私或内部信息，我无法提供相关内容。"
+        return (
+            "Sorry, I can't provide content involving sensitive, private, "
+            "confidential, or internal information."
+        )
 
     async def _run_direct_rag(
         self,
