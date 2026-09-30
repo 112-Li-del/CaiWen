@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
 import AuthGridBackground from "@/components/auth/AuthGridBackground";
 import StarBorder from "@/components/ui/StarBorder";
+import StrokeText from "@/components/ui/StrokeText";
+import ShinyText from "@/components/ui/ShinyText";
 
 /** 南财红 — 南京财经大学标准色 */
 const NUFE_RED = "#8B1A2B";
@@ -14,6 +16,8 @@ const NUFE_RED = "#8B1A2B";
 const PLAQUE_RED = "#4D0D10";
 /** 暖米色底 */
 const WARM_CREAM = "#F5F0E8";
+/** 「财问」标题的 SVG 字号：StrokeText 的视觉高度 ≈ fontSize × 1.3 */
+const TITLE_SIZE = 56;
 
 function LoginPageContent() {
   const { t } = useTranslation();
@@ -72,12 +76,24 @@ function LoginPageContent() {
           suppressHydrationWarning
         />
         <h2 className="text-white text-lg font-bold tracking-[0.3em]">
-          南京财经大学
+          {/* 白字 + 南财红扫光：高光取自学校标准色 */}
+          <ShinyText
+            text="南京财经大学"
+            color="#ffffff"
+            shineColor={NUFE_RED}
+            speed={2}
+          />
         </h2>
         <div className="flex items-center justify-center gap-2 mt-2">
           <span className="w-6 h-px bg-white/40" />
           <p className="text-white/80 text-xs tracking-[0.3em]">
-            自谦 · 自信 · 务实 · 超越
+            {/* 校训跟大字同色系扫光，但放慢节奏，避免两行同步闪显得躁 */}
+            <ShinyText
+              text="自谦 · 自信 · 务实 · 超越"
+              color="rgba(255,255,255,0.8)"
+              shineColor={NUFE_RED}
+              speed={3}
+            />
           </p>
           <span className="w-6 h-px bg-white/40" />
         </div>
@@ -105,15 +121,23 @@ function LoginPageContent() {
 
           {/* App 名称 */}
           <div className="text-center mb-6">
-            <h1
-              className="text-4xl tracking-wide"
-              style={{
-                color: NUFE_RED,
-                fontFamily: "var(--font-calligraphy)",
-              }}
-            >
-              财问
-            </h1>
+            <StrokeText
+              as="h1"
+              text="财问"
+              style={{ fontFamily: "var(--font-calligraphy)" }}
+              fontSize={TITLE_SIZE}
+              fontWeight={400}
+              letterSpacing={2}
+              strokeWidth={1.5}
+              // 全红：描边与填充同色，动画结束后两者融为一体
+              strokeColor={NUFE_RED}
+              fillColor={NUFE_RED}
+              // 汉字笔画远多于拉丁字母，dash 必须给足（见组件头注释第 4 条）
+              dashLength={TITLE_SIZE * 14}
+              drawDuration={1.1}
+              fillDelay={0.15}
+              stagger={0.15}
+            />
             <p className="mt-1 text-sm" style={{ color: "#8B7355" }}>
               {t("Sign in to your account")}
             </p>

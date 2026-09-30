@@ -648,6 +648,27 @@
   }
 }
 
+/* ShinyText：文字上掠过一道高光。详见 components/ui/ShinyText.tsx。
+   backgroundSize 200% 下，150% → -50% 的位移量 = 背景图自身宽度，
+   所以循环处严丝合缝，看不出接缝。 */
+@keyframes dt-shiny-text {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+
+/* ShinyText 的「减弱动效」降级：去掉扫光，回落为内联 color 给定的纯色文字 */
+@media (prefers-reduced-motion: reduce) {
+  .dt-shiny-text {
+    animation: none !important;
+    background-image: none !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+}
+
 /* StarBorder：尊重系统「减弱动效」设置，与 AuthGridBackground 的降级策略一致 */
 @media (prefers-reduced-motion: reduce) {
   .animate-star-movement-bottom,

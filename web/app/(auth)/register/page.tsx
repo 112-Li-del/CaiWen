@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { register, checkIsFirstUser, fetchAuthStatus } from "@/lib/auth";
 import AuthGridBackground from "@/components/auth/AuthGridBackground";
 import StarBorder from "@/components/ui/StarBorder";
+import ShinyText from "@/components/ui/ShinyText";
 
 /** 南财红 */
 const NUFE_RED = "#8B1A2B";
@@ -80,12 +81,24 @@ export default function RegisterPage() {
           suppressHydrationWarning
         />
         <h2 className="text-white text-lg font-bold tracking-[0.3em]">
-          南京财经大学
+          {/* 白字 + 南财红扫光：高光取自学校标准色（与登录页一致） */}
+          <ShinyText
+            text="南京财经大学"
+            color="#ffffff"
+            shineColor={NUFE_RED}
+            speed={2}
+          />
         </h2>
         <div className="flex items-center justify-center gap-2 mt-2">
           <span className="w-6 h-px bg-white/40" />
           <p className="text-white/80 text-xs tracking-[0.3em]">
-            自谦 · 自信 · 务实 · 超越
+            {/* 校训跟大字同色系扫光，但放慢节奏，避免两行同步闪显得躁 */}
+            <ShinyText
+              text="自谦 · 自信 · 务实 · 超越"
+              color="rgba(255,255,255,0.8)"
+              shineColor={NUFE_RED}
+              speed={3}
+            />
           </p>
           <span className="w-6 h-px bg-white/40" />
         </div>
