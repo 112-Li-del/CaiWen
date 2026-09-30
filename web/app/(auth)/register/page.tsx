@@ -70,6 +70,8 @@ export default function RegisterPage() {
         className="rounded-t-2xl px-6 py-5 text-center"
         style={{ backgroundColor: "rgba(139,26,43,0.80)" }}
       >
+        {/* suppressHydrationWarning：浏览器扩展会在 hydration 前给 <img> 注入 data-* 属性，
+            导致误报 mismatch。原因与注意事项见 components/auth/AuthGridBackground.tsx */}
         <img
           src="/nufe_logo.png"
           alt="南京财经大学"

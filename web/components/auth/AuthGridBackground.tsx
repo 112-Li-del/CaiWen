@@ -86,11 +86,16 @@ export default function AuthGridBackground({
       className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}
     >
       {/* 静态底图 / 兜底：始终渲染 */}
+      {/* suppressHydrationWarning：部分浏览器扩展（OCR 类）会在 React hydration 前
+          给 <img> 注入 data-* 属性（如 data-extentions-extra-ocr-id），导致误报
+          hydration mismatch。本元素无动态 props，且 suppress 仅作用于此标签本身、
+          不递归子树，不会掩盖真实问题。 */}
       <img
         src={imageSrc}
         alt=""
         className="absolute inset-0 h-full w-full object-cover"
         draggable={false}
+        suppressHydrationWarning
       />
 
       {/* 交互式扭曲层：仅在受支持的桌面环境懒加载 */}

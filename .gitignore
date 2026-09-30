@@ -122,6 +122,9 @@ cache/
 # Cursor
 .cursor/
 
+# WorkBuddy（AI 助手本地工作数据：项目记忆与笔记，不入库）
+.workbuddy/
+
 # PyCharm / IntelliJ IDEA
 .idea/
 *.iml
