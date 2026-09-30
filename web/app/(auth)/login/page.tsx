@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
+import AuthGridBackground from "@/components/auth/AuthGridBackground";
 
 /** 南财红 — 南京财经大学标准色 */
 const NUFE_RED = "#8B1A2B";
@@ -59,7 +60,7 @@ function LoginPageContent() {
       {/* ======== 南财红顶栏横幅 ======== */}
       <div
         className="rounded-t-2xl px-6 py-5 text-center"
-        style={{ backgroundColor: "rgab(139,26,43,0.80)" }}
+        style={{ backgroundColor: "rgba(139,26,43,0.80)" }}
       >
         <img
           src="/nufe_logo.png"
@@ -247,22 +248,12 @@ export default function LoginPage() {
         </div>
       }
     >
-      {/* 新增全屏背景容器，撑满整个屏幕，垂直居中登录卡片 */}
-      <div
-        className="h-screen w-full flex items-center justify-center p-4 overflow-y-auto"
-        style={{
-          // 替换成你自己的图片路径
-          backgroundImage: `url("/login_bg2.png")`,
-          backgroundSize: "cover", // 图片铺满屏幕不变形
-          backgroundPosition: "center", // 图片居中
-          backgroundRepeat: "no-repeat",
-          // 黑色半透明遮罩，防止背景太亮看不清登录框，0.4=40%透明度，数值越大越暗
-          backgroundColor: "rgba(0, 0, 0, 0.2)",
-          backgroundBlendMode: "overlay", // 遮罩和图片融合
-        }}
-      >
-        {/* 你原来的登录卡片内容不动，只包在背景div里面 */}
-        <LoginPageContent />
+      {/* 全屏背景：桌面端为可交互 GridDistortion，其他环境自动回退静态图 */}
+      <div className="relative h-screen w-full overflow-hidden bg-[#201415]">
+        <AuthGridBackground />
+        <div className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto p-4">
+          <LoginPageContent />
+        </div>
       </div>
     </Suspense>
   );

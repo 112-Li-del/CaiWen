@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { register, checkIsFirstUser, fetchAuthStatus } from "@/lib/auth";
+import AuthGridBackground from "@/components/auth/AuthGridBackground";
 
 /** 南财红 */
 const NUFE_RED = "#8B1A2B";
@@ -60,23 +61,14 @@ export default function RegisterPage() {
   }
 
   return (
-   <div
-      className="h-screen w-full flex items-center justify-center p-4 overflow-y-auto"
-      style={{
-        backgroundImage: `url("/login_bg2.png")`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        backgroundBlendMode: "overlay",
-      }}
-    >
-  
+    <div className="relative h-screen w-full overflow-hidden bg-[#201415]">
+      <AuthGridBackground />
+      <div className="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto p-4">
     <div className="w-full max-w-md">
       {/* ======== 南财红顶栏横幅 ======== */}
       <div
         className="rounded-t-2xl px-6 py-5 text-center"
-        style={{ backgroundColor:"rgab(139,26,43,0.80)" }}
+        style={{ backgroundColor: "rgba(139,26,43,0.80)" }}
       >
         <img
           src="/nufe_logo.png"
@@ -269,7 +261,8 @@ export default function RegisterPage() {
       >
         南京财经大学 · 财问智能问答平台
       </p>
+        </div>
+      </div>
     </div>
-  </div>
   );
 }
