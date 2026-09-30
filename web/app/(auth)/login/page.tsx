@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
 import AuthGridBackground from "@/components/auth/AuthGridBackground";
+import StarBorder from "@/components/ui/StarBorder";
 
 /** 南财红 — 南京财经大学标准色 */
 const NUFE_RED = "#8B1A2B";
@@ -199,27 +200,40 @@ function LoginPageContent() {
             )}
 
             {/* Submit */}
-            <button
+            <StarBorder
+              as="button"
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 rounded-lg font-medium text-sm text-white
-                         hover:opacity-90 active:opacity-80
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         transition-all duration-200 shadow-sm tracking-wider"
-              style={{ backgroundColor: NUFE_RED }}
+              className="w-full transition-opacity duration-200 hover:opacity-90 active:opacity-80"
+              radius="rounded-lg"
+              contentClassName="py-1 px-4 text-base tracking-wider shadow-sm"
+              contentStyle={{ fontFamily: "var(--font-calligraphy)" }}
+              color="#FFC94A"
+              speed="3s"
+              thickness={4}
+              backgroundColor={NUFE_RED}
+              textColor="#ffffff"
+              borderColor="transparent"
+              trackColor={NUFE_RED}
             >
               {loading ? t("Signing in…") : t("Sign in")}
-            </button>
+            </StarBorder>
           </form>
         </div>
       </div>
 
-      {/* 注册入口 */}
-      <p className="mt-5 text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
+      {/* 注册入口 — 整行改用书法字体，与「财问」标题统一 */}
+      <p
+        className="mt-5 text-center text-base"
+        style={{
+          color: "rgba(255,255,255,0.85)",
+          fontFamily: "var(--font-calligraphy)",
+        }}
+      >
         {t("Don't have an account?")}{" "}
         <Link
           href="/register"
-          className="font-medium inline-block px-3 py-1 rounded-md hover:opacity-85 transition-opacity"
+          className="inline-block px-3 py-1 rounded-md hover:opacity-85 transition-opacity"
           style={{
             color: NUFE_RED,
             backgroundColor: "#fff",

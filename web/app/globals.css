@@ -647,3 +647,11 @@
     opacity: 1;
   }
 }
+
+/* StarBorder：尊重系统「减弱动效」设置，与 AuthGridBackground 的降级策略一致 */
+@media (prefers-reduced-motion: reduce) {
+  .animate-star-movement-bottom,
+  .animate-star-movement-top {
+    animation: none;
+  }
+}
