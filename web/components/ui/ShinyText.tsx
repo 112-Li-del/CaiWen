@@ -14,9 +14,13 @@
  *
  *  1. 官方用 `motion/react` 的 useAnimationFrame 每帧 setMotionValue 来驱动
  *     background-position —— 每帧一次 JS 执行 + 一次 style 写入。这里改为纯
- *     CSS keyframes：同一套渐变、同一条 150% → -50% 映射，视觉完全一致，但动画
- *     跑在合成线程，不占主线程。登录页背景已有 GridDistortion 在工作，没必要
- *     再叠一份逐帧 JS。（也因此本项目无需引入 `motion` 依赖。）
+ *     CSS keyframes：同一套渐变、同一条 150% → -50% 映射，视觉完全一致，且省掉
+ *     每帧的 JS 执行与 React / motion 开销（也因此本项目无需引入 `motion` 依赖）。
+ *
+ *     ⚠️ 别误以为改完就"零成本"：background-position **不是**合成器属性
+ *     （transform / opacity 才是），CSS 动画每帧仍需主线程做一次 style 计算
+ *     并 repaint 该元素。只是重绘范围就两行文字（约 300×28px），
+ *     相对登录页背景那个全屏 WebGL shader 可以完全忽略。
  *
  *  2. 官方的 `delay`（每轮之间的停顿）未实现：CSS keyframe 的**选择器位置**
  *     不能用 CSS 变量（`var(--x) %` 非法），做可变停顿比例只能在运行时注入
