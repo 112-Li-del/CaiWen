@@ -32,17 +32,15 @@ interface BallHandle {
 
 /**
  * 聊天状态 → 表情。阶段名取自后端 stage_start 事件（英文），命中不了就退回流式判断。
- * 空会话给「欢迎」，跑完给「完成」再自然回落「待机」。
+ * 注意「欢迎」不在这里：欢迎是进门定时 3s 的临时状态，由聊天页控制，超时后落到这里的待机。
  */
 export function resolveEmotion(args: {
-  hasMessages: boolean;
   isStreaming: boolean;
   stage?: string;
   failed?: boolean;
 }): EmotionId {
-  const { hasMessages, isStreaming, stage, failed } = args;
+  const { isStreaming, stage, failed } = args;
   if (failed) return "21";                       // 出错
-  if (!hasMessages && !isStreaming) return "02"; // 欢迎：还没开口
   if (!isStreaming) return "01";                 // 待机
   const s = (stage || "").toLowerCase();
   if (/retriev|search|知识|rag|embed|index/.test(s)) return "11";  // 检索中

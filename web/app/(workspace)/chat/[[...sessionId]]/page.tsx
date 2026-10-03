@@ -1295,7 +1295,13 @@ export default function ChatPage() {
     downloadChatMarkdown(state.messages, { title });
   }, [state.messages]);
 
-  /* 表情球：一轮回答跑完时闪一下「完成」，2.4s 后自然回落待机 */
+  /* 表情球：进门先「欢迎」3s（组件挂载即触发，进聊天页就算进门），
+   * 之后交给状态映射；一轮回答跑完再闪一下「完成」，2.4s 后自然回落待机 */
+  const [ballWelcoming, setBallWelcoming] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setBallWelcoming(false), 3000);
+    return () => clearTimeout(timer);
+  }, []);
   const [ballDoneAt, setBallDoneAt] = useState(0);
   const prevStreamingRef = useRef(state.isStreaming);
   useEffect(() => {
@@ -1308,13 +1314,14 @@ export default function ChatPage() {
     const timer = setTimeout(() => setBallDoneAt(0), 2400);
     return () => clearTimeout(timer);
   }, [ballDoneAt]);
-  const ballEmotion = ballDoneAt
-    ? "20"
-    : resolveEmotion({
-        hasMessages,
-        isStreaming: state.isStreaming,
-        stage: state.currentStage,
-      });
+  const ballEmotion = ballWelcoming
+    ? "02"
+    : ballDoneAt
+      ? "20"
+      : resolveEmotion({
+          isStreaming: state.isStreaming,
+          stage: state.currentStage,
+        });
 
   return (
     <div
