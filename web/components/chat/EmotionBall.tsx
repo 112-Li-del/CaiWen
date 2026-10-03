@@ -51,10 +51,14 @@ export function resolveEmotion(args: {
 export default function EmotionBall({
   emotion = "01",
   className = "",
+  size = 120,
   onPoke,
 }: {
   emotion?: EmotionId;
   className?: string;
+  /** 球直径（px）。改大时注意父容器是 overflow-hidden，丝带会甩出球外约 0.6×直径，
+   *  右上角留的偏移量要跟着加，否则丝带会被容器边缘切掉 */
+  size?: number;
   onPoke?: (dir: number) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -88,11 +92,13 @@ export default function EmotionBall({
       {/* 引擎会把 <svg> 插到容器最前，所以这个 div 只当宿主用 */}
       <div
         ref={hostRef}
-        className="w-[96px] [&>svg]:w-full [&>svg]:h-auto [&>svg]:overflow-visible"
+        style={{ width: size }}
+        className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:overflow-visible"
       />
       <div
         ref={tipRef}
-        className="mt-1 max-w-[150px] text-center text-[11px] leading-tight text-[var(--muted-foreground)]"
+        style={{ maxWidth: size + 40 }}
+        className="mt-1 text-center text-[12px] leading-tight text-[var(--muted-foreground)]"
       />
     </div>
   );

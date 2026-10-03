@@ -1364,11 +1364,12 @@ export default function ChatPage() {
         </div>
       </div>
       <div className="relative mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
-        {/* 表情球：浮在聊天区右上角。偏移留够 48px 余量，丝带甩出球外时不会被
-            这个 overflow-hidden 容器的边缘切掉。 */}
+        {/* 表情球：浮在聊天区右上角。偏移量要留够「丝带甩出球外的距离」——约 0.6×直径，
+            否则会被这个 overflow-hidden 容器的边缘切掉。直径改大时记得同步加大偏移。 */}
         <EmotionBall
           emotion={ballEmotion}
-          className="pointer-events-auto absolute right-3 top-4 z-20"
+          size={120}
+          className="pointer-events-auto absolute right-4 top-4 z-20"
         />
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
