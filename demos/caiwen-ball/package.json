@@ -1,0 +1,11 @@
+{
+  "name": "caiwen-ball",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "财问表情球 —— 8 表情原型（分层重构版）",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python -m http.server 8765 --bind 127.0.0.1"
+  }
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>财问表情球 · 分层重构版</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif; display: flex; background: #F5F1D0; overflow: hidden; }
+
+  .sidebar { width: 176px; flex: none; background: #1E4FA0; color: #fff; display: flex; flex-direction: column; padding: 18px 14px; font-size: 13px; }
+  .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; margin-bottom: 22px; }
+  .logo-dot { width: 20px; height: 20px; border-radius: 50%; background: #A6192E; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+  .nav-item { padding: 8px 10px; border-radius: 8px; opacity: .85; margin-bottom: 2px; white-space: nowrap; }
+  .nav-item.active { background: rgba(255,255,255,.16); opacity: 1; font-weight: 600; }
+  .nav-sub { padding-left: 26px; font-size: 12px; opacity: .7; }
+  .nav-gap { flex: 1; }
+
+  main { flex: 1; position: relative; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px 0; }
+  .topbar h1 { font-size: 15px; color: #333; }
+  .topbar-actions { display: flex; gap: 8px; }
+  .chip { font-size: 12px; color: #8a8a6a; border: 1px solid #d8d4a8; border-radius: 999px; padding: 5px 12px; background: rgba(255,255,255,.5); }
+  .chip.primary { background: #fff; color: #333; }
+
+  .hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding-bottom: 12vh; }
+  .hero h2 { font-size: 34px; color: #2b2b2b; letter-spacing: 2px; }
+  .hero p { color: #9a9a7a; font-size: 14px; }
+
+  .inputbar { margin: 0 auto 22px; width: min(620px, 78%); background: #fff; border-radius: 16px; box-shadow: 0 4px 18px rgba(60,60,20,.08); padding: 12px 14px; }
+  .inputbar .ph { color: #b5b5a0; font-size: 14px; }
+  .inputbar .row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; color: #9a9a8a; font-size: 12px; }
+  .send { width: 30px; height: 30px; border-radius: 50%; background: #F2A7B6; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+
+  #ball-slot { position: absolute; top: 12px; right: 30px; width: 160px; z-index: 5; }
+  #ball-slot svg { display: block; width: 100%; height: auto; overflow: visible; }
+  #ball-tip { text-align: center; font-size: 12px; color: #7E1322; margin-top: -8px; opacity: .85; min-height: 18px; }
+  /* 光标闪烁：animation-duration 由 typeline.js 按 cursorBlinkDuration 写内联样式 */
+  .dt-tl-cursor { display: inline-block; margin-left: 1px; animation-name: dt-cursor-blink; animation-timing-function: steps(1); animation-iteration-count: infinite; }
+  @keyframes dt-cursor-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .dt-tl-cursor { animation: none; } }
+
+  .console { position: fixed; right: 20px; bottom: 20px; z-index: 20; width: 258px; background: #fff; border-radius: 14px; box-shadow: 0 8px 30px rgba(40,40,10,.16); padding: 14px; }
+  .console h3 { font-size: 13px; color: #7E1322; margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .grid button, .sim { border: 1px solid #e4e0c8; background: #FBF9EE; color: #444; border-radius: 8px; padding: 7px 4px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all .15s; }
+  .grid button:hover, .sim:hover { border-color: #A6192E; color: #A6192E; }
+  .grid button.active { background: #A6192E; border-color: #A6192E; color: #fff; }
+  .sim { width: 100%; margin-top: 8px; background: #1E4FA0; border-color: #1E4FA0; color: #fff; font-weight: 600; }
+  .sim:hover { opacity: .9; color: #fff; }
+  .hint { margin-top: 10px; font-size: 11px; color: #b0ac90; line-height: 1.6; }
+  .hint code { background: #F3F0DE; padding: 1px 4px; border-radius: 4px; color: #7E1322; }
+
+  .arch { position: fixed; left: 196px; bottom: 20px; z-index: 20; background: rgba(255,255,255,.86); border: 1px solid #e4e0c8; border-radius: 12px; padding: 10px 12px; font-size: 11px; color: #7a7660; line-height: 1.7; max-width: 300px; }
+  .arch b { color: #7E1322; font-weight: 600; }
+
+  /* 调参面板（demo 开发工具） */
+  .tuner { position: fixed; left: 196px; top: 20px; z-index: 30; width: 340px; max-height: calc(100vh - 40px); overflow-y: auto; background: #fff; border-radius: 14px; box-shadow: 0 8px 30px rgba(40,40,10,.16); padding: 12px; display: none; }
+  .tuner.open { display: block; }
+  .tw-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #7E1322; margin-bottom: 8px; flex-wrap: wrap; }
+  .tw-emo { font-weight: 600; }
+  .tw-mini, .tw-emo-sel, .tw-shape { font-size: 11px; border: 1px solid #e4e0c8; background: #FBF9EE; border-radius: 6px; padding: 2px 6px; color: #444; font-family: inherit; cursor: pointer; }
+  .tw-mini:hover { border-color: #A6192E; color: #A6192E; }
+  .tw-eye-grid { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tw-eye-box { flex: 1; display: flex; align-items: center; gap: 4px; border: 1px solid #eee9d4; border-radius: 8px; padding: 4px; font-size: 11px; color: #666; }
+  .tw-eye-box select { max-width: 52px; }
+  .tw-eye-box input[type=number] { width: 34px; border: 1px solid #eee9d4; border-radius: 4px; font-size: 11px; padding: 1px 2px; }
+  .tw-row { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .tw-cap { width: 62px; font-size: 11px; color: #555; flex: none; }
+  .tw-row input[type=range] { flex: 1; accent-color: #A6192E; min-width: 0; }
+  .tw-val { width: 46px; font-size: 11px; color: #888; text-align: right; font-variant-numeric: tabular-nums; flex: none; }
+  .tw-out { font-size: 10.5px; line-height: 1.5; background: #F7F4E4; border-radius: 8px; padding: 8px; margin: 8px 0 0; white-space: pre; overflow-x: auto; color: #5a5648; font-family: Consolas, monospace; }
+
+  @media (max-width: 900px) { .sidebar { display: none; } .arch { display: none; } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo"><span class="logo-dot">财</span>财问</div>
+  <div class="nav-item">＋ 新对话</div>
+  <div class="nav-item active">💬 聊天</div>
+  <div class="nav-item nav-sub">🟢 你好</div>
+  <div class="nav-item">🤖 辅导机器人</div>
+  <div class="nav-item">✏️ 智能写作</div>
+  <div class="nav-item">📚 书籍</div>
+  <div class="nav-item">🗂 知识库</div>
+  <div class="nav-item">⬜ 空间</div>
+  <div class="nav-gap"></div>
+  <div class="nav-item">⚙️ 设置</div>
+  <div class="nav-item">↪ 退出登录</div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <h1>聊天</h1>
+    <div class="topbar-actions">
+      <span class="chip">保存到笔记</span>
+      <span class="chip">下载 Markdown</span>
+      <span class="chip primary">新对话</span>
+    </div>
+  </div>
+
+  <div id="ball-slot"><div id="ball-tip">我在呢，随便问～</div></div>
+
+  <div class="hero">
+    <h2>你想问点什么?</h2>
+    <p>随便问——我来帮你答</p>
+  </div>
+
+  <div class="inputbar">
+    <div class="ph">今天我能帮您什么？</div>
+    <div class="row">
+      <span>💬 聊天 · ⚙ 工具 · 📑 知识库检索 · 📎 附件</span>
+      <span style="display:flex;align-items:center;gap:8px;">qwen-max <span class="send">↑</span></span>
+    </div>
+  </div>
+</main>
+
+<div class="arch">
+  <b>分层（src/）</b><br>
+  math 缓动/插值 · shape 调和形变球身<br>
+  face 球面投影 · states 纯数据 · engine 驱动<br>
+  typeline 打字机提示文字<br>
+  <b>待机节奏</b> 静止 5s → 饼 → 六角 → 三角 → 打盹 2s → 循环<br>
+  <b>点一下球</b> 随机方向转一圈 + 彩带轨道环绕<br>
+  <b>测试</b> node --test → 71 项断言
+</div>
+
+<div class="tuner" id="tuner"></div>
+
+<div class="console">
+  <h3>表情控制台</h3>
+  <div class="grid" id="emo-btns"></div>
+  <button class="sim" id="sim-btn">▶ 模拟一次完整问答</button>
+  <button class="sim" id="tuner-btn" style="background:#7E1322;border-color:#7E1322;">🎛 打开调参面板</button>
+  <div class="hint">
+    键盘 1-9 切换 · 也有 <code>window.ball.setEmotion('10')</code><br>
+    移动鼠标：眼睛会跟着你在球面上转<br>
+    点一下球：随机方向转一圈 + 彩带环绕
+  </div>
+</div>
+
+<script type="module">
+import { create, STATES } from './src/engine.js';
+import { createTuner } from './src/tuner.js';
+
+const ball = create(document.getElementById('ball-slot'));
+window.ball = ball;
+
+const btnWrap = document.getElementById('emo-btns');
+const btnMap = {};
+const ids = Object.keys(STATES);
+ids.forEach((id, idx) => {
+  const b = document.createElement('button');
+  b.textContent = `${id} ${STATES[id].name}`;
+  b.onclick = () => { cancelSim(); ball.setEmotion(id); };
+  btnWrap.appendChild(b);
+  btnMap[id] = b;
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === String(idx + 1) && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      cancelSim(); ball.setEmotion(id);
+    }
+  });
+});
+ball.on('change', (e) => {
+  Object.keys(btnMap).forEach((k) => btnMap[k].classList.toggle('active', k === e.id));
+});
+ball.on('error', (e) => console.warn('[demo] 协议异常：', e.message));
+ball.setEmotion('01');
+
+let timers = [];
+function cancelSim() { timers.forEach(clearTimeout); timers = []; }
+document.getElementById('sim-btn').onclick = () => {
+  cancelSim();
+  [['11', 0], ['10', 1700], ['12', 3500], ['20', 5600], ['01', 7300]].forEach(([id, ms]) => {
+    timers.push(setTimeout(() => ball.setEmotion(id), ms));
+  });
+};
+
+const tunerEl = document.getElementById('tuner');
+const tuner = createTuner(tunerEl, ball);
+const arch = document.querySelector('.arch');
+document.getElementById('tuner-btn').onclick = () => {
+  const open = tunerEl.classList.toggle('open');
+  document.getElementById('tuner-btn').textContent = open ? '✕ 关闭调参面板' : '🎛 打开调参面板';
+  if (arch) arch.style.display = open ? 'none' : '';
+  if (open) tuner.refreshAll();
+};
+</script>
+</body>
+</html>

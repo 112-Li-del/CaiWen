@@ -26,6 +26,7 @@ import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import GlitchPromptTitle from "@/components/chat/home/GlitchPromptTitle";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import EmotionBall, { resolveEmotion } from "@/components/chat/EmotionBall";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
@@ -1294,6 +1295,27 @@ export default function ChatPage() {
     downloadChatMarkdown(state.messages, { title });
   }, [state.messages]);
 
+  /* 表情球：一轮回答跑完时闪一下「完成」，2.4s 后自然回落待机 */
+  const [ballDoneAt, setBallDoneAt] = useState(0);
+  const prevStreamingRef = useRef(state.isStreaming);
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
+    prevStreamingRef.current = state.isStreaming;
+    if (wasStreaming && !state.isStreaming) setBallDoneAt(Date.now());
+  }, [state.isStreaming]);
+  useEffect(() => {
+    if (!ballDoneAt) return;
+    const timer = setTimeout(() => setBallDoneAt(0), 2400);
+    return () => clearTimeout(timer);
+  }, [ballDoneAt]);
+  const ballEmotion = ballDoneAt
+    ? "20"
+    : resolveEmotion({
+        hasMessages,
+        isStreaming: state.isStreaming,
+        stage: state.currentStage,
+      });
+
   return (
     <div
       // When the preview drawer is open AND the viewport is wide enough,
@@ -1334,7 +1356,13 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+      <div className="relative mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+        {/* 表情球：浮在聊天区右上角。偏移留够 48px 余量，丝带甩出球外时不会被
+            这个 overflow-hidden 容器的边缘切掉。 */}
+        <EmotionBall
+          emotion={ballEmotion}
+          className="pointer-events-auto absolute right-3 top-4 z-20"
+        />
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="flex w-full justify-center">
