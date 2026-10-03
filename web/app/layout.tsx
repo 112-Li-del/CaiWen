@@ -29,9 +29,10 @@ export const metadata: Metadata = {
   description: "Agent-native intelligent learning companion",
   icons: {
     icon: [
-      { url: "/god.jpg", sizes: "16x16", type: "image/png" },
-      { url: "/god.jpg", sizes: "32x32", type: "image/png" },
+      { url: "/god.png", sizes: "16x16", type: "image/png" },
+      { url: "/god.png", sizes: "32x32", type: "image/png" },
     ],
+    // apple-touch-icon 需为不透明图（透明底在 iOS 主屏会变黑角），故保留不透明 jpg
     apple: "/god.jpg",
   },
 };
