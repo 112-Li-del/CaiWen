@@ -116,12 +116,17 @@ export const STATES = {
   },
   '02': {
     id: '02', name: '欢迎', group: 'life', tip: '你好呀！我是财宝',
-    shape: 'wide', open: 1, w: 24, h: 30, tilt: 0, yaw: 0, pitch: -0.08,
-    eyeL: { shape: 'wide', w: 26, h: 33 }, eyeR: { shape: 'wide', w: 22, h: 28 },
-    squash: -0.04, taper: 0, lean: 0, breatheAmp: 0.014, breatheHz: 0.4,
+    /* 欢迎 = 笑弧 + 拍球式入场。
+     * ① 两只眼都是 happy 笑弧，左右一致（原来草稿里的 26×33 / 22×28 大小眼是随手写的，去掉）；
+     *    w 在引擎里等比缩放笑弧（20 为基准），26 = 比基准略大一点，笑得更开。
+     * ② hop：进门先跳起来，再一跳比一跳矮地连弹几下（decay 0.55，4 跳约 2.1s），
+     *    弹完自然停住——欢迎只占 3s，正好弹完就切待机。 */
+    shape: 'happy', open: 1, w: 26, h: 26, tilt: 0, yaw: 0, pitch: -0.08,
+    squash: -0.05, taper: 0, lean: 0.02, breatheAmp: 0.014, breatheHz: 0.4,
     meridian: 1.4, driftYaw: 0.05, driftHz: 0.25, scanYaw: 0, scanHz: 0,
-    bounce: 0.6, pop: 0.18, blinkMs: [2800, 5000], glanceYaw: 0.2, glanceMs: [2600, 4600],
-    gazeWeight: 1, shake: false, zzz: false, confetti: false
+    bounce: 0.3, pop: 0.16, blinkMs: [2800, 5000], glanceYaw: 0.2, glanceMs: [2600, 4600],
+    gazeWeight: 1, shake: false, zzz: false, confetti: false,
+    hop: { height: 26, period: 0.52, times: 4, decay: 0.55 }
   },
   '10': {
     id: '10', name: '思考中', group: 'agent', tip: '让我想想…',

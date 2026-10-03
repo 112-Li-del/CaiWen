@@ -665,6 +665,11 @@ export function create(container, opts = {}) {
       setRect(eye.nodes.normal, eye.w, eye.h);
       setRect(eye.nodes.wide, eye.w * 1.3, eye.h * 1.3);
       setBar(eye.nodes.closed, eye.w);
+      /* 笑弧/叉这类描边眼形不吃 open 的非等比压缩（会连描边一起压没），
+       * 但可以按 w **等比**缩放——等比不会破坏描边粗细比例。基准 20。 */
+      const arcScale = (eye.w / 20).toFixed(3);
+      eye.nodes.happy.setAttribute('transform', `scale(${arcScale})`);
+      eye.nodes.cross.setAttribute('transform', `scale(${arcScale})`);
       for (const s of SHAPES) eye.nodes[s].setAttribute('opacity', eye.alpha[s].toFixed(3));
     }
 
@@ -711,7 +716,34 @@ export function create(container, opts = {}) {
     const bounceY = -Math.abs(Math.sin(now / 280)) * 5 * cur.bounce;
     const shakeX = target.shake ? Math.sin(now * 0.045) * 2.6 : 0;
     const confettiSpin = target.confetti ? 360 * (age < 0.9 ? (1 - Math.pow(1 - Math.min(1, age / 0.9), 3)) : 1) : 0;
-    const rigT = `translate(${shakeX.toFixed(2)} ${bounceY.toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) scale(${(pop * twirlPop).toFixed(3)}) translate(${-CX} ${-CY})`;
+
+    /* 入场弹跳（hop）：像拍篮球——先弹起来，再一跳比一跳矮地连弹几下。
+     * ① 高度用抛物线 4f(1-f) 而不是 |sin|：正弦的上升段太"飘"，抛物线才是重力下的轨迹；
+     * ② 一跳比一跳矮 = height * decay^k；
+     * ③ 触地那一瞬挤压（非等比 scale），弹起时略微拉长——"有重量"的弹跳靠这个，
+     *    只有上下位移会像飘着的肥皂泡；
+     * ④ 只跑入场那一段（age 从切表情起算），times 跳之后归 0 自然收住。 */
+    let hopY = 0, hopSX = 1, hopSY = 1;
+    const hp = target.hop;
+    if (hp) {
+      const u = age / hp.period;
+      const k = Math.floor(u);
+      if (k < hp.times) {
+        const f = u - k;
+        const hr = 4 * f * (1 - f);                        /* 0 = 触地，1 = 最高点 */
+        const amp = hp.height * Math.pow(hp.decay, k);     /* 第 k 跳的高度 */
+        const ratio = amp / hp.height;
+        hopY = -amp * hr;
+        const contact = Math.pow(1 - hr, 6);               /* 只在触地瞬间接近 1 */
+        hopSY = 1 - 0.18 * contact + 0.05 * hr * ratio;
+        hopSX = 1 + 0.14 * contact - 0.03 * hr * ratio;
+      }
+    }
+
+    const popAll = pop * twirlPop;
+    /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
+     * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
+    const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
     rig.setAttribute('transform', rigT);
     ribbonBack.setAttribute('transform', rigT);   /* 球后彩带层与球身同步运动 */
   }
