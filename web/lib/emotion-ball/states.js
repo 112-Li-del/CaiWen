@@ -115,7 +115,7 @@ export const STATES = {
     }
   },
   '02': {
-    id: '02', name: '欢迎', group: 'life', tip: '你好呀！',
+    id: '02', name: '欢迎', group: 'life', tip: '你好呀！我是财宝',
     shape: 'wide', open: 1, w: 24, h: 30, tilt: 0, yaw: 0, pitch: -0.08,
     eyeL: { shape: 'wide', w: 26, h: 33 }, eyeR: { shape: 'wide', w: 22, h: 28 },
     squash: -0.04, taper: 0, lean: 0, breatheAmp: 0.014, breatheHz: 0.4,
