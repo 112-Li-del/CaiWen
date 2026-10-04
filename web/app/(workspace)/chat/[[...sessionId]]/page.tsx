@@ -1336,7 +1336,7 @@ export default function ChatPage() {
       // transition lives in `chat-preview-shell` (globals.css) so we can
       // hand-tune it without fighting Tailwind's arbitrary-value parser.
       data-preview-open={previewSource ? "true" : "false"}
-      className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
+      className="chat-preview-shell relative flex h-full flex-col overflow-hidden bg-[var(--background)]"
     >
       <div className="mx-auto flex w-full max-w-[960px] items-center justify-between px-6 pt-3 pb-0">
         <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
@@ -1412,17 +1412,18 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {/* 表情球坐到输入框左边：不挡回答区，03 倾听「低头看输入框」的朝向也成立。
-          丝带会甩出 svg 视口约 0.6×直径（overflow-visible 画在外面），消息区不再
-          overflow-hidden 裁它；甩向右侧的部分会被 composer（relative z-20）盖住，
-          正好像从球背后绕过去。 */}
-      <div className="mx-auto flex w-full max-w-[960px] shrink-0 items-end gap-10 px-6">
-        <EmotionBall
-          emotion={ballEmotion}
-          size={120}
-          className="pointer-events-auto shrink-0 pb-1"
-        />
-        <div className="min-w-0 flex-1">
+      {/* 表情球：贴在聊天区最左侧（内容列 960px 居中，左边那块空白正好放它），
+          挨着左边的导航栏，跟输入框同一水平线、完全不压回答和输入框。
+          用 absolute 而不是并排——并排会把它按进内容列里，跟输入框挤在一起。
+          球画在 120px 宿主里实际只有约 62px 宽（居中），可视右缘在离窗格左边 103px；
+          输入框左缘在「留白+24」，两边不相撞需要留白 ≥100px，即窗格宽 ≥1160，
+          也就是窗口宽 ≥1380（侧边栏 220 展开时）。窄于此就隐藏而不是让它压住输入框。 */}
+      <EmotionBall
+        emotion={ballEmotion}
+        size={120}
+        className="pointer-events-auto absolute bottom-6 left-3 z-20 hidden min-[1400px]:flex"
+      />
+      <div className="mx-auto w-full max-w-[960px] shrink-0 px-6">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}
@@ -1515,7 +1516,6 @@ export default function ChatPage() {
           onTogglePanelCollapsed={handleTogglePanelCollapsed}
           onHasContentChange={setUserTyping}
         />
-        </div>
       </div>
       <NotebookRecordPicker
         open={showNotebookPicker}
