@@ -22,7 +22,7 @@ import { create as createBall } from "@/lib/emotion-ball/engine";
 export type EmotionId =
   | "00" | "01" | "02" | "03"
   | "10" | "11" | "12" | "13"
-  | "20" | "21" | "22";
+  | "20" | "21" | "22" | "23";
 
 /** 引擎实例句柄（只用到这俩方法，多余的不暴露） */
 interface BallHandle {
@@ -39,9 +39,9 @@ interface BallHandle {
  *      后端各能力（问答/解题/写作）的阶段名不统一，但"助手消息有内容"是通用的。
  *   ② 思考态（10）在引擎里自带一条链：开场缩成省略号 → 思考 2.5s → 还没输出就
  *      自动接翻知识库（11）。所以这里只要在开始思考时给 10，剩下的不用管。
- *   ③ 开始输出先给「提醒」（13）而不是直接「回答中」：右上角弹出一枚通知徽章
- *      "叮"一下，2.4s 后引擎自己接上 12（chain），这里同样不用管计时。
- *      一轮里 answering 只从 false 翻到 true 一次，所以徽章只弹一次。
+ *   ③ 开始输出先给「书写」（13）而不是直接「回答中」：球缩没、变出一支钢笔
+ *      沿墨线写字，2.4s 后引擎自己接上 12（chain），这里同样不用管计时。
+ *      一轮里 answering 只从 false 翻到 true 一次，所以笔只落一次。
  * 倾听压过出错是故意的：用户一开口重新打字，说明他在试别的问法，球该转过来听，
  * 而不是继续挂着"哎呀，出错了"。
  */
@@ -60,7 +60,7 @@ export function resolveEmotion(args: {
     if (failed) return "21";                   // 出错
     return "01";                               // 待机
   }
-  /* 13 = 提醒（右上角弹通知徽章），引擎 2.4s 后自动接 12，所以不用在这里计时 */
+  /* 13 = 书写（钢笔落笔），引擎 2.4s 后自动接 12，所以不用在这里计时 */
   if (answering) return "13";
   const s = (stage || "").toLowerCase();
   if (/retriev|search|知识|rag|embed|index/.test(s)) return "11";  // 检索中

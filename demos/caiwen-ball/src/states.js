@@ -66,9 +66,14 @@
  *   没有 dots 就从进入状态开始算）。给"等待期间换个动作"用：思考久了还没输出 →
  *   接翻知识库。外部切走表情（开始输出 → 12 / 完成 → 20）链立刻中断。
  *
- * notif 契约（提醒徽章，挂在 13 上）：true
- *   右上轮廓外弹出一枚通知徽章，并把球身咬出一个缺口把它嵌进去。
- *   几何全部取自 bloub notify 的测量值，详见 '13' 的注释。
+ * pen 契约（书写过门，挂在 13 上）：{ dur, fade? }
+ *   球缩没，原地变出一支钢笔，沿一条逐渐画出的墨线从左写到右；dur 毫秒后由
+ *   chain 接力（书写本身就是过门，hold 与 dur 对齐）。fade 是进出缓入缓出
+ *   （毫秒，默认 300）。
+ *
+ * exclaim 契约（感叹过门，挂在 23 上）：{ dur, fade? }
+ *   球缩成 17% 挪到感叹号的点位——球自己就是"!"的那颗点，上方弹出锥形感叹条；
+ *   dur 毫秒后由 chain 接力。fade 是进出缓入缓出（毫秒，默认 160）。
  * ============================================================ */
 
 import { IDLE_LINES } from './lines.js';
@@ -242,30 +247,29 @@ export const STATES = {
   },
   '12': {
     id: '12', name: '回答中', group: 'agent', tip: '正在回答…',
-    shape: 'normal', open: 1, w: 20, h: 26, tilt: 0, yaw: 0, pitch: -0.02,
-    eyeL: { shape: 'normal', w: 21, h: 27 }, eyeR: { shape: 'normal', w: 19, h: 25 },
+    /* 脸照用户提供的目标图：右眼一颗**大圆眼**（w=h，rect 的 rx=w/2 正好是圆），
+     * 左眼一支小竖椭圆、随整体 tilt 微微左倾——"盯着自己说出来的字"的专注脸。
+     * tilt 对圆眼不可见（圆旋转没变化），-16° 只作用在左椭圆上，方向照图。 */
+    shape: 'normal', open: 1, w: 20, h: 26, tilt: -16, yaw: 0, pitch: -0.02,
+    eyeL: { shape: 'normal', w: 13, h: 26 }, eyeR: { shape: 'normal', w: 29, h: 29 },
     squash: 0, taper: 0, lean: 0, breatheAmp: 0.01, breatheHz: 0.55,
     meridian: 1.2, driftYaw: 0.03, driftHz: 0.3, scanYaw: 0, scanHz: 0,
     bounce: 1, pop: 0.07, blinkMs: [2000, 4200], glanceYaw: 0.22, glanceMs: [2400, 4200],
     gazeWeight: 1, shake: false, zzz: false, confetti: false
   },
   '13': {
-    id: '13', name: '提醒', group: 'agent', tip: '有答案了，听着～',
-    /* 照 bloub 的 notify 状态（decor.ts 的测量值）：右上轮廓外弹出一枚通知徽章，
-     * 球身被咬出一个缺口把它嵌进去——不是贴在球上的贴纸。
-     *   NOTIF_ANGLE -42° / DIST 1.003R（正好压在圆周上）/ R 0.15R
-     *   POP 1.14（弹出峰值 +14%，全项目唯一一处弹簧，写在状态里而不是引擎里）
-     *   MARGIN 0.054R（缺口比徽章大一圈，露出等宽的边）
-     * 眼睛朝徽章方向（右上）看——"被提醒了，抬头看向提示"那一瞬的反应；
-     * 呼吸比待机快一点（0.7Hz），像刚被点名。
-     * chain：播 2.4s 后自动接「回答中」（12）。它是过门动作，不能久留——
-     * 开始输出前先"叮"一下，然后马上进入正式的回答状态。 */
-    shape: 'normal', open: 1, w: 18, h: 32, tilt: 0, yaw: 0.34, pitch: 0.16,
-    squash: -0.02, taper: 0, lean: 0, breatheAmp: 0.01, breatheHz: 0.7,
-    meridian: 1.3, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
-    bounce: 0, pop: 0.1, blinkMs: [2400, 4200], glanceYaw: 0.1, glanceMs: [2600, 4800],
-    gazeWeight: 0.6, shake: false, zzz: false, confetti: false,
-    notif: true,
+    id: '13', name: '书写', group: 'agent', tip: '开写啦～',
+    /* 检索完毕、开始输出前的过门动作：球缩没，原地变出一支钢笔（笔杆右上倾 +
+     * 水滴形笔尖，由引擎的 penG 画），笔尖沿一条逐渐画出的墨线从左写到右，
+     * 走笔时带小幅摆动——"答案正在落笔"的那一下。
+     * pen.dur 与 chain.hold 都取 2400：写完这一笔立刻接「回答中」（12）。
+     * 书写阶段眼睛/经线随 faceK 淡出——球都不在了，脸不能悬空。 */
+    shape: 'normal', open: 1, w: 18, h: 32, tilt: 0, yaw: 0, pitch: 0,
+    squash: 0, taper: 0, lean: 0, breatheAmp: 0.01, breatheHz: 0.6,
+    meridian: 1.2, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
+    bounce: 0, pop: 0.08, blinkMs: null, glanceYaw: 0, glanceMs: null,
+    gazeWeight: 0, shake: false, zzz: false, confetti: false,
+    pen: { dur: 2400, fade: 300 },
     chain: { to: '12', hold: 2400 }
   },
   '20': {
@@ -292,6 +296,20 @@ export const STATES = {
     meridian: 1.6, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
     bounce: 0, pop: 0.16, blinkMs: [3000, 5200], glanceYaw: 0, glanceMs: null,
     gazeWeight: 1, shake: false, zzz: false, confetti: false
+  },
+  '23': {
+    id: '23', name: '感叹', group: 'feedback', tip: '写完了！',
+    /* 回答完成 → 完成之间的过门（23 → 20）：球缩成 17% 挪到感叹号的点位——
+     * 它自己就是"!"的那颗点，上方由引擎弹出锥形感叹条（exBar，墨色）。
+     * 1s 后 chain 接「完成」（20），彩带接住感叹，一气呵成。
+     * 感叹用墨色不用红——刚写完最后一个字，"!"是墨迹收笔的那一下。 */
+    shape: 'normal', open: 1, w: 13, h: 30, tilt: 0, yaw: 0, pitch: 0,
+    squash: 0, taper: 0, lean: 0, breatheAmp: 0.008, breatheHz: 0.5,
+    meridian: 1, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
+    bounce: 0, pop: 0.1, blinkMs: null, glanceYaw: 0, glanceMs: null,
+    gazeWeight: 0, shake: false, zzz: false, confetti: false,
+    exclaim: { dur: 1000, fade: 160 },
+    chain: { to: '20', hold: 1000 }
   }
 };
 

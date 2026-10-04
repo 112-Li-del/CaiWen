@@ -1296,7 +1296,8 @@ export default function ChatPage() {
   }, [state.messages]);
 
   /* 表情球：进门先「欢迎」3s（组件挂载即触发，进聊天页就算进门），
-   * 之后交给状态映射；一轮回答跑完再闪一下「完成」，2.4s 后自然回落待机 */
+   * 之后交给状态映射；一轮回答跑完先给「感叹」（23，"!"一秒），
+   * 引擎 1s 后自动接「完成」（20，彩带），2.4s 后整体回落待机 */
   const [ballWelcoming, setBallWelcoming] = useState(true);
   useEffect(() => {
     const timer = setTimeout(() => setBallWelcoming(false), 3000);
@@ -1332,7 +1333,7 @@ export default function ChatPage() {
   const ballEmotion = ballWelcoming
     ? "02"
     : ballDoneAt
-      ? "20"
+      ? "23"
       : resolveEmotion({
           isStreaming: state.isStreaming,
           stage: state.currentStage,

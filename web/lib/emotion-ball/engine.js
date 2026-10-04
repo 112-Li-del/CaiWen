@@ -131,35 +131,6 @@ export function create(container, opts = {}) {
     el('feMergeNode', { in: 'SourceGraphic' }, merge);
   }
 
-  /* 提醒徽章（13）：从 bloub notify 的测量值搬过来（decor.ts）。
-   *   ANGLE -42°、DIST 1.003R —— 圆心**正好压在圆周上**，所以徽章一半在球外、
-   *   一半嵌进球里（屏幕坐标 y 向下，取负才是右上）。
-   *   R 0.15R、MARGIN 0.054R —— 缺口比徽章大一圈，露出等宽的一圈"咬痕"。
-   *   POP 1.14 —— 弹出峰值比静止半径大 14%。bloub 全项目只有这一处弹簧，
-   *   而且是写在状态里的（见 notifPop），不是引擎通用能力。
-   * 颜色是 bloub 从像素里取的通知蓝；红球上它是对比色，要换成品牌色改这里就行。 */
-  const NOTIF = {
-    angle: -42, dist: 1.003, r: 0.15, pop: 1.14, margin: 0.054,
-    color: '#2496e8'
-  };
-  const NA = (NOTIF.angle * Math.PI) / 180;
-  const NX = CX + Math.cos(NA) * NOTIF.dist * R;
-  const NY = CY + Math.sin(NA) * NOTIF.dist * R;
-  const NR = NOTIF.r * R;
-  const NHOLE = NR + NOTIF.margin * R;
-  /* 缺口：mask 里"整块白 + 一个黑洞"。挂在 clipped 组（球身/经线/纬线/高光都在
-   * 里面）上，所以球被咬掉的那一块里不会残留经线和高光。
-   * maskContentUnits 默认是 userSpaceOnUse，坐标跟着 rig 的刚体变换走——
-   * 球 pop/呼吸/挤压时缺口不会和徽章脱节。
-   * **只有 13 才挂 mask**（setEmotion 里开关属性）：mask 是每帧一次离屏合成，
-   * 常挂等于给所有状态都加一层开销。 */
-  const notch = el('mask', {
-    id: `cw-notch-${n}`, maskUnits: 'userSpaceOnUse',
-    x: -80, y: -80, width: 360, height: 360
-  }, defs);
-  el('rect', { x: -80, y: -80, width: 360, height: 360, fill: '#fff' }, notch);
-  const notchHole = el('circle', { cx: NX, cy: NY, r: 0, fill: '#000' }, notch);
-
   const clip = el('clipPath', { id: `cw-clip-${n}` }, defs);
   const clipPath = el('path', {}, clip);
 
@@ -193,6 +164,38 @@ export function create(container, opts = {}) {
     d: 'M 0 -9 L 0 14', fill: 'none', stroke: '#73101F',
     'stroke-width': 2, 'stroke-linecap': 'round'
   }, bookInner);
+
+  /* 书写（13）的钢笔：笔尖落地、笔杆右上倾，沿一条逐渐画出的墨线走笔。
+   * 刚性道具不进 rig——书写阶段球整体缩没了，进 rig 会被一起缩掉。 */
+  const PEN_Y = CY + 34;                 /* 笔尖落点高度（墨线上方一点） */
+  const PEN_SPAN = 40;                   /* 墨线从 CX-40 写到 CX+40 */
+  const penG = el('g', { opacity: 0 }, svg);
+  const penMove = el('g', {}, penG);     /* 每帧：平移到笔尖 + 写字的小幅摆动 */
+  const penTilt = el('g', { transform: 'rotate(24)' }, penMove);
+  /* 笔杆：圆头长杆，从笔尖往右上伸（rotate 24° 后顶端偏向右侧，照目标图） */
+  el('rect', { x: -9, y: -64, width: 18, height: 56, rx: 9, fill: '#73101F' }, penTilt);
+  /* 笔尖：水滴形，尖朝下，中间一个奶油色小圆孔（钢笔尖的通气孔） */
+  el('path', {
+    d: 'M 0 6 Q -8 -2 -7 -10 Q -5 -15 0 -15 Q 5 -15 7 -10 Q 8 -2 0 6 Z',
+    fill: '#8E1424'
+  }, penTilt);
+  el('circle', { cx: 0, cy: -5, r: 2.2, fill: CREAM }, penTilt);
+  /* 正在写的墨线：左端固定，右端每帧跟到笔尖位置 */
+  const inkLine = el('line', {
+    x1: CX - PEN_SPAN, y1: PEN_Y + 10, x2: CX - PEN_SPAN + 1, y2: PEN_Y + 10,
+    stroke: '#73101F', 'stroke-width': 6, 'stroke-linecap': 'round'
+  }, penG);
+
+  /* 感叹（23）的感叹条："!"的上半截，锥形圆头；下面那颗点是缩小的球自己。
+   * 墨色（#73101F）——刚写完最后一个字，"!"是收笔的那一下墨迹。 */
+  const EX_TOP = CY - 64, EX_BOT = CY - 4, EX_MID = CY - 34;
+  const exBar = el('path', {
+    d: `M ${CX - 15} ${EX_TOP + 20} Q ${CX - 15} ${EX_TOP} ${CX} ${EX_TOP} ` +
+       `Q ${CX + 15} ${EX_TOP} ${CX + 15} ${EX_TOP + 20} ` +
+       `L ${CX + 8.5} ${EX_BOT - 8} Q ${CX + 8} ${EX_BOT} ${CX} ${EX_BOT} ` +
+       `Q ${CX - 8} ${EX_BOT} ${CX - 8.5} ${EX_BOT - 8} Z`,
+    fill: '#73101F', opacity: 0
+  }, svg);
 
   /* 彩带的"球后"层：画在球身之下，丝带绕到背面的弧段被球身自然遮挡，
    * 只在超出轮廓的两端露头——这是"环绕"而不是"贴在球上"的关键。
@@ -228,11 +231,6 @@ export function create(container, opts = {}) {
     cx: 68, cy: 54, rx: 26, ry: 14, fill: 'rgba(255,255,255,.22)',
     transform: 'rotate(-28 68 54)'
   }, clipped);
-
-  /* 提醒徽章：画在球身之上、眼睛之下，放在 rig 里跟着球一起 pop / 呼吸 / 挤压，
-   * 免得球一动徽章就飘在原地。 */
-  const notifG = el('g', { opacity: 0 }, rig);
-  el('circle', { cx: NX, cy: NY, r: NR, fill: NOTIF.color }, notifG);
 
   const eyeLayer = el('g', {}, rig);
   const fx = el('g', {}, svg);
@@ -321,7 +319,8 @@ export function create(container, opts = {}) {
   let orbitA = 0;
   let zzzNext = 0;
   let bookK = 0;             /* 道具书的显示浓度（approach 渐显渐隐） */
-  let notifK = 0;            /* 提醒徽章的显示浓度（approach 渐显渐隐） */
+  let penK = 0;              /* 钢笔（书写）的显示浓度——approach 让外部切走时渐隐收场 */
+  let exK = 0;               /* 感叹条（"!"上半截）的显示浓度 */
   let particles = [];
   /* 点球转体：twirl = { t0, dir }，dir ∈ {+1,-1} 随机（顺/逆时针） */
   let twirl = null;
@@ -555,10 +554,6 @@ export function create(container, opts = {}) {
       ? now + rand(target.micro.every[0], target.micro.every[1])
       : Infinity;
     if (target.confetti) burstConfetti(26);
-    /* 提醒徽章的缺口 mask：只有带 notif 的状态才挂。mask 每帧一次离屏合成，
-     * 常挂等于给所有状态都加一层开销，而它只在 13 那 2.4s 里有用。 */
-    if (target.notif) clipped.setAttribute('mask', `url(#cw-notch-${n})`);
-    else if (clipped.hasAttribute('mask')) clipped.removeAttribute('mask');
     /* 台词：切进来先说表情自己的 tip，轮换从第 tipRounds 轮才开始（rotateTip） */
     curTip = target.tip || '';
     tipRound = -1;
@@ -601,23 +596,6 @@ export function create(container, opts = {}) {
     }
     /* 收尾：最后一个形状变回球 */
     return { from: prev, kind: 'ball', t: easings.outBack(clamp(ph / morphMs, 0, 1)) };
-  }
-
-  /**
-   * 提醒徽章的弹入曲线：0 → 峰值 +14% → 落回 1。
-   * bloub 的测量文档里写得很明白：整个项目**只有这一处弹簧**，而且是"写在相关
-   * 状态里"（the one spring is local and written into the state concerned），
-   * 刻意没有做通用弹簧引擎。所以这里也不进 easings 表，就挂在 13 上。
-   * @param {number} aSec 进入状态后的秒数
-   */
-  const NOTIF_POP_MS = 280;
-  function notifPop(aSec) {
-    const a = aSec * 1000;
-    if (a >= NOTIF_POP_MS) return 1;
-    const u = a / NOTIF_POP_MS;
-    return u < 0.55
-      ? NOTIF.pop * easings.outCubic(u / 0.55)
-      : NOTIF.pop + (1 - NOTIF.pop) * easings.inOutCubic((u - 0.55) / 0.45);
   }
 
   /**
@@ -754,6 +732,26 @@ export function create(container, opts = {}) {
         : (now - entryT) / 1000;
       dotsK = pulseAmount(ph, fade, dur, fade);
     }
+
+    /* 0.47) 书写（13）/ 感叹（23）的显示脉冲。和 dots 一样用"进入状态多久"
+     *       算相位（都是一次性过门，不循环）；下游再用 approach 追这个脉冲，
+     *       外部切走时是渐隐收场而不是"啪"地消失。 */
+    const penCfg = target.pen;
+    let penPulse = 0;
+    if (penCfg) {
+      const dur = (penCfg.dur || 2400) / 1000;
+      const fade = (penCfg.fade != null ? penCfg.fade : 300) / 1000;
+      penPulse = pulseAmount(age, 0, dur, fade);
+    }
+    const exCfg = target.exclaim;
+    let exPulse = 0;
+    if (exCfg) {
+      const dur = (exCfg.dur || 1000) / 1000;
+      const fade = (exCfg.fade != null ? exCfg.fade : 160) / 1000;
+      exPulse = pulseAmount(age, 0, dur, fade);
+    }
+    /* 脸（眼睛/经线/影子）的可见度：三种"球让位"的过门取最深的那个 */
+    const faceK = 1 - Math.max(dotsK, penK, exK);
 
     /* 0.46) 思考链（10 → 11）：dots 播完再琢磨 chain.hold 毫秒，模型还没开始输出
      *        就自动接上「翻知识库」——一直干坐着思考不像在找答案。
@@ -898,8 +896,8 @@ export function create(container, opts = {}) {
      *    sin 的符号区分它在球的正面还是背面——背面压暗一半，转动才有"绕过去"的立体感，
      *    否则四条线亮度一样，看起来只是在原地缩放。 */
     if (!twirl) meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
-    /* 省略号阶段整组经线淡出：发光线缩在 15px 的小球上是一团噪点 */
-    meridianLayer.setAttribute('opacity', (1 - dotsK).toFixed(3));
+    /* 省略号/书写/感叹阶段整组经线淡出：发光线缩在让位的球上是噪点 */
+    meridianLayer.setAttribute('opacity', faceK.toFixed(3));
     meridians.forEach((m, i) => {
       const ph = meridianPhase + (i * Math.PI) / 4;
       const rx = Math.abs(Math.cos(ph)) * R * 1.2;
@@ -971,7 +969,7 @@ export function create(container, opts = {}) {
       const p = projectEye({ yaw: headYaw + eye.sign * EYE_LON, pitch: headPitch, R: EYE_R, cx: CX, cy: CY });
       const fixed = clampToHull(hull, CX, CY, p.x, p.y, 0.86);
       eye.visible = p.visible;
-      eye.g.setAttribute('opacity', p.visible ? (1 - dotsK).toFixed(3) : '0');
+      eye.g.setAttribute('opacity', p.visible ? faceK.toFixed(3) : '0');
       if (!p.visible) continue;
       eye.g.setAttribute('transform',
         `translate(${fixed.x.toFixed(2)} ${(fixed.y + eye.dy).toFixed(2)}) rotate(${cur.tilt.toFixed(2)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`);
@@ -1063,13 +1061,19 @@ export function create(container, opts = {}) {
     /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
      * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
     const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
-    /* 省略号阶段围绕球心整体缩小——中间那颗"点"就是缩小的球自己，眼睛/经线已淡出 */
-    const shrink = 1 - dotsK * 0.8;
-    const dotsT = shrink < 1
-      ? `translate(${CX} ${CY}) scale(${shrink.toFixed(3)}) translate(${-CX} ${-CY}) `
-      : '';
-    rig.setAttribute('transform', dotsT + rigT);
-    ribbonBack.setAttribute('transform', dotsT + rigT);   /* 球后彩带层与球身同步运动 */
+    /* 收身的三种过门共用一个前置变换：省略号缩到 20%、书写直接缩没（让位给
+     * 钢笔），感叹缩到 17% 并挪到感叹号的点位——缩成的那颗小球就是"!"的点。 */
+    let preT = '';
+    const hideK = Math.max(dotsK * 0.8, penK);
+    if (hideK > 0.001) {
+      const s = Math.max(0, 1 - hideK);
+      preT = `translate(${CX} ${CY}) scale(${s.toFixed(3)}) translate(${-CX} ${-CY}) `;
+    } else if (exK > 0.001) {
+      const s = lerp(1, 0.17, exK);
+      preT = `translate(${CX} ${CY + 34}) scale(${s.toFixed(3)}) translate(${-CX} ${-(CY + 34)})`;
+    }
+    rig.setAttribute('transform', preT + rigT);
+    ribbonBack.setAttribute('transform', preT + rigT);   /* 球后彩带层与球身同步运动 */
 
     /* 10.5) 思考旁点 + 道具书 */
     for (const c of sideDots) {
@@ -1079,26 +1083,35 @@ export function create(container, opts = {}) {
       c.setAttribute('r', (s.r * (0.82 + 0.22 * w)).toFixed(2));
       c.setAttribute('opacity', (s.base * dotsK * (0.55 + 0.45 * w)).toFixed(3));
     }
-    /* 影子跟球一起淡出：省略号阶段球悬空变成了"文字"，地上不该有影子 */
-    shadowEl.setAttribute('opacity', (1 - dotsK * 0.85).toFixed(3));
+    /* 影子跟着脸一起淡出：省略号/书写/感叹阶段球让位成了"文字"，地上不该有影子 */
+    shadowEl.setAttribute('opacity', faceK.toFixed(3));
 
     bookK = approach(bookK, target.book ? 1 : 0, 6, dt);
     bookG.setAttribute('opacity', bookK.toFixed(3));
 
-    /* 提醒徽章：出场走 notifPop（从 0 弹到 +14% 再落回），退场靠 notifK 缩回去。
-     * 缺口跟着徽章一起长——先咬出一个小坑，徽章再从坑里顶出来，
-     * 而不是一个贴纸"啪"地盖在球上。 */
-    const notifOn = !!target.notif;
-    notifK = approach(notifK, notifOn ? 1 : 0, 12, dt);
-    notifG.setAttribute('opacity', notifK.toFixed(3));
-    /* transform 每帧都写（不藏在 notifK 阈值里）：第一帧 dt=0 时 notifK 还是 0，
-     * 跳过这一下会让徽章以"未缩放"的姿态露出来一帧。 */
-    const grow = notifOn ? notifPop((now - entryT) / 1000) : 1;
-    const s = grow * (notifOn ? 1 : notifK);
-    notifG.setAttribute('transform',
-      `translate(${NX.toFixed(2)} ${NY.toFixed(2)}) scale(${s.toFixed(4)}) ` +
-      `translate(${(-NX).toFixed(2)} ${(-NY).toFixed(2)})`);
-    if (notifK > 0.004) notchHole.setAttribute('r', (NHOLE * s).toFixed(2));
+    /* 书写（13）：笔尖沿墨线从左写到右（进度走 inOutCubic，起收笔慢、中段快），
+     * 走笔时笔杆绕笔尖 ±1.6° 快速小抖 + 笔身轻微上下浮动——写字的手感靠这个。
+     * 透明度走 approach 追脉冲：链切走（→12）时钢笔是渐隐收场。 */
+    penK = approach(penK, penPulse, 14, dt);
+    penG.setAttribute('opacity', penK.toFixed(3));
+    if (penK > 0.004) {
+      const pdur = ((penCfg ? penCfg.dur : 0) || 2400) / 1000;
+      const u = clamp(age / (pdur * 0.85), 0, 1);
+      const tipX = lerp(CX - PEN_SPAN, CX + PEN_SPAN, easings.inOutCubic(u));
+      const wig = Math.sin(now * 0.02) * 1.6;
+      penMove.setAttribute('transform',
+        `translate(${tipX.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
+      inkLine.setAttribute('x2', Math.max(tipX, CX - PEN_SPAN + 1).toFixed(2));
+    }
+    /* 感叹（23）：感叹条 outBack 弹出（50% → 100% 带过冲），球的缩身由上面
+     * 的 preT 负责。exK 同样 approach——1s 后链切 20，彩带接住收场。 */
+    exK = approach(exK, exPulse, 16, dt);
+    exBar.setAttribute('opacity', exK.toFixed(3));
+    if (exK > 0.004) {
+      const s = 0.5 + 0.5 * easings.outBack(clamp(age / 0.32, 0, 1));
+      exBar.setAttribute('transform',
+        `translate(${CX} ${EX_MID}) scale(${s.toFixed(3)}) translate(${-CX} ${-EX_MID})`);
+    }
     if (bookK > 0.01) {
       /* 跟呼吸同频的一点点浮动，书不是钉死的 */
       const bob = Math.sin(now / 1000 * (cur.breatheHz || 0.4) * TAU) * 1.6;
