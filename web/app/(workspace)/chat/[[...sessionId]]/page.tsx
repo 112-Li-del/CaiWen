@@ -1367,13 +1367,6 @@ export default function ChatPage() {
         </div>
       </div>
       <div className="relative mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
-        {/* 表情球：浮在聊天区右上角。偏移量要留够「丝带甩出球外的距离」——约 0.6×直径，
-            否则会被这个 overflow-hidden 容器的边缘切掉。直径改大时记得同步加大偏移。 */}
-        <EmotionBall
-          emotion={ballEmotion}
-          size={120}
-          className="pointer-events-auto absolute right-4 top-4 z-20"
-        />
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="flex w-full justify-center">
@@ -1418,7 +1411,18 @@ export default function ChatPage() {
             <div ref={messagesEndRef} className="h-px w-full shrink-0" />
           </div>
         )}
-
+      </div>
+      {/* 表情球坐到输入框左边：不挡回答区，03 倾听「低头看输入框」的朝向也成立。
+          丝带会甩出 svg 视口约 0.6×直径（overflow-visible 画在外面），消息区不再
+          overflow-hidden 裁它；甩向右侧的部分会被 composer（relative z-20）盖住，
+          正好像从球背后绕过去。 */}
+      <div className="mx-auto flex w-full max-w-[960px] shrink-0 items-end gap-2 px-6">
+        <EmotionBall
+          emotion={ballEmotion}
+          size={120}
+          className="pointer-events-auto shrink-0 pb-1"
+        />
+        <div className="min-w-0 flex-1">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}
@@ -1511,6 +1515,7 @@ export default function ChatPage() {
           onTogglePanelCollapsed={handleTogglePanelCollapsed}
           onHasContentChange={setUserTyping}
         />
+        </div>
       </div>
       <NotebookRecordPicker
         open={showNotebookPicker}
