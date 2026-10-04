@@ -1412,20 +1412,21 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {/* 表情球：≥1400 时贴聊天区最左侧（内容列左边有留白，挨着导航栏），size 96；
-          窄于此内容列占满窗格、没有留白，输入框往右让出 136px（见下），球放大到
-          136（实高 106px ≈ 输入框高度）跟它并排站着，间隙 ~8px，看起来是一组的。
-          几何：viewBox 200×200，球直径 156 = 宿主宽的 78%，size 136 → 可视范围
-          = left+15 ~ +121（left-2 → 右缘 129，让位 136 留 7px）。
-          svg 整体 pointer-events:none、只有球面（.cw-hit）能点，不挡下层按钮。 */}
-      <EmotionBall
-        emotion={ballEmotion}
-        size={96}
-        className="pointer-events-none absolute bottom-5 left-2 z-30 flex max-[1399px]:bottom-3 max-[1399px]:[&>div:first-child]:!w-[136px] min-[1400px]:bottom-6 min-[1400px]:left-3"
-      />
-      {/* 窄屏（<1400）给左边的球让出 136px（球放大到 136 跟输入框等高并排，见上）。
-          只有输入框让位，消息区不动——消息区跟着一起让会平白浪费空间。 */}
-      <div className="mx-auto w-full max-w-[960px] shrink-0 px-6 max-[1399px]:pl-[136px]">
+      {/* 表情球 + 输入框：窄屏（<1400）真并排——flex 行里球占固定宽、输入框 flex-1。
+          不设 gap：球在宿主里自带 ~13px 内边留白（0.11×size），视觉间隙正好，
+          再加 gap 就会像之前那样中间空一截。压缩需求 = 球缩小、输入框变短，天然成立。
+          宽屏（≥1400）时球切 absolute 脱离文档流，贴窗格左边挨导航栏（wrapper 占满
+          窗格宽，left-3 就是窗格坐标），size 收回 96；输入框不受影响，靠内层
+          max-w-960 居中，和上方消息列对齐。球 svg pointer-events:none、
+          只有球面（.cw-hit）能点。 */}
+      <div className="relative mx-auto flex w-full shrink-0 items-end px-6">
+        <EmotionBall
+          emotion={ballEmotion}
+          size={120}
+          className="pointer-events-none relative z-30 flex shrink-0 pb-2 max-[1399px]:pb-2 min-[1400px]:absolute min-[1400px]:bottom-6 min-[1400px]:left-3 min-[1400px]:pb-0 min-[1400px]:[&>div:first-child]:!w-24"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="mx-auto w-full max-w-[960px]">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}
@@ -1518,6 +1519,8 @@ export default function ChatPage() {
           onTogglePanelCollapsed={handleTogglePanelCollapsed}
           onHasContentChange={setUserTyping}
         />
+          </div>
+        </div>
       </div>
       <NotebookRecordPicker
         open={showNotebookPicker}
