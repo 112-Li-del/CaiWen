@@ -45,6 +45,22 @@ test('台词库：≥100 句、无重复、每句 ≤12 字', async () => {
   }
 });
 
+test('台词库只有 fun/guide/warm 三类：不再有名人名言和财经常识', async () => {
+  const { IDLE_LINES, LINES_BY_TAG } = await import('../src/lines.js');
+  /* 回归锁：曾经放过 classic（名人名言）和 finance（财经常识），
+     用户明确要求全部换成有趣的话，所以这两类不允许再回来。 */
+  const tags = Object.keys(LINES_BY_TAG).sort();
+  assert.deepEqual(tags, ['fun', 'guide', 'warm'], `台词分类变成 ${tags.join('/')} 了`);
+
+  const tagged = new Set(Object.values(LINES_BY_TAG).flat());
+  assert.equal(tagged.size, IDLE_LINES.length, '有句子不在任何分类里');
+  /* 财经术语一眼能看出来，顺手挡一下 */
+  for (const s of IDLE_LINES) {
+    assert.ok(!/(复利|折旧|毛利|净利|估值|现金流|负债|周转|商誉|审计|ROE)/.test(s),
+      `「${s}」又把财经常识写回台词库了`);
+  }
+});
+
 test('pickLine 避开上一句', async () => {
   const { pickLine, IDLE_LINES } = await import('../src/lines.js');
   const prev = IDLE_LINES[0];
