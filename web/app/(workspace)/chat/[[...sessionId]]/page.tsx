@@ -1416,7 +1416,7 @@ export default function ChatPage() {
           丝带会甩出 svg 视口约 0.6×直径（overflow-visible 画在外面），消息区不再
           overflow-hidden 裁它；甩向右侧的部分会被 composer（relative z-20）盖住，
           正好像从球背后绕过去。 */}
-      <div className="mx-auto flex w-full max-w-[960px] shrink-0 items-end gap-2 px-6">
+      <div className="mx-auto flex w-full max-w-[960px] shrink-0 items-end gap-10 px-6">
         <EmotionBall
           emotion={ballEmotion}
           size={120}
