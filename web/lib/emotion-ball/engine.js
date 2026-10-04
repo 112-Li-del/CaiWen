@@ -170,7 +170,10 @@ export function create(container, opts = {}) {
   const ribbonBack = el('g', opts.glow !== false ? { filter: `url(#cw-glow-${n})` } : {}, svg);
   const rig = el('g', {}, svg);
   const clipped = el('g', { 'clip-path': `url(#cw-clip-${n})` }, rig);
-  const bodyPath = el('path', { fill: `url(#cw-grad-${n})` }, clipped);
+  /* cw-hit：点击命中标记。宿主上层可能把 svg 整体 pointer-events:none（球叠在
+   * 输入框上时不能挡住下面的按钮），只有这个球面路径重新开启命中——点球
+   * 依然触发 poke，点球旁边的透明区域会穿透到下层。 */
+  const bodyPath = el('path', { fill: `url(#cw-grad-${n})`, class: 'cw-hit' }, clipped);
 
   /* 经线：rx 随相位变化 → 自转。整组套泛光滤镜 */
   const meridianLayer = el('g', opts.glow !== false ? { filter: `url(#cw-glow-${n})` } : {}, clipped);

@@ -98,11 +98,13 @@ export default function EmotionBall({
 
   return (
     <div className={`flex flex-col items-center select-none ${className}`}>
-      {/* 引擎会把 <svg> 插到容器最前，所以这个 div 只当宿主用 */}
+      {/* 引擎会把 <svg> 插到容器最前，所以这个 div 只当宿主用。
+          svg 整体不吃指针事件，只有球面（.cw-hit）重新开启——球叠在
+          输入框上时，被盖住的按钮依然可以点。 */}
       <div
         ref={hostRef}
         style={{ width: size }}
-        className="[&>svg]:w-full [&>svg]:h-auto [&>svg]:overflow-visible"
+        className="[&>svg]:pointer-events-none [&>svg]:w-full [&>svg]:h-auto [&>svg]:overflow-visible [&_.cw-hit]:pointer-events-auto"
       />
       <div
         ref={tipRef}

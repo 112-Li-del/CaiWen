@@ -1412,18 +1412,16 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {/* 表情球：贴在聊天区最左侧（内容列 960px 居中，左边那块空白正好放它），
-          挨着左边的导航栏，跟输入框同一水平线、完全不压回答和输入框。
-          用 absolute 而不是并排——并排会把它按进内容列里，跟输入框挤在一起。
-          几何：viewBox 200×200，球直径 156 = 宿主宽的 78%（左右各留 11%）。
-          size 96 → 球实宽 75px，可视范围 = 窗格左边 +23 ~ +97；
-          输入框左缘 = 「留白+24」，不相撞需要留白 ≥97px（留点余量按 100），
-          即窗格宽 ≥1160 → 窗口宽 ≥1380（侧边栏 220 展开时）。
-          窄于此直接隐藏，否则球会被输入框面板（relative z-20）盖掉半边。 */}
+      {/* 表情球：贴聊天区最左侧、挨着导航栏，落在内容列（960px 居中）左边的留白里。
+          几何：viewBox 200×200，球直径 156 = 宿主宽的 78%，size 96 → 球实宽 75px，
+          可视范围 = left+10.5 ~ +85.5；输入框左缘 = 「留白+24」。不相撞需要
+          留白 ≥97px → 窗格 ≥1160 → 窗口 ≥1380（侧边栏 220 展开；折叠 60 时 ≥1220）。
+          窄于此直接隐藏——站到输入框前会挡住下面的按钮（点击穿透只解决可点性，
+          挡视线没法解决），所以宁可不做。 */}
       <EmotionBall
         emotion={ballEmotion}
         size={96}
-        className="pointer-events-auto absolute bottom-6 left-3 z-20 hidden min-[1400px]:flex"
+        className="pointer-events-none absolute bottom-6 left-3 z-30 hidden min-[1400px]:flex"
       />
       <div className="mx-auto w-full max-w-[960px] shrink-0 px-6">
         <ChatComposer
