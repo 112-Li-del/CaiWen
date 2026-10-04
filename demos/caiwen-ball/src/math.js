@@ -68,6 +68,27 @@ export function pulseAmount(t, start, end, fade = 0.35) {
 }
 
 /**
+ * 加权随机抽一项（微表情用）。按 weight 累积区间命中，weight 缺省/非法按 1 算。
+ * rnd 参数化是为了可测：测试注入确定性序列就能保证每种微表情都被抽到。
+ * @param items [{ weight?, ... }]  @param rnd 返回 [0,1) 的函数
+ */
+export function pickWeighted(items, rnd = Math.random) {
+  if (!items || !items.length) return null;
+  let total = 0;
+  for (const it of items) total += Number.isFinite(it && it.weight) && it.weight > 0 ? it.weight : 1;
+  if (!(total > 0)) return null;
+  let r = rnd();
+  if (!Number.isFinite(r)) r = 0;
+  r = Math.min(0.999999, Math.max(0, r)) * total;
+  for (const it of items) {
+    const w = Number.isFinite(it.weight) && it.weight > 0 ? it.weight : 1;
+    if (r < w) return it;
+    r -= w;
+  }
+  return items[items.length - 1];
+}
+
+/**
  * 眨眼开合曲线。count=1 单眨，count=2 连眨两下（一闭一开重复两次）。
  * t ∈ [0,1]，返回 0(全闭)~1(全睁)。 |cos| 保证两端都是睁着的，中间闭到底。
  */

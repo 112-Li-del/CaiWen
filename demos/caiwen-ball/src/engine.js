@@ -13,7 +13,7 @@
 
 import {
   TAU, clamp, rand, lerp, approach, smoothClosedPath,
-  easings, loopNoise, blinkOpenMul, pulseAmount
+  easings, loopNoise, blinkOpenMul, pulseAmount, pickWeighted
 } from './math.js';
 import { sphereSilhouette, shapeRadiusTable, tableRadiusAt, MORPH_KINDS } from './shape.js';
 import { createTypeLine } from './typeline.js';
@@ -218,6 +218,12 @@ export function create(container, opts = {}) {
   const napVals = {};
   NUM_KEYS.forEach((k) => { napVals[k] = target[k]; });
   let napFired = false;
+  /* 微表情：待机时的短期眼睛变奏（大圆眼 / 睁大 / 单眨眼）。
+   * micro 只在清醒时抽，打盹（napK 高）会把它推后——睡着了的脸不该做表情。 */
+  let micro = null;          /* 当前生效的一项，null = 无 */
+  let microT0 = 0;           /* 本项开始时刻（毫秒） */
+  let microNext = 0;         /* 下一次可以抽的时刻 */
+  let microSide = 0;         /* wink 闭哪只眼：0=左 1=右 */
   /* 形变轮播：只在 target.morph 存在时运转。tables 预烘焙各目标形状的半径表，
    * 每帧在「同角度的球半径」和「目标半径」之间插值，从数学上保证过渡无跳变。 */
   const MORPH_SAMPLES = 64;
@@ -452,6 +458,11 @@ export function create(container, opts = {}) {
     morphAnchor = now;
     napFired = false;
     zzzNext = now;
+    /* 微表情重新排队：切进来不要立刻变脸，先安静一个随机间隔 */
+    micro = null;
+    microNext = target.micro && target.micro.every
+      ? now + rand(target.micro.every[0], target.micro.every[1])
+      : Infinity;
     if (target.confetti) burstConfetti(26);
     if (tipLine) tipLine.set(target.tip || '');
     listeners.change.forEach((cb) => cb({ id, def: target }));
@@ -529,6 +540,35 @@ export function create(container, opts = {}) {
         (nap.fade != null ? nap.fade : 350) / 1000);
     }
 
+    /* 0.5) 微表情调度：清醒时按随机间隔抽一项短期眼睛变奏。
+     *    打盹（napK > 0.15）不抽也不续——睡眠表情保持不动，这是明确要求；
+     *    形变轮播期间照常出现（饼/六角/三角形态下也会眨一下、瞪一下）。 */
+    let microK = 0;
+    const mcfg = target.micro;
+    if (mcfg && mcfg.items && mcfg.items.length) {
+      if (napK > 0.15) {
+        /* 睡着的脸不做表情：正在进行的一律收掉（否则微表情会盖掉睡眠闭眼线，
+         * 表现成"打盹时突然瞪大眼"），并把下一次推到醒来之后。 */
+        micro = null;
+        microNext = Math.max(microNext, now + 700);
+      } else if (!micro && now >= microNext) {
+        micro = pickWeighted(mcfg.items);
+        microT0 = now;
+        microSide = micro.wink === 'L' ? 0 : micro.wink === 'R' ? 1 : (Math.random() < 0.5 ? 0 : 1);
+      }
+      if (micro) {
+        const dur = micro.dur > 0 ? micro.dur : 700;
+        const a = now - microT0;
+        if (a >= dur) {
+          micro = null;
+          const iv = mcfg.every || [2600, 5600];
+          microNext = now + rand(iv[0], iv[1]);
+        } else {
+          microK = pulseAmount(a / 1000, 0, dur / 1000, (micro.fade != null ? micro.fade : 120) / 1000);
+        }
+      }
+    }
+
     /* 1) 姿态数值趋近目标（帧率无关）。眼形与尺寸左右独立插值，
      *    切换时两眼各自淡入淡出，才有 bloub 那种"换表情不换帧"的顺滑 */
     for (const k of NUM_KEYS) {
@@ -541,7 +581,21 @@ export function create(container, opts = {}) {
     ];
     for (let i = 0; i < 2; i++) {
       const eye = eyes[i];
-      const tc = eyeTargets[i];
+      /* 微表情覆盖：k 过半才换目标形状，配合 alpha 的指数逼近得到"渐变过去"而不是硬切。
+       * wink 只闭一侧——另一侧保持胶囊，闭的那侧换成闭眼线（比压扁的胶囊更像"眨眼"）。 */
+      let tc = eyeTargets[i];
+      if (micro && microK > 0.5) {
+        if (micro.wink && microSide === i) {
+          tc = { shape: 'closed', w: Math.max(tc.w, (micro.w || tc.w) * 1.15), h: tc.h, dy: tc.dy };
+        } else {
+          tc = {
+            shape: micro.shape || tc.shape,
+            w: micro.w != null ? micro.w : tc.w,
+            h: micro.h != null ? micro.h : tc.h,
+            dy: tc.dy
+          };
+        }
+      }
       for (const s of SHAPES) eye.alpha[s] = approach(eye.alpha[s], tc.shape === s ? 1 : 0, 11, dt);
       eye.w = approach(eye.w, tc.w, 9, dt);
       eye.h = approach(eye.h, tc.h, 9, dt);
