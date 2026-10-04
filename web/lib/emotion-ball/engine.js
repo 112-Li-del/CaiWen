@@ -231,6 +231,8 @@ export function create(container, opts = {}) {
   let microRound = -1;       /* 已排定的轮次序号，轮次一变就重排 */
   let microSide = 0;         /* wink 闭哪只眼：0=左 1=右 */
   let microLast = '';        /* 上一次抽到的 key——下次要避开它，见下 */
+  let microTipOn = false;    /* 当前 tip 是否被微表情的台词顶掉了（结束时换回来） */
+  let microLineLast = '';    /* 上一句台词——连着说同一句太像复读机 */
   /* 形变轮播：只在 target.morph 存在时运转。tables 预烘焙各目标形状的半径表，
    * 每帧在「同角度的球半径」和「目标半径」之间插值，从数学上保证过渡无跳变。 */
   const MORPH_SAMPLES = 64;
@@ -469,6 +471,7 @@ export function create(container, opts = {}) {
      * （microRound = -1 会让下一帧立刻排当前轮次），无 morph 的按 every 排。 */
     micro = null;
     microLast = '';
+    microTipOn = false;            /* 下面 tipLine.set(target.tip) 会覆盖台词 */
     microRound = -1;
     microDeadline = Infinity;
     const hasMorph = !!(target.morph && target.morph.seq && target.morph.seq.length);
@@ -525,9 +528,28 @@ export function create(container, opts = {}) {
   function microWindow(mcfg, tl) {
     const w = Array.isArray(mcfg.window) ? mcfg.window : null;
     const lo = Math.max(0, w ? w[0] : 600);
-    let hi = w ? w[1] : (tl.napEnd > tl.napStart ? tl.napStart - 600 : tl.total * 0.75);
+    let hi;
+    if (w) {
+      hi = w[1];
+    } else if (tl.napEnd > tl.napStart) {
+      /* 上限要容得下**最长**那条微表情播完：打盹的 fade 从 napStart-350 就开始爬，
+       * 播到一半被睡眠门控收掉（脸突然变回睡眠、台词被掐）很突兀，
+       * 所以除了 fade 提前量，再往回退一个 maxDur。 */
+      let maxDur = 700;
+      for (const it of mcfg.items || []) maxDur = Math.max(maxDur, Number(it && it.dur) || 700);
+      hi = tl.napStart - 350 - maxDur;
+    } else {
+      hi = tl.total * 0.75;
+    }
     if (!(hi > lo)) hi = tl.total * 0.75;
     return [lo, Math.min(hi, Math.max(lo, tl.total - 200))];
+  }
+
+  /** 微表情结束后把台词换回当前表情自己的 tip（没换过就别多打一遍字） */
+  function restoreTip() {
+    if (!microTipOn) return;
+    microTipOn = false;
+    if (tipLine) tipLine.set(target.tip || '');
   }
 
   /**
@@ -605,6 +627,7 @@ export function create(container, opts = {}) {
          * 表现成"打盹时突然瞪大眼"），并把下一次推到醒来之后。已经做过的那轮
          * microNext 是 Infinity，取 max 后仍是 Infinity → 本轮不会补做第二次。 */
         micro = null;
+        restoreTip();
         microNext = Math.max(microNext, now + 700);
       } else if (!micro && now >= microNext && now <= microDeadline) {
         /* 不连着做同一个微表情：纯加权随机在只有 3 种时会频繁连出同种
@@ -619,12 +642,26 @@ export function create(container, opts = {}) {
         microLast = micro ? (micro.key || micro) : '';
         microSide = micro && (micro.wink === 'L' ? 0 : micro.wink === 'R' ? 1 : (Math.random() < 0.5 ? 0 : 1));
         microNext = Infinity;      /* 本轮用掉唯一名额 */
+        /* 台词：做表情的同时换一句话（typeline 会先删后打，不会两段文字叠在一起），
+         * 微表情结束由 restoreTip() 换回表情自己的 tip。 */
+        const lines = micro && micro.lines;
+        if (lines && lines.length && tipLine) {
+          let line = lines[Math.floor(Math.random() * lines.length)];
+          /* 只有一句时没法躲；两句以上撞了上一句就顺移一位，别连着说同一句 */
+          if (lines.length > 1 && line === microLineLast) {
+            line = lines[(lines.indexOf(line) + 1) % lines.length];
+          }
+          microLineLast = line;
+          tipLine.set(line);
+          microTipOn = true;
+        }
       }
       if (micro) {
         const dur = micro.dur > 0 ? micro.dur : 700;
         const a = now - microT0;
         if (a >= dur) {
           micro = null;
+          restoreTip();
         } else {
           microK = pulseAmount(a / 1000, 0, dur / 1000, (micro.fade != null ? micro.fade : 120) / 1000);
         }

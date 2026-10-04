@@ -24,6 +24,23 @@ const closedLines = (host) => walk(host).filter((n) => n.tag === 'line' && n.att
 
 const sizeOf = (r) => ({ w: parseFloat(r.attrs.width), h: parseFloat(r.attrs.height), op: parseFloat(r.attrs.opacity) });
 
+/**
+ * 固定种子 PRNG（mulberry32）。
+ * 为什么不用真随机：台词/表情都是加权抽样，跑几十轮要断言"三种台词都说过"，
+ * 真随机下有万分之几的概率漏掉一种 → 测试会偶发飘红。用固定种子后整段运行
+ * 可复现，跑通一次就永远跑通。
+ */
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** 注入确定性随机：cycling 数组轮转，保证三种微表情按权重依次被抽到 */
 function withCycledRandom(values, fn) {
   const orig = Math.random;
@@ -53,7 +70,7 @@ test('待机微表情：三种都出现（圆眼 / 睁大胶囊 / 单眨眼）�
   ball.setEmotion('01');                 /* now 仍是 0 → morphAnchor=0，相位 = pump 时间 */
   const tl = morphTimeline(STATES['01'].morph);
 
-  let round = false, widen = false, wink = false, awakeInsideNap = 0;
+  let round = false, widen = false, wink = false, awakeInsideNap = 0, maxRound = 0;
 
   /* 序列按权重区间走：surprise(<0.25) → widen(<0.625) → wink，循环保证三种都抽到。
    * 一个轮次只抽一次（12.6s/轮），所以帧数要够跨 8 轮，三种才都能轮到。 */
@@ -80,13 +97,15 @@ test('待机微表情：三种都出现（圆眼 / 睁大胶囊 / 单眨眼）�
       /* wink：只有一侧闭眼线亮，另一侧仍是睁着的（不是眨眼就是闭眼线全亮） */
       const isWink = Math.max(...lids) > 0.8 && Math.min(...lids) < 0.2;
 
-      if (isRound) round = true;
+      if (isRound) { round = true; maxRound = Math.max(maxRound, L.w); }
       if (isWiden) widen = true;
       if (isWink) wink = true;
     }
   });
 
   assert.ok(round, '待机中应出现过"大圆眼"（惊讶）：两眼 w≈h 且大于基线');
+  /* 大圆眼要够大才看得出"瞪"：29→33（待机基线宽 13，球直径 156） */
+  assert.ok(maxRound >= 30, `大圆眼不够大：观测到的最大宽度只有 ${maxRound}`);
   assert.ok(widen, '待机中应出现过"睁大"（仍是胶囊，但比 13×30 大）');
   assert.ok(wink, '待机中应出现过"单眨眼 wink"（只有一侧闭眼线亮起）');
   assert.ok(awakeInsideNap === 0,
@@ -218,6 +237,62 @@ test('一个动作轮次内只做一次微表情：做完就等下一轮', async
     `${ROUNDS} 个轮次里做了 ${runs.length} 次——一个动作轮次内只能做一次`);
   assert.equal(new Set(rounds).size, rounds.length,
     `有两个微表情落在同一个动作轮次里：${JSON.stringify(rounds)}`);
+  /* 顺带锁时长：dur 从 0.76~1.1s 加到 1.2~1.7s，一闪而过看不清。
+   * 40 帧 = 640ms，只检测闭眼线的 wink（1.2s）也够得着。 */
+  assert.ok(runs.every((r) => r.len >= 40),
+    `有微表情短于 640ms：${JSON.stringify(runs.map((r) => r.len * 16))}`);
+
+  ball.destroy();
+});
+
+test('微表情带台词：做表情时换一句，做完换回待机文案', async () => {
+  const pump = installFakeDom();
+  /* 开"减弱动效"：typeline 会跳过逐字动画直接整段显示，否则它靠真实 setTimeout
+   * 逐字推进，而这里的帧是同步泵的，永远读不到文字。 */
+  globalThis.window.matchMedia = () => ({ matches: true });
+  const { create } = await import('../src/engine.js');
+  const { STATES } = await import('../src/states.js');
+  const host = node('div');
+  const tipHost = node('div');
+  /* 引擎用 `opts.tip instanceof Element` 认领提示节点，假 DOM 的 node 不是真 Element */
+  Object.setPrototypeOf(tipHost, globalThis.Element.prototype);
+  const ball = create(host, { tip: tipHost });
+  ball.setEmotion('01');
+
+  const IDLE = STATES['01'].tip;
+  const pools = {};
+  for (const it of STATES['01'].micro.items) pools[it.key] = it.lines;
+  const all = new Set(Object.values(pools).flat());
+  const readTip = () => (tipHost.children[0] ? tipHost.children[0].textContent : '');
+
+  const seq = [];
+  const push = () => { const t = readTip(); if (t && seq[seq.length - 1] !== t) seq.push(t); };
+  push();                                    /* 刚切进来应该是待机自己的文案 */
+  const orig = Math.random;
+  Math.random = seededRandom(7);
+  for (let i = 0; i < 16000; i++) {          /* ≈256s，20 轮，够三种台词都轮上 */
+    pump.step(16);
+    push();
+  }
+  Math.random = orig;
+
+  const said = seq.filter((t) => t !== IDLE);
+  assert.equal(seq[0], IDLE, '刚进入待机时下方应是待机文案');
+  assert.ok(said.length >= 10, `20 个轮次里只换过 ${said.length} 次台词——一个轮次该有一次`);
+  for (const t of said) {
+    assert.ok(all.has(t), `出现了台词池之外的一句：${t}`);
+  }
+  /* 表情做完必须把文案换回来，不能一直挂着"震惊！" */
+  for (let i = 0; i < seq.length - 1; i++) {
+    if (seq[i] !== IDLE) {
+      assert.equal(seq[i + 1], IDLE, `台词「${seq[i]}」之后没换回待机文案（停在 ${seq[i + 1]}）`);
+    }
+  }
+  /* 三种表情各自的台词都说过了 */
+  for (const key of Object.keys(pools)) {
+    assert.ok(said.some((t) => pools[key].includes(t)),
+      `${key} 的台词一次都没说过：${JSON.stringify(pools[key])}`);
+  }
 
   ball.destroy();
 });
