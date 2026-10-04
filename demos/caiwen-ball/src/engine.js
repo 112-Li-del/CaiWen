@@ -17,6 +17,7 @@ import {
 } from './math.js';
 import { sphereSilhouette, shapeRadiusTable, tableRadiusAt, MORPH_KINDS } from './shape.js';
 import { createTypeLine } from './typeline.js';
+import { pickLine } from './lines.js';
 import { projectEye, clampToHull } from './face.js';
 import { STATES, FALLBACK, NUM_KEYS, SHAPES, normalize, morphTimeline } from './states.js';
 
@@ -265,6 +266,13 @@ export function create(container, opts = {}) {
   let microLast = '';        /* 上一次抽到的 key——下次要避开它，见下 */
   let microTipOn = false;    /* 当前 tip 是否被微表情的台词顶掉了（结束时换回来） */
   let microLineLast = '';    /* 上一句台词——连着说同一句太像复读机 */
+
+  /* 台词轮换（tipLines）：curTip 是「底噪台词」，可能是表情自己的 tip，也可能是
+   * 轮换出来的句子；微表情临时顶掉台词后，restoreTip() 换回的是 curTip 而不是
+   * target.tip，否则轮换句会被微表情一句覆盖掉、再也回不来。 */
+  let curTip = '';
+  let tipRound = -1;         /* 已排定台词的轮次序号 */
+  let tipLineLast = '';      /* 上一句轮换出来的句子——避免连着说同一句 */
   /* 形变轮播：只在 target.morph 存在时运转。tables 预烘焙各目标形状的半径表，
    * 每帧在「同角度的球半径」和「目标半径」之间插值，从数学上保证过渡无跳变。 */
   const MORPH_SAMPLES = 64;
@@ -504,7 +512,7 @@ export function create(container, opts = {}) {
      * （microRound = -1 会让下一帧立刻排当前轮次），无 morph 的按 every 排。 */
     micro = null;
     microLast = '';
-    microTipOn = false;            /* 下面 tipLine.set(target.tip) 会覆盖台词 */
+    microTipOn = false;            /* 下面 tipLine.set(curTip) 会覆盖台词 */
     microRound = -1;
     microDeadline = Infinity;
     const hasMorph = !!(target.morph && target.morph.seq && target.morph.seq.length);
@@ -512,7 +520,11 @@ export function create(container, opts = {}) {
       ? now + rand(target.micro.every[0], target.micro.every[1])
       : Infinity;
     if (target.confetti) burstConfetti(26);
-    if (tipLine) tipLine.set(target.tip || '');
+    /* 台词：切进来先说表情自己的 tip，轮换从第 tipRounds 轮才开始（rotateTip） */
+    curTip = target.tip || '';
+    tipRound = -1;
+    tipLineLast = '';
+    if (tipLine) tipLine.set(curTip);
     listeners.change.forEach((cb) => cb({ id, def: target }));
     if (typeof opts.onChange === 'function') opts.onChange(id, target);
   }
@@ -578,11 +590,39 @@ export function create(container, opts = {}) {
     return [lo, Math.min(hi, Math.max(lo, tl.total - 200))];
   }
 
-  /** 微表情结束后把台词换回当前表情自己的 tip（没换过就别多打一遍字） */
+  /** 微表情/切表情后把台词换回「底噪台词」（可能是轮换出来的句子，见 curTip） */
   function restoreTip() {
     if (!microTipOn) return;
     microTipOn = false;
-    if (tipLine) tipLine.set(target.tip || '');
+    if (tipLine) tipLine.set(curTip);
+  }
+
+  /** 没有 morph 的状态也要能轮换台词，这时一轮按待机的周期（12.6s）算 */
+  const TIP_ROUND_MS = 12600;
+
+  /**
+   * 台词轮换：一个动作轮次换一句。
+   * 前 tipRounds 轮（默认 2）说表情自己的 tip —— 刚进门就换台词会让人以为切错了
+   * 表情；之后每轮从 tipLines 里随机抽一句，避开上一句（连着说同一句很出戏）。
+   * 微表情正占着台词时只更新 curTip、不动显示，等它结束由 restoreTip() 显示新句。
+   */
+  function rotateTip(nowMs) {
+    const pool = target.tipLines;
+    if (!tipLine || !pool || !pool.length) return;
+    const mtl = target.morph && target.morph.seq && target.morph.seq.length
+      ? morphTimeline(target.morph) : null;
+    const total = mtl ? mtl.total : TIP_ROUND_MS;
+    const idx = Math.floor((nowMs - morphAnchor) / total);
+    if (idx === tipRound) return;
+    tipRound = idx;
+    const warmup = target.tipRounds != null ? target.tipRounds : 2;
+    if (idx < warmup) {
+      curTip = target.tip || '';
+    } else {
+      curTip = pickLine(pool, tipLineLast);
+      tipLineLast = curTip;
+    }
+    if (!microTipOn) tipLine.set(curTip);
   }
 
   /**
@@ -652,6 +692,11 @@ export function create(container, opts = {}) {
       const fade = (dots.fade != null ? dots.fade : 400) / 1000;
       dotsK = pulseAmount(ph / 1000, fade, (dots.dur || 2200) / 1000, fade);
     }
+
+    /* 0.45) 台词轮换：前 tipRounds 轮说表情自己的 tip，之后每个动作轮次换一句。
+     *        放在微表情之前：微表情临时顶掉台词时只更新 curTip，等它结束由
+     *        restoreTip() 显示新句子，不会打断正在播的微表情。 */
+    rotateTip(now);
 
     /* 0.5) 微表情调度：短期眼睛变奏（大圆眼 / 睁大 / 单眨眼）。
      *    **一个动作轮次只做一次**：触发时刻按轮次排定（见 scheduleMicro），

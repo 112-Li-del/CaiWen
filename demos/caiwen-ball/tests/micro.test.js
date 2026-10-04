@@ -260,6 +260,10 @@ test('微表情带台词：做表情时换一句，做完换回待机文案', as
   ball.setEmotion('01');
 
   const IDLE = STATES['01'].tip;
+  /* 「底噪台词」= 表情自己的 tip，或第 3 轮起轮换出来的一句（见 tips.test.js）。
+   * 微表情做完换回的是**当时**的底噪，不一定是 IDLE 这一句。 */
+  const BANK = new Set(STATES['01'].tipLines || []);
+  const isIdleNoise = (t) => t === IDLE || BANK.has(t);
   const pools = {};
   for (const it of STATES['01'].micro.items) pools[it.key] = it.lines;
   const all = new Set(Object.values(pools).flat());
@@ -276,16 +280,18 @@ test('微表情带台词：做表情时换一句，做完换回待机文案', as
   }
   Math.random = orig;
 
-  const said = seq.filter((t) => t !== IDLE);
+  const said = seq.filter((t) => !isIdleNoise(t));
   assert.equal(seq[0], IDLE, '刚进入待机时下方应是待机文案');
   assert.ok(said.length >= 10, `20 个轮次里只换过 ${said.length} 次台词——一个轮次该有一次`);
   for (const t of said) {
     assert.ok(all.has(t), `出现了台词池之外的一句：${t}`);
   }
-  /* 表情做完必须把文案换回来，不能一直挂着"震惊！" */
+  /* 表情做完必须把文案换回底噪（前两轮是待机文案，之后是轮换出来的句子），
+   * 不能一直挂着"震惊！" */
   for (let i = 0; i < seq.length - 1; i++) {
-    if (seq[i] !== IDLE) {
-      assert.equal(seq[i + 1], IDLE, `台词「${seq[i]}」之后没换回待机文案（停在 ${seq[i + 1]}）`);
+    if (!isIdleNoise(seq[i])) {
+      assert.ok(isIdleNoise(seq[i + 1]),
+        `台词「${seq[i]}」之后没换回底噪（停在 ${seq[i + 1]}）`);
     }
   }
   /* 三种表情各自的台词都说过了 */
