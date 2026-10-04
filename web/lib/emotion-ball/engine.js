@@ -165,26 +165,26 @@ export function create(container, opts = {}) {
     'stroke-width': 2, 'stroke-linecap': 'round'
   }, bookInner);
 
-  /* 书写（13）的钢笔：笔尖落地、笔杆右上倾，沿一条逐渐画出的墨线走笔。
+  /* 书写（13）的钢笔：一支斜杆圆头笔 + 波浪边（扇贝形）的笔尖点，整体照目标图
+   * ——上面一根斜圆头长杆（rotate 24°，顶端偏右），下面一颗锯齿边的圆点笔尖。
+   * **不留墨迹**：整支笔沿一行从左划到右、再收回中间，纯走位不画线。
    * 刚性道具不进 rig——书写阶段球整体缩没了，进 rig 会被一起缩掉。 */
-  const PEN_Y = CY + 34;                 /* 笔尖落点高度（墨线上方一点） */
-  const PEN_SPAN = 40;                   /* 墨线从 CX-40 写到 CX+40 */
+  const PEN_Y = CY + 20;                 /* 笔组锚点（笔尖点附近） */
+  const PEN_SPAN = 40;                   /* 一行的半幅：从 CX-40 划到 CX+40 */
   const penG = el('g', { opacity: 0 }, svg);
-  const penMove = el('g', {}, penG);     /* 每帧：平移到笔尖 + 写字的小幅摆动 */
+  const penMove = el('g', {}, penG);     /* 每帧：沿行平移 + 写字的小幅摆动 */
   const penTilt = el('g', { transform: 'rotate(24)' }, penMove);
   /* 笔杆：圆头长杆，从笔尖往右上伸（rotate 24° 后顶端偏向右侧，照目标图） */
-  el('rect', { x: -9, y: -64, width: 18, height: 56, rx: 9, fill: '#73101F' }, penTilt);
-  /* 笔尖：水滴形，尖朝下，中间一个奶油色小圆孔（钢笔尖的通气孔） */
-  el('path', {
-    d: 'M 0 6 Q -8 -2 -7 -10 Q -5 -15 0 -15 Q 5 -15 7 -10 Q 8 -2 0 6 Z',
-    fill: '#8E1424'
-  }, penTilt);
-  el('circle', { cx: 0, cy: -5, r: 2.2, fill: CREAM }, penTilt);
-  /* 正在写的墨线：左端固定，右端每帧跟到笔尖位置 */
-  const inkLine = el('line', {
-    x1: CX - PEN_SPAN, y1: PEN_Y + 10, x2: CX - PEN_SPAN + 1, y2: PEN_Y + 10,
-    stroke: '#73101F', 'stroke-width': 6, 'stroke-linecap': 'round'
-  }, penG);
+  el('rect', { x: -11, y: -62, width: 22, height: 62, rx: 11, fill: '#73101F' }, penTilt);
+  /* 笔尖：扇贝边圆点——半径按 sin(角度×齿数) 起伏，再用 Catmull-Rom 连成
+   * 光滑闭合曲线，得到目标图那种锯齿/花边轮廓 */
+  const nibPts = [];
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * TAU;
+    const r = 12 * (1 + 0.11 * Math.sin(a * 10));
+    nibPts.push([Math.cos(a) * r, 10 + Math.sin(a) * r]);
+  }
+  el('path', { d: smoothClosedPath(nibPts), fill: '#73101F' }, penTilt);
 
   /* 感叹（23）的感叹条："!"的上半截，锥形圆头；下面那颗点是缩小的球自己。
    * 墨色（#73101F）——刚写完最后一个字，"!"是收笔的那一下墨迹。 */
@@ -1089,19 +1089,23 @@ export function create(container, opts = {}) {
     bookK = approach(bookK, target.book ? 1 : 0, 6, dt);
     bookG.setAttribute('opacity', bookK.toFixed(3));
 
-    /* 书写（13）：笔尖沿墨线从左写到右（进度走 inOutCubic，起收笔慢、中段快），
+    /* 书写（13）：不留墨迹，整支笔"划过去一行，然后回到中间"——
+     * 前半程从行首（CX-40）划到行尾（CX+40），后半月原路收回中间。
      * 走笔时笔杆绕笔尖 ±1.6° 快速小抖 + 笔身轻微上下浮动——写字的手感靠这个。
      * 透明度走 approach 追脉冲：链切走（→12）时钢笔是渐隐收场。 */
     penK = approach(penK, penPulse, 14, dt);
     penG.setAttribute('opacity', penK.toFixed(3));
     if (penK > 0.004) {
       const pdur = ((penCfg ? penCfg.dur : 0) || 2400) / 1000;
-      const u = clamp(age / (pdur * 0.85), 0, 1);
-      const tipX = lerp(CX - PEN_SPAN, CX + PEN_SPAN, easings.inOutCubic(u));
+      const u = clamp(age / pdur, 0, 1);
+      /* 前半程从行首（CX-40）划到行尾（CX+40），后半程收回到**中间**（CX）停笔 */
+      const sweep = u < 0.45
+        ? easings.outCubic(u / 0.45)
+        : 1 - 0.5 * easings.inOutCubic((u - 0.45) / 0.55);
+      const px = CX - PEN_SPAN + sweep * 2 * PEN_SPAN;
       const wig = Math.sin(now * 0.02) * 1.6;
       penMove.setAttribute('transform',
-        `translate(${tipX.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
-      inkLine.setAttribute('x2', Math.max(tipX, CX - PEN_SPAN + 1).toFixed(2));
+        `translate(${px.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
     }
     /* 感叹（23）：感叹条 outBack 弹出（50% → 100% 带过冲），球的缩身由上面
      * 的 preT 负责。exK 同样 approach——1s 后链切 20，彩带接住收场。 */

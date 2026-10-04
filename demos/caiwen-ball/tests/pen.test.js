@@ -4,7 +4,8 @@
  * 流程：检索完（11）→ 13 钢笔写字 2.4s → 12 回答中（大圆眼）
  *       → 回答完 → 23 感叹号 1s → 20 完成（彩带）。
  * 锁六件事：
- *   1. 13：球缩没（rig scale→0）、钢笔渐显、墨线从左往右生长（x2 变大）。
+ *   1. 13：球缩没（rig scale→0）、钢笔显形；走位是"划过去一行再回中间"
+ *      （x 越过中点到行尾后收回 CX），且不留墨迹（DOM 里没有墨线）。
  *   2. 13：2.4s 后自动接「回答中」（12），钢笔渐隐收场（opacity→0）。
  *   3. 23：球缩成"!"的点（rig 挂 translate(100 139) scale(0.17x)），
  *      感叹条弹出（opacity→1，且带 outBack 的放大）。
@@ -20,37 +21,43 @@ import { node, walk, installFakeDom } from './fakedom.js';
 const STEPS = (pump, frames) => { for (let i = 0; i < frames; i++) pump.step(16); };
 /** rig 组：刚体变换每帧都带 `translate(100 105) rotate(`（CX CY 是球心，写死在引擎里） */
 const rigOf = (host) => walk(host).find((n) => n.tag === 'g' && /translate\(100 105\) rotate\(/.test(n.attrs.transform || ''));
-/** 墨线：stroke-width 6 的 line（闭眼线 6.5、笑弧描边 5.5、书脊 2，不会撞） */
-const inkOf = (host) => walk(host).find((n) => n.tag === 'line' && n.attrs['stroke-width'] === '6');
-/** 钢笔组 = 墨线的父节点，靠 opacity 收放 */
-const penGOf = (host) => { const ink = inkOf(host); return ink && ink.parent; };
-/** 感叹条：fill #73101F 的 path（书页 fill 是奶油色、书脊 fill none，不撞） */
-const exBarOf = (host) => walk(host).find((n) => n.tag === 'path' && n.attrs.fill === '#73101F');
+/** 笔尖扇贝点：fill #73101F 且路径里有 20+ 个 C 段（smoothClosedPath 生成；
+ * 感叹条只有 4 个 Q，不会撞） */
+const nibOf = (host) => walk(host).find((n) => n.tag === 'path' && n.attrs.fill === '#73101F' && ((n.attrs.d || '').match(/ C /g) || []).length > 20);
+/** 钢笔根组 = 扇贝点往上三层（penTilt → penMove → penG），opacity 挂在最外层 */
+const penGOf = (host) => { const nib = nibOf(host); return nib && nib.parent.parent.parent; };
+/** 走位组 = 扇贝点的祖父（penTilt → penMove），transform 是每帧更新的 translate+rotate */
+const moveOf = (host) => { const nib = nibOf(host); return nib && nib.parent.parent; };
+const moveXOf = (host) => parseFloat(moveOf(host).attrs.transform.match(/translate\(([\d.-]+) /)[1]);
+/** 感叹条：fill #73101F 且路径用 Q 段（笔尖扇贝点是 smoothClosedPath 的 C 段，不撞） */
+const exBarOf = (host) => walk(host).find((n) => n.tag === 'path' && n.attrs.fill === '#73101F' && (n.attrs.d || '').includes('Q '));
 const opacity = (n) => parseFloat(n.attrs.opacity);
 
-test('书写（13）：球缩没、钢笔显形，墨线从左往右生长', async () => {
+test('书写（13）：球缩没、钢笔显形，划过去一行再回到中间（不留墨迹）', async () => {
   const pump = installFakeDom();
   const { create } = await import('../src/engine.js');
   const host = node('div');
   const ball = create(host, {});
   ball.setEmotion('13');
 
-  STEPS(pump, 4);                                     /* ≈64ms，刚起步 */
-  const ink = inkOf(host);
-  assert.ok(ink, '书写时应该有墨线');
-  const x2Start = parseFloat(ink.attrs.x2);
-
-  STEPS(pump, 36);                                    /* ≈0.64s，笔已在纸上 */
+  STEPS(pump, 40);                                    /* ≈0.64s，正划向行尾 */
   assert.ok(opacity(penGOf(host)) > 0.5, `钢笔应已显形：${penGOf(host).attrs.opacity}`);
   const rig = rigOf(host).attrs.transform;
   assert.ok(/scale\(0\.0/.test(rig), `球应缩到接近没有：${rig.slice(0, 60)}`);
-  const x2Mid = parseFloat(ink.attrs.x2);
-  assert.ok(x2Mid > x2Start + 2, `墨线应在生长：${x2Start} → ${x2Mid}`);
+  const xEarly = moveXOf(host);
+  /* 起笔在行首（CX-40=60），0.64s 时应已划过中间（>100） */
+  assert.ok(xEarly > 60 && xEarly < 160, `笔应在一行上走：x=${xEarly}`);
 
-  STEPS(pump, 60);                                    /* ≈1.6s，写到大半 */
-  const x2Late = parseFloat(inkOf(host).attrs.x2);
-  assert.ok(x2Late > x2Mid + 2, `墨线应继续生长：${x2Mid} → ${x2Late}`);
-  assert.ok(!host._threw, '书写阶段不应抛错');
+  STEPS(pump, 20);                                    /* ≈0.96s，抵达行尾（CX+40=140） */
+  const xFar = moveXOf(host);
+  assert.ok(xFar > xEarly + 3, `笔应继续向行尾划：${xEarly} → ${xFar}`);
+
+  STEPS(pump, 75);                                    /* ≈2.16s，回程已近终点 */
+  const xBack = moveXOf(host);
+  assert.ok(Math.abs(xBack - 100) < 4, `写完应回到中间：x=${xBack}`);
+  /* 不留墨迹：DOM 里不该有任何 line（墨线方案已废弃） */
+  assert.ok(!walk(host).some((n) => n.tag === 'line' && n.attrs['stroke-width'] === '6'),
+    '不该再画墨线');
   ball.destroy();
 });
 
