@@ -165,6 +165,20 @@ export const STATES = {
     gazeWeight: 1, shake: false, zzz: false, confetti: false,
     hop: { height: 26, period: 0.52, times: 4, decay: 0.55 }
   },
+  '03': {
+    id: '03', name: '倾听', group: 'life', tip: '你说，我听着～',
+    /* 用户在输入框里打字（不是聚焦，是**框里有字**）时的姿态：
+     * ① 视线落到下方——输入框在球的下面，pitch 负 = 眼位低（-0.3 比待机 -0.12 低一截）；
+     * ② 微微歪头（lean 0.12，逆时针）——像凑过去听；
+     * ③ 眼睛比待机睁大一点（15×33 vs 13×30）——"在认真听"；
+     * ④ 不打盹、不跑形变轮播——用户在说话的时候球不该自己玩自己的。 */
+    shape: 'normal', open: 1, w: 15, h: 33, tilt: 0, yaw: 0, pitch: -0.3,
+    squash: 0, taper: 0, lean: 0.12, breatheAmp: 0.01, breatheHz: 0.42,
+    meridian: 1.15, driftYaw: 0.02, driftHz: 0.18, scanYaw: 0, scanHz: 0,
+    bounce: 0.05, pop: 0.05, blinkMs: [3200, 6000], glanceYaw: 0.12, glanceMs: [3000, 6000],
+    gazeWeight: 0.5, shake: false, zzz: false, confetti: false,
+    wander: { amp: 0.05, ampPitch: 0.02, periods: [9.7, 4.3] }
+  },
   '10': {
     id: '10', name: '思考中', group: 'agent', tip: '让我想想…',
     shape: 'normal', open: 0.9, w: 19, h: 25, tilt: 4, yaw: -0.18, pitch: 0.3,

@@ -1314,6 +1314,8 @@ export default function ChatPage() {
     const timer = setTimeout(() => setBallDoneAt(0), 2400);
     return () => clearTimeout(timer);
   }, [ballDoneAt]);
+  /* 用户在输入框里打字（有内容，不是聚焦）——球切成「倾听」。 */
+  const [userTyping, setUserTyping] = useState(false);
   const ballEmotion = ballWelcoming
     ? "02"
     : ballDoneAt
@@ -1321,6 +1323,7 @@ export default function ChatPage() {
       : resolveEmotion({
           isStreaming: state.isStreaming,
           stage: state.currentStage,
+          typing: userTyping,
         });
 
   return (
@@ -1506,6 +1509,7 @@ export default function ChatPage() {
           onChangeVisualizeConfig={setVisualizeConfig}
           onChangeResearchConfig={setResearchConfig}
           onTogglePanelCollapsed={handleTogglePanelCollapsed}
+          onHasContentChange={setUserTyping}
         />
       </div>
       <NotebookRecordPicker

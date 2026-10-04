@@ -176,6 +176,18 @@ test('待机（01）是当前唯一配 morph 的表情', () => {
   assert.deepEqual(withMorph, ['01'], 'morph 轮播只该出现在长时停留的表情上');
 });
 
+test('倾听（03）：视线落到下方、眼睛比待机睁大、微微歪头、不跑形变轮播', () => {
+  const s = STATES['03'];
+  const idle = STATES['01'];
+  assert.ok(!s.morph, '用户在打字时球不该自己跑去玩形变轮播——那等于没在听');
+  assert.ok(s.pitch < idle.pitch,
+    `眼位应比待机更低（看向下面的输入框）：03 ${s.pitch} vs 01 ${idle.pitch}`);
+  assert.ok(s.w > idle.w && s.h > idle.h, '眼睛应比待机睁大一点，才像"在认真听"');
+  assert.ok(s.lean > 0, '应微微歪头（lean > 0 是逆时针）');
+  assert.ok(s.blinkMs, '倾听时仍要偶尔眨眼，不然像定住了');
+  assert.ok(!s.zzz, '倾听时不冒 Z');
+});
+
 test('惊讶（22）展示大小眼：左右宽度差 ≥ 30%', () => {
   const { eyeL, eyeR } = STATES['22'];
   assert.ok(eyeL && eyeR, '22 必须配置 eyeL/eyeR');

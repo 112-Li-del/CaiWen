@@ -20,7 +20,7 @@ import { useEffect, useRef } from "react";
 import { create as createBall } from "@/lib/emotion-ball/engine";
 
 export type EmotionId =
-  | "00" | "01" | "02"
+  | "00" | "01" | "02" | "03"
   | "10" | "11" | "12"
   | "20" | "21" | "22";
 
@@ -33,15 +33,24 @@ interface BallHandle {
 /**
  * 聊天状态 → 表情。阶段名取自后端 stage_start 事件（英文），命中不了就退回流式判断。
  * 注意「欢迎」不在这里：欢迎是进门定时 3s 的临时状态，由聊天页控制，超时后落到这里的待机。
+ *
+ * 优先级：工作态（思考/检索/回答）> 倾听 > 出错 > 待机。
+ * 倾听压过出错是故意的：用户一开口重新打字，说明他在试别的问法，球该转过来听，
+ * 而不是继续挂着"哎呀，出错了"。
  */
 export function resolveEmotion(args: {
   isStreaming: boolean;
   stage?: string;
   failed?: boolean;
+  /** 用户输入框里有字（trim 后非空）——不是聚焦就触发 */
+  typing?: boolean;
 }): EmotionId {
-  const { isStreaming, stage, failed } = args;
-  if (failed) return "21";                       // 出错
-  if (!isStreaming) return "01";                 // 待机
+  const { isStreaming, stage, failed, typing } = args;
+  if (!isStreaming) {
+    if (typing) return "03";                   // 倾听：用户在打字
+    if (failed) return "21";                   // 出错
+    return "01";                               // 待机
+  }
   const s = (stage || "").toLowerCase();
   if (/retriev|search|知识|rag|embed|index/.test(s)) return "11";  // 检索中
   if (/answer|生成|写|draft|stream/.test(s)) return "12";          // 回答中

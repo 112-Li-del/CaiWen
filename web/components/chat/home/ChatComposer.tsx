@@ -200,6 +200,7 @@ export default memo(function ChatComposer({
   onChangeVisualizeConfig,
   onChangeResearchConfig,
   onTogglePanelCollapsed,
+  onHasContentChange,
 }: {
   composerRef: RefObject<HTMLDivElement | null>;
   capMenuRef: RefObject<HTMLDivElement | null>;
@@ -294,6 +295,9 @@ export default memo(function ChatComposer({
   onChangeVisualizeConfig: (next: VisualizeFormConfig) => void;
   onChangeResearchConfig: (next: DeepResearchFormConfig) => void;
   onTogglePanelCollapsed: () => void;
+  /** 输入框里是否有字（trim 后非空）发生变化时回调。给表情球用：
+   *  用户在打字时球要切成「倾听」。注意是**有内容**而不是**聚焦**。 */
+  onHasContentChange?: (hasContent: boolean) => void;
 }) {
   const { t } = useTranslation();
   const CapIcon = activeCap.icon;
@@ -330,6 +334,16 @@ export default memo(function ChatComposer({
     const next = !!val.trim();
     setHasContent((prev) => (prev === next ? prev : next));
   }, []);
+
+  /* 把"框里有字"这个状态透出去（表情球的「倾听」）。
+   * 挂在 hasContent 上而不是在 handleInputChange 里调：发送后走的是 doSend 里的
+   * setHasContent(false)，从这里统一回调才不会漏掉"发完变空"那一次。
+   * 回调存 ref：调用方传内联箭头函数也不会让这个 effect 每次渲染都重跑。 */
+  const hasContentCbRef = useRef(onHasContentChange);
+  hasContentCbRef.current = onHasContentChange;
+  useEffect(() => {
+    hasContentCbRef.current?.(hasContent);
+  }, [hasContent]);
 
   const doSend = useCallback(
     (content: string) => {
