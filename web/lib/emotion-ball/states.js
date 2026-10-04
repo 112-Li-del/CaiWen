@@ -65,6 +65,10 @@
  *   在本状态停留 hold 毫秒后自动切到表情 to（hold 从 dots 播完开始算；
  *   没有 dots 就从进入状态开始算）。给"等待期间换个动作"用：思考久了还没输出 →
  *   接翻知识库。外部切走表情（开始输出 → 12 / 完成 → 20）链立刻中断。
+ *
+ * notif 契约（提醒徽章，挂在 13 上）：true
+ *   右上轮廓外弹出一枚通知徽章，并把球身咬出一个缺口把它嵌进去。
+ *   几何全部取自 bloub notify 的测量值，详见 '13' 的注释。
  * ============================================================ */
 
 import { IDLE_LINES } from './lines.js';
@@ -244,6 +248,25 @@ export const STATES = {
     meridian: 1.2, driftYaw: 0.03, driftHz: 0.3, scanYaw: 0, scanHz: 0,
     bounce: 1, pop: 0.07, blinkMs: [2000, 4200], glanceYaw: 0.22, glanceMs: [2400, 4200],
     gazeWeight: 1, shake: false, zzz: false, confetti: false
+  },
+  '13': {
+    id: '13', name: '提醒', group: 'agent', tip: '有答案了，听着～',
+    /* 照 bloub 的 notify 状态（decor.ts 的测量值）：右上轮廓外弹出一枚通知徽章，
+     * 球身被咬出一个缺口把它嵌进去——不是贴在球上的贴纸。
+     *   NOTIF_ANGLE -42° / DIST 1.003R（正好压在圆周上）/ R 0.15R
+     *   POP 1.14（弹出峰值 +14%，全项目唯一一处弹簧，写在状态里而不是引擎里）
+     *   MARGIN 0.054R（缺口比徽章大一圈，露出等宽的边）
+     * 眼睛朝徽章方向（右上）看——"被提醒了，抬头看向提示"那一瞬的反应；
+     * 呼吸比待机快一点（0.7Hz），像刚被点名。
+     * chain：播 2.4s 后自动接「回答中」（12）。它是过门动作，不能久留——
+     * 开始输出前先"叮"一下，然后马上进入正式的回答状态。 */
+    shape: 'normal', open: 1, w: 18, h: 32, tilt: 0, yaw: 0.34, pitch: 0.16,
+    squash: -0.02, taper: 0, lean: 0, breatheAmp: 0.01, breatheHz: 0.7,
+    meridian: 1.3, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
+    bounce: 0, pop: 0.1, blinkMs: [2400, 4200], glanceYaw: 0.1, glanceMs: [2600, 4800],
+    gazeWeight: 0.6, shake: false, zzz: false, confetti: false,
+    notif: true,
+    chain: { to: '12', hold: 2400 }
   },
   '20': {
     id: '20', name: '完成', group: 'feedback', tip: '搞定！',

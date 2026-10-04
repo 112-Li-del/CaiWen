@@ -13,6 +13,8 @@ export function node(tag) {
     _ev: {},
     setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k]; },
+    hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k); },
+    removeAttribute(k) { delete this.attrs[k]; },
     appendChild(c) { this.children.push(c); c.parent = n; return c; },
     insertBefore(c) { this.children.unshift(c); c.parent = n; return c; },
     remove() {

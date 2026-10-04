@@ -174,7 +174,10 @@ let timers = [];
 function cancelSim() { timers.forEach(clearTimeout); timers = []; }
 document.getElementById('sim-btn').onclick = () => {
   cancelSim();
-  [['11', 0], ['10', 1700], ['12', 3500], ['20', 5600], ['01', 7300]].forEach(([id, ms]) => {
+  /* 模拟一整轮：思考（10）→ 2.2s 省略号 + 2.5s 思考脸 → **自动**接翻书（11）
+   * → 7s 时"开始输出"给提醒（13），右上角弹通知徽章 → 9.4s 引擎**自动**接回答中（12）
+   * → 11s 完成（20）→ 13.4s 回落待机。中间那两步不用排，引擎的 chain 自己走。 */
+  [['10', 0], ['13', 7000], ['20', 11000], ['01', 13400]].forEach(([id, ms]) => {
     timers.push(setTimeout(() => ball.setEmotion(id), ms));
   });
 };

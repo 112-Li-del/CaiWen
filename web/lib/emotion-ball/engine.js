@@ -131,6 +131,35 @@ export function create(container, opts = {}) {
     el('feMergeNode', { in: 'SourceGraphic' }, merge);
   }
 
+  /* 提醒徽章（13）：从 bloub notify 的测量值搬过来（decor.ts）。
+   *   ANGLE -42°、DIST 1.003R —— 圆心**正好压在圆周上**，所以徽章一半在球外、
+   *   一半嵌进球里（屏幕坐标 y 向下，取负才是右上）。
+   *   R 0.15R、MARGIN 0.054R —— 缺口比徽章大一圈，露出等宽的一圈"咬痕"。
+   *   POP 1.14 —— 弹出峰值比静止半径大 14%。bloub 全项目只有这一处弹簧，
+   *   而且是写在状态里的（见 notifPop），不是引擎通用能力。
+   * 颜色是 bloub 从像素里取的通知蓝；红球上它是对比色，要换成品牌色改这里就行。 */
+  const NOTIF = {
+    angle: -42, dist: 1.003, r: 0.15, pop: 1.14, margin: 0.054,
+    color: '#2496e8'
+  };
+  const NA = (NOTIF.angle * Math.PI) / 180;
+  const NX = CX + Math.cos(NA) * NOTIF.dist * R;
+  const NY = CY + Math.sin(NA) * NOTIF.dist * R;
+  const NR = NOTIF.r * R;
+  const NHOLE = NR + NOTIF.margin * R;
+  /* 缺口：mask 里"整块白 + 一个黑洞"。挂在 clipped 组（球身/经线/纬线/高光都在
+   * 里面）上，所以球被咬掉的那一块里不会残留经线和高光。
+   * maskContentUnits 默认是 userSpaceOnUse，坐标跟着 rig 的刚体变换走——
+   * 球 pop/呼吸/挤压时缺口不会和徽章脱节。
+   * **只有 13 才挂 mask**（setEmotion 里开关属性）：mask 是每帧一次离屏合成，
+   * 常挂等于给所有状态都加一层开销。 */
+  const notch = el('mask', {
+    id: `cw-notch-${n}`, maskUnits: 'userSpaceOnUse',
+    x: -80, y: -80, width: 360, height: 360
+  }, defs);
+  el('rect', { x: -80, y: -80, width: 360, height: 360, fill: '#fff' }, notch);
+  const notchHole = el('circle', { cx: NX, cy: NY, r: 0, fill: '#000' }, notch);
+
   const clip = el('clipPath', { id: `cw-clip-${n}` }, defs);
   const clipPath = el('path', {}, clip);
 
@@ -199,6 +228,11 @@ export function create(container, opts = {}) {
     cx: 68, cy: 54, rx: 26, ry: 14, fill: 'rgba(255,255,255,.22)',
     transform: 'rotate(-28 68 54)'
   }, clipped);
+
+  /* 提醒徽章：画在球身之上、眼睛之下，放在 rig 里跟着球一起 pop / 呼吸 / 挤压，
+   * 免得球一动徽章就飘在原地。 */
+  const notifG = el('g', { opacity: 0 }, rig);
+  el('circle', { cx: NX, cy: NY, r: NR, fill: NOTIF.color }, notifG);
 
   const eyeLayer = el('g', {}, rig);
   const fx = el('g', {}, svg);
@@ -287,6 +321,7 @@ export function create(container, opts = {}) {
   let orbitA = 0;
   let zzzNext = 0;
   let bookK = 0;             /* 道具书的显示浓度（approach 渐显渐隐） */
+  let notifK = 0;            /* 提醒徽章的显示浓度（approach 渐显渐隐） */
   let particles = [];
   /* 点球转体：twirl = { t0, dir }，dir ∈ {+1,-1} 随机（顺/逆时针） */
   let twirl = null;
@@ -520,6 +555,10 @@ export function create(container, opts = {}) {
       ? now + rand(target.micro.every[0], target.micro.every[1])
       : Infinity;
     if (target.confetti) burstConfetti(26);
+    /* 提醒徽章的缺口 mask：只有带 notif 的状态才挂。mask 每帧一次离屏合成，
+     * 常挂等于给所有状态都加一层开销，而它只在 13 那 2.4s 里有用。 */
+    if (target.notif) clipped.setAttribute('mask', `url(#cw-notch-${n})`);
+    else if (clipped.hasAttribute('mask')) clipped.removeAttribute('mask');
     /* 台词：切进来先说表情自己的 tip，轮换从第 tipRounds 轮才开始（rotateTip） */
     curTip = target.tip || '';
     tipRound = -1;
@@ -562,6 +601,23 @@ export function create(container, opts = {}) {
     }
     /* 收尾：最后一个形状变回球 */
     return { from: prev, kind: 'ball', t: easings.outBack(clamp(ph / morphMs, 0, 1)) };
+  }
+
+  /**
+   * 提醒徽章的弹入曲线：0 → 峰值 +14% → 落回 1。
+   * bloub 的测量文档里写得很明白：整个项目**只有这一处弹簧**，而且是"写在相关
+   * 状态里"（the one spring is local and written into the state concerned），
+   * 刻意没有做通用弹簧引擎。所以这里也不进 easings 表，就挂在 13 上。
+   * @param {number} aSec 进入状态后的秒数
+   */
+  const NOTIF_POP_MS = 280;
+  function notifPop(aSec) {
+    const a = aSec * 1000;
+    if (a >= NOTIF_POP_MS) return 1;
+    const u = a / NOTIF_POP_MS;
+    return u < 0.55
+      ? NOTIF.pop * easings.outCubic(u / 0.55)
+      : NOTIF.pop + (1 - NOTIF.pop) * easings.inOutCubic((u - 0.55) / 0.45);
   }
 
   /**
@@ -1028,6 +1084,21 @@ export function create(container, opts = {}) {
 
     bookK = approach(bookK, target.book ? 1 : 0, 6, dt);
     bookG.setAttribute('opacity', bookK.toFixed(3));
+
+    /* 提醒徽章：出场走 notifPop（从 0 弹到 +14% 再落回），退场靠 notifK 缩回去。
+     * 缺口跟着徽章一起长——先咬出一个小坑，徽章再从坑里顶出来，
+     * 而不是一个贴纸"啪"地盖在球上。 */
+    const notifOn = !!target.notif;
+    notifK = approach(notifK, notifOn ? 1 : 0, 12, dt);
+    notifG.setAttribute('opacity', notifK.toFixed(3));
+    /* transform 每帧都写（不藏在 notifK 阈值里）：第一帧 dt=0 时 notifK 还是 0，
+     * 跳过这一下会让徽章以"未缩放"的姿态露出来一帧。 */
+    const grow = notifOn ? notifPop((now - entryT) / 1000) : 1;
+    const s = grow * (notifOn ? 1 : notifK);
+    notifG.setAttribute('transform',
+      `translate(${NX.toFixed(2)} ${NY.toFixed(2)}) scale(${s.toFixed(4)}) ` +
+      `translate(${(-NX).toFixed(2)} ${(-NY).toFixed(2)})`);
+    if (notifK > 0.004) notchHole.setAttribute('r', (NHOLE * s).toFixed(2));
     if (bookK > 0.01) {
       /* 跟呼吸同频的一点点浮动，书不是钉死的 */
       const bob = Math.sin(now / 1000 * (cur.breatheHz || 0.4) * TAU) * 1.6;
