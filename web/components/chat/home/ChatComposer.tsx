@@ -307,6 +307,28 @@ export default memo(function ChatComposer({
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* 工具栏自适应压缩：右侧源文件面板会挤窄输入框，而工具栏按钮全是 shrink-0，
+   * 空间不够时中间组会直接叠到右边的模型选择器上（真出过）。用 ResizeObserver
+   * 盯工具栏自身宽度（不是窗口宽度——挤压来自面板分栏，窗口宽度不变），分两档收：
+   *   level 1（<600px）：收起中间组「工具/附件/空间」的文字，只留图标；
+   *   level 2（<480px）：连「聊天」「知识库」的文字也收起。
+   * 阈值按实测校准：工具栏内容自然总宽 519px（中组 186 + 右组 239 + 聊天 69 +
+   * 分隔线），level1 后 ≈457、level2 后 ≈407，各档留 ~20px 余量。
+   * 不用等比缩放：0.75 倍 zoom 会把 11px 的字缩到 8px 看不清；藏字保图标是
+   * 主流聊天输入框的做法，语义不丢（每个按钮都有 title/aria-label）。 */
+  const toolbarRowRef = useRef<HTMLDivElement>(null);
+  const [toolbarLevel, setToolbarLevel] = useState(0);
+  useEffect(() => {
+    const el = toolbarRowRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      setToolbarLevel(w < 480 ? 2 : w < 600 ? 1 : 0);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -656,10 +678,11 @@ export default memo(function ChatComposer({
           )}
 
           <div className="border-t border-[var(--border)]/35 px-3 py-2">
-            <div className="flex items-center gap-2">
+            <div ref={toolbarRowRef} className="flex items-center gap-2">
               <button
                 ref={capBtnRef}
                 onClick={() => onSetCapMenuOpen((v) => !v)}
+                title={t(activeCap.label)}
                 className={`inline-flex shrink-0 items-center gap-1.5 py-1.5 px-1 text-[12px] transition-colors ${
                   capMenuOpen
                     ? "text-[var(--foreground)]"
@@ -667,7 +690,9 @@ export default memo(function ChatComposer({
                 }`}
               >
                 <CapIcon size={14} strokeWidth={1.6} />
-                <span className="font-medium">{t(activeCap.label)}</span>
+                <span className={`font-medium ${toolbarLevel >= 2 ? "hidden" : ""}`}>
+                  {t(activeCap.label)}
+                </span>
                 <ChevronDown
                   size={11}
                   className={`transition-transform ${capMenuOpen ? "rotate-180" : ""}`}
@@ -682,10 +707,11 @@ export default memo(function ChatComposer({
                     <button
                       ref={toolBtnRef}
                       onClick={() => onSetToolMenuOpen((v) => !v)}
+                      title={t("Sources")}
                       className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Layers size={12} strokeWidth={1.7} />
-                      {t("Sources")}
+                      <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Sources")}</span>
                       <ChevronDown
                         size={10}
                         className={`transition-transform ${toolMenuOpen ? "rotate-180" : ""}`}
@@ -752,10 +778,11 @@ export default memo(function ChatComposer({
                     <button
                       ref={toolBtnRef}
                       onClick={() => onSetToolMenuOpen((v) => !v)}
+                      title={t("Tools")}
                       className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Sparkles size={12} strokeWidth={1.7} />
-                      {t("Tools")}
+                      <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Tools")}</span>
                       <ChevronDown
                         size={10}
                         className={`transition-transform ${toolMenuOpen ? "rotate-180" : ""}`}
@@ -821,7 +848,7 @@ export default memo(function ChatComposer({
                   className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                 >
                   <Paperclip size={12} strokeWidth={1.7} />
-                  {t("Attach")}
+                  <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Attach")}</span>
                 </button>
 
                 <div className="relative flex items-center gap-0.5">
@@ -829,10 +856,11 @@ export default memo(function ChatComposer({
                     ref={spaceBtnRef}
                     type="button"
                     onClick={() => onSetSpaceMenuOpen((v) => !v)}
+                    title={t("Space")}
                     className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                   >
                     <AtSign size={12} strokeWidth={1.7} />
-                    {t("Space")}
+                    <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Space")}</span>
                     <ChevronDown
                       size={10}
                       className={`transition-transform ${spaceMenuOpen ? "rotate-180" : ""}`}
@@ -886,6 +914,7 @@ export default memo(function ChatComposer({
                       ragActive ? onSetKbMenuOpen((v) => !v) : undefined
                     }
                     disabled={!ragActive}
+                    title={t("KB")}
                     className={`inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium transition-colors ${
                       ragActive
                         ? "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -893,7 +922,7 @@ export default memo(function ChatComposer({
                     }`}
                   >
                     <Database size={12} strokeWidth={1.7} />
-                    {t("KB")}
+                    <span className={toolbarLevel >= 2 ? "hidden" : ""}>{t("KB")}</span>
                     <ChevronDown
                       size={10}
                       className={`transition-transform ${kbMenuOpen ? "rotate-180" : ""}`}
