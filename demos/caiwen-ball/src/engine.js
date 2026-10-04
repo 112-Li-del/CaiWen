@@ -165,52 +165,32 @@ export function create(container, opts = {}) {
     'stroke-width': 2, 'stroke-linecap': 'round'
   }, bookInner);
 
-  /* 书写（13）的钢笔：一支斜杆圆头笔 + 波浪边（扇贝形）的笔尖点，整体照目标图
-   * ——上面一根斜圆头长杆（rotate 24°，顶端偏右），下面一颗锯齿边的圆点笔尖。
+  /* 书写（13）的钢笔：形状照用户给的还原稿（原图 246×280 逐点采样）——
+   *   笔杆 = 一根圆角粗条，中心线倾角约 17.7°（上端向右），粗 52，圆头靠
+   *         stroke-linecap:round，所以下面这两个端点是**圆头的圆心**；
+   *   笔尖 = 圆点轮廓每 5° 采一个半径得到的 72 边形，保留手绘的凹凸边与下方尖点。
+   * 一个数都不改，只做等比映射：把原稿的**笔尖中心 (103, 227)** 落在组原点上，
+   * 写字的抖动（penMove 的 rotate）才是绕笔尖转，而不是绕笔杆中段甩。
+   * 整体缩到总高 115（球直径的 74%）——比球小一号：笔尖要沿一行左右走位，
+   * 笔大了会顶到画布边上。还想再小改 PEN_S 一个数。
    * **不留墨迹**：整支笔沿一行从左划到右、再收回中间，纯走位不画线。
    * 刚性道具不进 rig——书写阶段球整体缩没了，进 rig 会被一起缩掉。 */
-  const PEN_Y = CY + 20;                 /* 笔组锚点（笔尖点附近） */
-  const PEN_SPAN = 40;                   /* 一行的半幅：从 CX-40 划到 CX+40 */
+  const PEN_CLR = '#73101F';            /* 墨色（与书脊、感叹条同色） */
+  const PEN_S = 0.5;                    /* 229 × 0.5 ≈ 115 —— 比球小一号 */
+  const PEN_NIB = { x: 103, y: 227 };   /* 原稿笔尖（圆点）中心 → 映射到组原点 */
+  const PEN_Y = CY + 40;                /* 笔尖落点高度（"纸面"） */
+  const PEN_SPAN = 40;                  /* 一行的半幅：从 CX-40 划到 CX+40 */
   const penG = el('g', { opacity: 0 }, svg);
-  const penMove = el('g', {}, penG);     /* 每帧：沿行平移 + 写字的小幅摆动 */
-  const penTilt = el('g', { transform: 'rotate(24)' }, penMove);
-  /* 笔杆：圆头长杆，从笔尖往右上伸（rotate 24° 后顶端偏向右侧，照目标图） */
-  el('rect', { x: -11, y: -62, width: 22, height: 62, rx: 11, fill: '#73101F' }, penTilt);
-  /* 笔尖：扇贝边圆点——半径按 sin(角度×齿数) 起伏，再用 Catmull-Rom 连成
-   * 光滑闭合曲线，得到目标图那种锯齿/花边轮廓 */
-  const nibPts = [];
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * TAU;
-    const r = 12 * (1 + 0.11 * Math.sin(a * 10));
-    nibPts.push([Math.cos(a) * r, 10 + Math.sin(a) * r]);
-  }
-  el('path', { d: smoothClosedPath(nibPts), fill: '#73101F' }, penTilt);
-
-  /* 感叹（23）的感叹号：整枚"!"由道具层画，不是球变的、也不是贴在球上的贴纸。
-   * 形状照目标图逐点还原（用户提供）：原稿坐标空间 246×280——
-   *   上截 = 一根圆角粗条，中心线倾角约 17.7°（上端向右），粗 52，圆头靠
-   *          stroke-linecap:round，所以下面这两个端点是**圆头的圆心**；
-   *   下点 = 墨点轮廓每 5° 采一个半径得到的 72 边形，保留手绘的凹凸边与下方尖点。
-   * 这里只做等比映射，一个数都不改：整体 bbox（x 78.4~181.9、y 27.7~256.8，
-   * 高 229、宽 103.5）缩到球的直径 156，中心对齐 (CX, CY)。
-   * 感叹期间球整体缩没——"!"是它让位让出来的。
-   * 颜色沿用项目墨色（书脊/笔杆同色）；原稿是 #121214（从黑白图取色），
-   * 想要纯墨黑改 EX_CLR 这一个值。 */
-  const EX_CLR = '#73101F';
-  const EX_S = 0.68;        /* 156 / 229 —— bbox 高缩到球直径 */
-  const EX_TX = 11.5;       /* CX − bbox 中心 x(130.15) × EX_S */
-  const EX_TY = 3.3;        /* CY − bbox 中心 y(142.25) × EX_S */
-  const exclaimG = el('g', { opacity: 0 }, svg);
-  const exclaimPop = el('g', {}, exclaimG);          /* 每帧：围绕球心的弹出缩放 */
-  const exclaimMap = el('g', {
-    transform: `translate(${EX_TX} ${EX_TY}) scale(${EX_S})`
-  }, exclaimPop);
+  const penMove = el('g', {}, penG);    /* 每帧：沿行平移 + 写字的小幅摆动 */
+  const penMap = el('g', {
+    transform: `translate(${(-PEN_NIB.x * PEN_S).toFixed(2)} ${(-PEN_NIB.y * PEN_S).toFixed(2)}) scale(${PEN_S})`
+  }, penMove);
   el('line', {
     x1: 122.6, y1: 157.8, x2: 155.9, y2: 53.7,
-    stroke: EX_CLR, 'stroke-width': 52, 'stroke-linecap': 'round'
-  }, exclaimMap);
+    stroke: PEN_CLR, 'stroke-width': 52, 'stroke-linecap': 'round'
+  }, penMap);
   el('path', {
-    fill: EX_CLR,
+    fill: PEN_CLR,
     d: 'M125.6 224 L127.5 226.2 L126.2 228.3 L124.7 230.2 L124.1 232.2 L122.4 233.7 ' +
        'L121.5 235.5 L120.4 237.2 L118.4 238.1 L117.1 239.5 L115.1 240.1 L114.2 242 ' +
        'L112.6 243 L110.9 243.9 L109.1 244.6 L107.5 246.2 L105.7 247.6 L103.7 248.9 ' +
@@ -223,7 +203,18 @@ export function create(container, opts = {}) {
        'L106.3 197.4 L108.6 197.9 L111.1 197.7 L113.4 198.6 L115.1 200.6 L117 201.8 ' +
        'L118.9 203.3 L119.9 205.6 L121.5 207.3 L122.9 209.1 L124.1 211 L124.2 213.4 ' +
        'L125.1 215.4 L125.7 217.5 L127.2 219.5 L126.5 221.8 Z'
-  }, exclaimMap);
+  }, penMap);
+
+  /* 感叹（23）的感叹条："!"的上半截，锥形圆头；下面那颗点是缩小的球自己。
+   * 墨色（#73101F）——刚写完最后一个字，"!"是收笔的那一下墨迹。 */
+  const EX_TOP = CY - 64, EX_BOT = CY - 4, EX_MID = CY - 34;
+  const exBar = el('path', {
+    d: `M ${CX - 15} ${EX_TOP + 20} Q ${CX - 15} ${EX_TOP} ${CX} ${EX_TOP} ` +
+       `Q ${CX + 15} ${EX_TOP} ${CX + 15} ${EX_TOP + 20} ` +
+       `L ${CX + 8.5} ${EX_BOT - 8} Q ${CX + 8} ${EX_BOT} ${CX} ${EX_BOT} ` +
+       `Q ${CX - 8} ${EX_BOT} ${CX - 8.5} ${EX_BOT - 8} Z`,
+    fill: '#73101F', opacity: 0
+  }, svg);
 
   /* 彩带的"球后"层：画在球身之下，丝带绕到背面的弧段被球身自然遮挡，
    * 只在超出轮廓的两端露头——这是"环绕"而不是"贴在球上"的关键。
@@ -1089,13 +1080,16 @@ export function create(container, opts = {}) {
     /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
      * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
     const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
-    /* 收身的三种过门共用一个前置变换：省略号缩到 20%（中间那颗点就是球自己）、
-     * 书写和感叹直接缩没——它们的"!"和钢笔都是道具层画的，球得整颗让位。 */
+    /* 收身的三种过门共用一个前置变换：省略号缩到 20%、书写直接缩没（让位给
+     * 钢笔），感叹缩到 17% 并挪到感叹号的点位——缩成的那颗小球就是"!"的点。 */
     let preT = '';
-    const hideK = Math.max(dotsK * 0.8, penK, exK);
+    const hideK = Math.max(dotsK * 0.8, penK);
     if (hideK > 0.001) {
       const s = Math.max(0, 1 - hideK);
       preT = `translate(${CX} ${CY}) scale(${s.toFixed(3)}) translate(${-CX} ${-CY}) `;
+    } else if (exK > 0.001) {
+      const s = lerp(1, 0.17, exK);
+      preT = `translate(${CX} ${CY + 34}) scale(${s.toFixed(3)}) translate(${-CX} ${-(CY + 34)})`;
     }
     rig.setAttribute('transform', preT + rigT);
     ribbonBack.setAttribute('transform', preT + rigT);   /* 球后彩带层与球身同步运动 */
@@ -1132,14 +1126,14 @@ export function create(container, opts = {}) {
       penMove.setAttribute('transform',
         `translate(${px.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
     }
-    /* 感叹（23）：整枚"!"由道具层 outBack 弹出（0.5 → 1 带过冲），球同时缩没
-     * （让位逻辑和书写共用 hideK）。exK 同样 approach——1s 后链切 20，彩带接住。 */
+    /* 感叹（23）：感叹条 outBack 弹出（50% → 100% 带过冲），球的缩身由上面
+     * 的 preT 负责。exK 同样 approach——1s 后链切 20，彩带接住收场。 */
     exK = approach(exK, exPulse, 16, dt);
-    exclaimG.setAttribute('opacity', exK.toFixed(3));
+    exBar.setAttribute('opacity', exK.toFixed(3));
     if (exK > 0.004) {
       const s = 0.5 + 0.5 * easings.outBack(clamp(age / 0.32, 0, 1));
-      exclaimPop.setAttribute('transform',
-        `translate(${CX} ${CY}) scale(${s.toFixed(3)}) translate(${-CX} ${-CY})`);
+      exBar.setAttribute('transform',
+        `translate(${CX} ${EX_MID}) scale(${s.toFixed(3)}) translate(${-CX} ${-EX_MID})`);
     }
     if (bookK > 0.01) {
       /* 跟呼吸同频的一点点浮动，书不是钉死的 */
