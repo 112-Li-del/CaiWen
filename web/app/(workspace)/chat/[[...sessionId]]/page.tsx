@@ -1412,20 +1412,19 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {/* 表情球：≥1400 时贴聊天区最左侧（内容列左边有留白，挨着导航栏）；
-          窄于此内容列占满窗格、没有留白，就让输入框往右让出 104px（见下），
-          球站在让出来的空位里，不压任何控件。
-          几何：viewBox 200×200，球直径 156 = 宿主宽的 78%，size 96 → 球实宽 75px，
-          可视范围 = left+10.5 ~ +85.5（left-2 → 右缘 93.5），让位取 104 留 10px 余量。
-          svg 整体 pointer-events:none、只有球面（.cw-hit）能点，不挡下层按钮。 */}
+      {/* 表情球：≥1400 时贴聊天区最左侧（内容列左边有留白，挨着导航栏），size 96；
+          窄于此内容列占满窗格、没有留白，输入框往右让出 88px（见下），球缩到 80
+          站在让出来的空位里。几何：viewBox 200×200，球直径 156 = 宿主宽的 78%，
+          size 80 → 球实宽 62px，可视范围 = left+8.8 ~ +71.2（left-2 → 右缘 79），
+          让位 88 留 ~9px 余量。svg 整体 pointer-events:none、只有球面（.cw-hit）能点。 */}
       <EmotionBall
         emotion={ballEmotion}
         size={96}
-        className="pointer-events-none absolute bottom-5 left-2 z-30 flex min-[1400px]:bottom-6 min-[1400px]:left-3"
+        className="pointer-events-none absolute bottom-5 left-2 z-30 flex max-[1399px]:[&>div:first-child]:!w-20 min-[1400px]:bottom-6 min-[1400px]:left-3"
       />
-      {/* 窄屏（<1400）给左边的球让出 104px：输入框右移变窄，球就不会压着它。
-          只有输入框让位，消息区不动——消息区跟着一起让会平白浪费一整条空间。 */}
-      <div className="mx-auto w-full max-w-[960px] shrink-0 px-6 max-[1399px]:pl-[104px]">
+      {/* 窄屏（<1400）给左边的球让出 88px（球在窄屏下缩到 80，见上）：输入框右移变窄，
+          球就不会压着它。只有输入框让位，消息区不动——消息区跟着一起让会平白浪费空间。 */}
+      <div className="mx-auto w-full max-w-[960px] shrink-0 px-6 max-[1399px]:pl-[88px]">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}
