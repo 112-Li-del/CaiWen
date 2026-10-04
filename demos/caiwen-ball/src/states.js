@@ -180,22 +180,33 @@ export const STATES = {
     wander: { amp: 0.05, ampPitch: 0.02, periods: [9.7, 4.3] }
   },
   '10': {
-    id: '10', name: '思考中', group: 'agent', tip: '让我想想…',
-    shape: 'normal', open: 0.9, w: 19, h: 25, tilt: 4, yaw: -0.18, pitch: 0.3,
-    eyeL: { shape: 'normal', w: 19, h: 13 },
-    squash: -0.05, taper: -0.1, lean: 0.25, breatheAmp: 0.008, breatheHz: 0.5,
-    meridian: 2.2, driftYaw: 0.06, driftHz: 0.22, scanYaw: 0, scanHz: 0,
-    bounce: 0, pop: 0.05, blinkMs: [3400, 6000], glanceYaw: 0, glanceMs: null,
-    gazeWeight: 0.3, shake: false, zzz: false, confetti: false
+    id: '10', name: '思考中', group: 'agent', tip: '让我想想~',
+    /* 脸部照 bloub thinking 的实拍截图：左眼一根斜竖胶囊、右眼一条短横线（closed），
+     * 两眼整体顺时针歪（tilt 14°，右眼线跟着微微下斜）、眼位偏高（pitch 0.25）——
+     * "歪着头琢磨"的脸。
+     * dots：进状态先缩成一颗小球，左右浮出两个点组成省略号"…"（中间是球自己，
+     * 也就是三个点里最大最实的那颗），2.2s 后变回这张脸，约 9s 循环一次。 */
+    shape: 'normal', open: 1, w: 17, h: 36, tilt: 14, yaw: 0, pitch: 0.25,
+    eyeL: { shape: 'normal', w: 17, h: 36 },
+    eyeR: { shape: 'closed', w: 26, h: 26 },
+    squash: 0, taper: 0, lean: 0.05, breatheAmp: 0.008, breatheHz: 0.5,
+    meridian: 1.4, driftYaw: 0.03, driftHz: 0.2, scanYaw: 0, scanHz: 0,
+    bounce: 0, pop: 0.05, blinkMs: null, glanceYaw: 0, glanceMs: null,
+    gazeWeight: 0.3, shake: false, zzz: false, confetti: false,
+    dots: { dur: 2200, every: 9000, fade: 400 }
   },
   '11': {
     id: '11', name: '检索中', group: 'agent', tip: '翻翻知识库…',
-    shape: 'normal', open: 1, w: 19, h: 25, tilt: 0, yaw: 0, pitch: -0.02,
-    eyeL: { shape: 'normal', w: 11, h: 11 }, eyeR: { shape: 'normal', w: 11, h: 11 },
-    squash: 0.02, taper: 0, lean: 0, breatheAmp: 0.006, breatheHz: 0.7,
-    meridian: 3.2, driftYaw: 0, driftHz: 0, scanYaw: 0.62, scanHz: 0.45,
-    bounce: 0, pop: 0.05, blinkMs: null, glanceYaw: 0, glanceMs: null,
-    gazeWeight: 0, shake: false, zzz: false, confetti: false
+    /* 低头翻资料：眼位压低（pitch -0.34，看向左下角那本打开的书，book: true 由引擎画），
+     * scanYaw 0.42 / scanHz 0.32 让脑袋沿书页左右来回扫（约 3s 一个来回），
+     * meridian 放慢（检索是"细看"，不是"晕头转向"）。右上角的小轨道点保留——
+     * 对照 bloub reading 状态，那颗绕球的小点是"在找东西"的符号。 */
+    shape: 'normal', open: 1, w: 16, h: 26, tilt: 0, yaw: 0, pitch: -0.34,
+    squash: 0, taper: 0, lean: 0.08, breatheAmp: 0.006, breatheHz: 0.6,
+    meridian: 1.6, driftYaw: 0, driftHz: 0, scanYaw: 0.3, scanHz: 0.32,
+    bounce: 0, pop: 0.05, blinkMs: [3600, 6400], glanceYaw: 0, glanceMs: null,
+    gazeWeight: 0.2, shake: false, zzz: false, confetti: false,
+    book: true
   },
   '12': {
     id: '12', name: '回答中', group: 'agent', tip: '正在回答…',

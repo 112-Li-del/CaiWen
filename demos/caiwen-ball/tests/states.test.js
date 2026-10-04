@@ -188,6 +188,23 @@ test('倾听（03）：视线落到下方、眼睛比待机睁大、微微歪头
   assert.ok(!s.zzz, '倾听时不冒 Z');
 });
 
+test('思考（10）：省略号循环配置合法 + 歪头大小眼（左竖胶囊右横线）', () => {
+  const s = STATES['10'];
+  assert.equal(s.tip, '让我想想~');
+  assert.ok(s.dots && s.dots.dur > 0 && s.dots.every > s.dots.dur,
+    'dots 循环周期必须大于点阶段时长，否则永远缩在点里');
+  assert.equal(s.eyeR && s.eyeR.shape, 'closed', '右眼应是一条闭眼横线（照 bloub thinking 脸）');
+  assert.ok(s.eyeL && s.eyeL.h > s.eyeL.w * 1.6, '左眼应是竖长胶囊');
+  assert.ok(s.tilt > 8, '两眼应整体歪着（tilt > 8）');
+});
+
+test('检索（11）：低头看书 + 左右扫视 + 带道具书', () => {
+  const s = STATES['11'];
+  assert.equal(s.book, true, '检索应带道具书');
+  assert.ok(s.pitch < -0.2, `眼位应压低看向书（pitch=${s.pitch}）`);
+  assert.ok(s.scanYaw > 0.2 && s.scanHz > 0, '应沿书页左右来回扫视');
+});
+
 test('惊讶（22）展示大小眼：左右宽度差 ≥ 30%', () => {
   const { eyeL, eyeR } = STATES['22'];
   assert.ok(eyeL && eyeR, '22 必须配置 eyeL/eyeR');

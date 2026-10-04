@@ -133,7 +133,36 @@ export function create(container, opts = {}) {
   const clip = el('clipPath', { id: `cw-clip-${n}` }, defs);
   const clipPath = el('path', {}, clip);
 
-  el('ellipse', { cx: CX, cy: 188, rx: 52, ry: 7, fill: 'rgba(60,20,20,.14)' }, svg);
+  const shadowEl = el('ellipse', { cx: CX, cy: 188, rx: 52, ry: 7, fill: 'rgba(60,20,20,.14)' }, svg);
+
+  /* 思考的省略号：左右两个旁点（中间那颗是缩成小球的球自己，不在这里画）。
+   * 透明度基值做出"左浅右深"的层次，活动脉动在 tick 里按时间错相。 */
+  const dotSpecs = [
+    { dx: -46, r: 11.5, base: 0.42 },
+    { dx: 46, r: 13, base: 0.72 }
+  ];
+  const dotsLayer = el('g', {}, svg);
+  const sideDots = dotSpecs.map((s) => {
+    const c = el('circle', { cx: CX + s.dx, cy: CY, r: s.r, fill: '#8E1424', opacity: 0 }, dotsLayer);
+    c._spec = s;
+    return c;
+  });
+
+  /* 检索的道具书：一本摊开的书垫在左下角，检索时眼睛沿书页左右扫。
+   * 书是刚性道具，不进 rig（不跟着 pop/挤压），只带一点点呼吸浮动。 */
+  const bookG = el('g', { opacity: 0 }, svg);
+  const bookInner = el('g', {}, bookG);
+  const BOOK_POS = `translate(${CX - 58} ${CY + 62}) rotate(-8)`;
+  bookG.setAttribute('transform', BOOK_POS);
+  const bookPage = (d) => el('path', {
+    d, fill: '#FFF6DC', stroke: '#73101F', 'stroke-width': 2, 'stroke-linejoin': 'round'
+  }, bookInner);
+  bookPage('M -34 -10 Q -17 -17 0 -9 L 0 14 Q -17 8 -34 14 Z');
+  bookPage('M 34 -10 Q 17 -17 0 -9 L 0 14 Q 17 8 34 14 Z');
+  el('path', {
+    d: 'M 0 -9 L 0 14', fill: 'none', stroke: '#73101F',
+    'stroke-width': 2, 'stroke-linecap': 'round'
+  }, bookInner);
 
   /* 彩带的"球后"层：画在球身之下，丝带绕到背面的弧段被球身自然遮挡，
    * 只在超出轮廓的两端露头——这是"环绕"而不是"贴在球上"的关键。
@@ -246,6 +275,7 @@ export function create(container, opts = {}) {
   let gazeTX = 0, gazeTY = 0, gazeX = 0, gazeY = 0;
   let orbitA = 0;
   let zzzNext = 0;
+  let bookK = 0;             /* 道具书的显示浓度（approach 渐显渐隐） */
   let particles = [];
   /* 点球转体：twirl = { t0, dir }，dir ∈ {+1,-1} 随机（顺/逆时针） */
   let twirl = null;
@@ -609,6 +639,17 @@ export function create(container, opts = {}) {
         (nap.fade != null ? nap.fade : 350) / 1000);
     }
 
+    /* 0.45) 思考省略号调度：进入 10 后先缩成一点（dotsK=1 时缩到 20%），
+     *      左右浮出两个点组成"…"，dur 结束变回脸，every 循环一次。
+     *      pulseAmount 的 start/fade 都取 fade 值 → 进出各有 fade 毫秒的淡入淡出。 */
+    const dots = target.dots;
+    let dotsK = 0;
+    if (dots && dots.every > 0) {
+      const ph = (now - entryT) % dots.every;
+      const fade = (dots.fade != null ? dots.fade : 400) / 1000;
+      dotsK = pulseAmount(ph / 1000, fade, (dots.dur || 2200) / 1000, fade);
+    }
+
     /* 0.5) 微表情调度：短期眼睛变奏（大圆眼 / 睁大 / 单眨眼）。
      *    **一个动作轮次只做一次**：触发时刻按轮次排定（见 scheduleMicro），
      *    做完就把 microNext 打到 Infinity，本轮不再抽，下一轮才重新排。
@@ -734,6 +775,8 @@ export function create(container, opts = {}) {
      *    sin 的符号区分它在球的正面还是背面——背面压暗一半，转动才有"绕过去"的立体感，
      *    否则四条线亮度一样，看起来只是在原地缩放。 */
     if (!twirl) meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
+    /* 省略号阶段整组经线淡出：发光线缩在 15px 的小球上是一团噪点 */
+    meridianLayer.setAttribute('opacity', (1 - dotsK).toFixed(3));
     meridians.forEach((m, i) => {
       const ph = meridianPhase + (i * Math.PI) / 4;
       const rx = Math.abs(Math.cos(ph)) * R * 1.2;
@@ -805,7 +848,7 @@ export function create(container, opts = {}) {
       const p = projectEye({ yaw: headYaw + eye.sign * EYE_LON, pitch: headPitch, R: EYE_R, cx: CX, cy: CY });
       const fixed = clampToHull(hull, CX, CY, p.x, p.y, 0.86);
       eye.visible = p.visible;
-      eye.g.setAttribute('opacity', p.visible ? '1' : '0');
+      eye.g.setAttribute('opacity', p.visible ? (1 - dotsK).toFixed(3) : '0');
       if (!p.visible) continue;
       eye.g.setAttribute('transform',
         `translate(${fixed.x.toFixed(2)} ${(fixed.y + eye.dy).toFixed(2)}) rotate(${cur.tilt.toFixed(2)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`);
@@ -897,8 +940,32 @@ export function create(container, opts = {}) {
     /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
      * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
     const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
-    rig.setAttribute('transform', rigT);
-    ribbonBack.setAttribute('transform', rigT);   /* 球后彩带层与球身同步运动 */
+    /* 省略号阶段围绕球心整体缩小——中间那颗"点"就是缩小的球自己，眼睛/经线已淡出 */
+    const shrink = 1 - dotsK * 0.8;
+    const dotsT = shrink < 1
+      ? `translate(${CX} ${CY}) scale(${shrink.toFixed(3)}) translate(${-CX} ${-CY}) `
+      : '';
+    rig.setAttribute('transform', dotsT + rigT);
+    ribbonBack.setAttribute('transform', dotsT + rigT);   /* 球后彩带层与球身同步运动 */
+
+    /* 10.5) 思考旁点 + 道具书 */
+    for (const c of sideDots) {
+      const s = c._spec;
+      /* 三个点轮流"鼓"一下：按时间错相的正弦，左中右依次活跃，像在打字 */
+      const w = 0.5 + 0.5 * Math.sin(now / 1000 * 4.6 - (s.dx < 0 ? 0.9 : s.dx > 0 ? -0.9 : 0));
+      c.setAttribute('r', (s.r * (0.82 + 0.22 * w)).toFixed(2));
+      c.setAttribute('opacity', (s.base * dotsK * (0.55 + 0.45 * w)).toFixed(3));
+    }
+    /* 影子跟球一起淡出：省略号阶段球悬空变成了"文字"，地上不该有影子 */
+    shadowEl.setAttribute('opacity', (1 - dotsK * 0.85).toFixed(3));
+
+    bookK = approach(bookK, target.book ? 1 : 0, 6, dt);
+    bookG.setAttribute('opacity', bookK.toFixed(3));
+    if (bookK > 0.01) {
+      /* 跟呼吸同频的一点点浮动，书不是钉死的 */
+      const bob = Math.sin(now / 1000 * (cur.breatheHz || 0.4) * TAU) * 1.6;
+      bookInner.setAttribute('transform', `translate(0 ${bob.toFixed(2)})`);
+    }
   }
 
   addTicker(tick);
