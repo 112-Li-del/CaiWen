@@ -188,11 +188,16 @@ test('倾听（03）：视线落到下方、眼睛比待机睁大、微微歪头
   assert.ok(!s.zzz, '倾听时不冒 Z');
 });
 
-test('思考（10）：省略号循环配置合法 + 歪头大小眼（左竖胶囊右横线）', () => {
+test('思考（10）：省略号只播一次 + 思考链接翻书 + 歪头大小眼（左竖胶囊右横线）', () => {
   const s = STATES['10'];
   assert.equal(s.tip, '让我想想~');
-  assert.ok(s.dots && s.dots.dur > 0 && s.dots.every > s.dots.dur,
-    'dots 循环周期必须大于点阶段时长，否则永远缩在点里');
+  /* 省略号是"我要开始想了"的起手式，**只播一次**：every 为 0（或缺失）。
+   * 早期版本 every=9000 循环，观感是"想一下、回个神、再想一下"。 */
+  assert.ok(s.dots && s.dots.dur > 0, '思考开场应有省略号（dots）');
+  assert.ok(!s.dots.every, `dots 不该循环（every 应为 0/缺省，现 ${s.dots.every}）`);
+  /* dots 播完还要再琢磨一会儿，模型没输出才交给翻书 */
+  assert.ok(s.chain && s.chain.to === '11' && s.chain.hold > 0,
+    '思考应挂一条链：还没输出就自动接翻知识库（11）');
   assert.equal(s.eyeR && s.eyeR.shape, 'closed', '右眼应是一条闭眼横线（照 bloub thinking 脸）');
   assert.ok(s.eyeL && s.eyeL.h > s.eyeL.w * 1.6, '左眼应是竖长胶囊');
   assert.ok(s.tilt > 8, '两眼应整体歪着（tilt > 8）');

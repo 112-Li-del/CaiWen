@@ -683,14 +683,33 @@ export function create(container, opts = {}) {
     }
 
     /* 0.45) 思考省略号调度：进入 10 后先缩成一点（dotsK=1 时缩到 20%），
-     *      左右浮出两个点组成"…"，dur 结束变回脸，every 循环一次。
+     *      左右浮出两个点组成"…"，dur 结束变回脸。
+     *      **every: 0（默认）= 只播一次**：ph 直接用"进入状态多久"，
+     *      过了 dur 之后 pulseAmount 自然返回 0，不会再来一次；
+     *      every > 0 才按 every 取模循环（早期版本默认循环，看着像"想一下停一下"）。
      *      pulseAmount 的 start/fade 都取 fade 值 → 进出各有 fade 毫秒的淡入淡出。 */
     const dots = target.dots;
     let dotsK = 0;
-    if (dots && dots.every > 0) {
-      const ph = (now - entryT) % dots.every;
+    if (dots) {
+      const dur = (dots.dur || 2200) / 1000;
       const fade = (dots.fade != null ? dots.fade : 400) / 1000;
-      dotsK = pulseAmount(ph / 1000, fade, (dots.dur || 2200) / 1000, fade);
+      const ph = dots.every > 0
+        ? ((now - entryT) % dots.every) / 1000
+        : (now - entryT) / 1000;
+      dotsK = pulseAmount(ph, fade, dur, fade);
+    }
+
+    /* 0.46) 思考链（10 → 11）：dots 播完再琢磨 chain.hold 毫秒，模型还没开始输出
+     *        就自动接上「翻知识库」——一直干坐着思考不像在找答案。
+     *        这里走的是正经 setEmotion 而不是数值混合：翻书是另一个表情
+     *        （有道具书、有扫视、台词也换），插值混不出"低头翻开书"这个动作。
+     *        外部随时可以切走（开始输出 → 12 / 完成 → 20 / 出错 → 21），
+     *        链立刻中断；切走后 target 换成新表情，这里的判断自然不成立。 */
+    const chain = target.chain;
+    if (chain && chain.to) {
+      const hold = Number(chain.hold) || 0;
+      const lead = dots ? (Number(dots.dur) || 2200) : 0;
+      if (now >= entryT + lead + hold) setEmotion(chain.to);
     }
 
     /* 0.45) 台词轮换：前 tipRounds 轮说表情自己的 tip，之后每个动作轮次换一句。

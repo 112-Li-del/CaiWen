@@ -1316,6 +1316,19 @@ export default function ChatPage() {
   }, [ballDoneAt]);
   /* 用户在输入框里打字（有内容，不是聚焦）——球切成「倾听」。 */
   const [userTyping, setUserTyping] = useState(false);
+  /* 模型是否**已经开始吐字**：本轮最后一条助手消息有内容就算。
+   * 这比 stage 名可靠（各能力的阶段名不统一），而且一旦有内容，
+   * 球就该从「思考/翻书」切到「回答中」——思考链（10 → 11）也就此中断。
+   * 新一轮开始时 STREAM_START 会压入一条空的助手消息，answering 自然回到 false。 */
+  const ballAnswering = useMemo(() => {
+    if (!state.isStreaming) return false;
+    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+      const m = state.messages[i];
+      if (m.role !== "assistant") continue;
+      return (m.content || "").trim().length > 0;
+    }
+    return false;
+  }, [state.isStreaming, state.messages]);
   const ballEmotion = ballWelcoming
     ? "02"
     : ballDoneAt
@@ -1324,6 +1337,7 @@ export default function ChatPage() {
           isStreaming: state.isStreaming,
           stage: state.currentStage,
           typing: userTyping,
+          answering: ballAnswering,
         });
 
   return (

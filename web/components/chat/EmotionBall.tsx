@@ -34,7 +34,11 @@ interface BallHandle {
  * 聊天状态 → 表情。阶段名取自后端 stage_start 事件（英文），命中不了就退回流式判断。
  * 注意「欢迎」不在这里：欢迎是进门定时 3s 的临时状态，由聊天页控制，超时后落到这里的待机。
  *
- * 优先级：工作态（思考/检索/回答）> 倾听 > 出错 > 待机。
+ * 优先级：已开始输出（回答中）> 检索/思考（看阶段名）> 倾听 > 出错 > 待机。
+ *   ① answering 排最前：模型一旦吐出第一个字就是「回答中」，比 stage 名可靠——
+ *      后端各能力（问答/解题/写作）的阶段名不统一，但"助手消息有内容"是通用的。
+ *   ② 思考态（10）在引擎里自带一条链：开场缩成省略号 → 思考 2.5s → 还没输出就
+ *      自动接翻知识库（11）。所以这里只要在开始思考时给 10，剩下的不用管。
  * 倾听压过出错是故意的：用户一开口重新打字，说明他在试别的问法，球该转过来听，
  * 而不是继续挂着"哎呀，出错了"。
  */
@@ -44,13 +48,16 @@ export function resolveEmotion(args: {
   failed?: boolean;
   /** 用户输入框里有字（trim 后非空）——不是聚焦就触发 */
   typing?: boolean;
+  /** 助手这条消息已经吐出内容（第一个字到了） */
+  answering?: boolean;
 }): EmotionId {
-  const { isStreaming, stage, failed, typing } = args;
+  const { isStreaming, stage, failed, typing, answering } = args;
   if (!isStreaming) {
     if (typing) return "03";                   // 倾听：用户在打字
     if (failed) return "21";                   // 出错
     return "01";                               // 待机
   }
+  if (answering) return "12";                  // 回答中：已经有字流出来了
   const s = (stage || "").toLowerCase();
   if (/retriev|search|知识|rag|embed|index/.test(s)) return "11";  // 检索中
   if (/answer|生成|写|draft|stream/.test(s)) return "12";          // 回答中
