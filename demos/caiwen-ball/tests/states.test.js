@@ -9,6 +9,13 @@ test('回退表情必须存在', () => {
   assert.ok(STATES[FALLBACK], `FALLBACK=${FALLBACK} 在 STATES 中找不到`);
 });
 
+test('已退役的编号不许复活（21 出错 / 22 惊讶）', () => {
+  /* 编号作废后不能再复用：调用方可能还留着旧 id，复用会出现"同一 id 两种脸" */
+  for (const dead of ['21', '22']) {
+    assert.ok(!(dead in STATES), `${dead} 已退役，不该再出现在 STATES 里`);
+  }
+});
+
 test('id 与键一一对应', () => {
   for (const key of ids) {
     assert.equal(STATES[key].id, key, `${key} 的 id 字段应与键一致`);
@@ -210,9 +217,3 @@ test('检索（11）：低头看书 + 左右扫视 + 带道具书', () => {
   assert.ok(s.scanYaw > 0.2 && s.scanHz > 0, '应沿书页左右来回扫视');
 });
 
-test('惊讶（22）展示大小眼：左右宽度差 ≥ 30%', () => {
-  const { eyeL, eyeR } = STATES['22'];
-  assert.ok(eyeL && eyeR, '22 必须配置 eyeL/eyeR');
-  const diff = Math.abs(eyeL.w - eyeR.w) / Math.max(eyeL.w, eyeR.w);
-  assert.ok(diff >= 0.3, `大小眼差距不足：${(diff * 100).toFixed(0)}%`);
-});

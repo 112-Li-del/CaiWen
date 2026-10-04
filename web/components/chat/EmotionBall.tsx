@@ -22,7 +22,7 @@ import { create as createBall } from "@/lib/emotion-ball/engine";
 export type EmotionId =
   | "00" | "01" | "02" | "03"
   | "10" | "11" | "12" | "13"
-  | "20" | "21" | "22" | "23";
+  | "20" | "23";
 
 /** 引擎实例句柄（只用到这俩方法，多余的不暴露） */
 interface BallHandle {
@@ -34,30 +34,28 @@ interface BallHandle {
  * 聊天状态 → 表情。阶段名取自后端 stage_start 事件（英文），命中不了就退回流式判断。
  * 注意「欢迎」不在这里：欢迎是进门定时 3s 的临时状态，由聊天页控制，超时后落到这里的待机。
  *
- * 优先级：已开始输出（回答中）> 检索/思考（看阶段名）> 倾听 > 出错 > 待机。
+ * 优先级：已开始输出（回答中）> 检索/思考（看阶段名）> 倾听 > 待机。
  *   ① answering 排最前：模型一旦吐出第一个字就是「回答中」，比 stage 名可靠——
  *      后端各能力（问答/解题/写作）的阶段名不统一，但"助手消息有内容"是通用的。
  *   ② 思考态（10）在引擎里自带一条链：开场缩成省略号 → 思考 2.5s → 还没输出就
  *      自动接翻知识库（11）。所以这里只要在开始思考时给 10，剩下的不用管。
- *   ③ 开始输出先给「书写」（13）而不是直接「回答中」：球缩没、变出一支钢笔
- *      沿墨线写字，2.4s 后引擎自己接上 12（chain），这里同样不用管计时。
+ *   ③ 开始输出先给「书写」（13）而不是直接「回答中」：球缩没变出一支钢笔，
+ *      划一行再回到中间，2.4s 后引擎自己接上 12（chain），这里同样不用管计时。
  *      一轮里 answering 只从 false 翻到 true 一次，所以笔只落一次。
- * 倾听压过出错是故意的：用户一开口重新打字，说明他在试别的问法，球该转过来听，
- * 而不是继续挂着"哎呀，出错了"。
+ * 「出错」表情（21）已退役——拟人化的报错脸对学习场景没帮助，出错交给界面自己
+ * 的提示条；所以这里没有 failed 分支，出错时球落回待机。
  */
 export function resolveEmotion(args: {
   isStreaming: boolean;
   stage?: string;
-  failed?: boolean;
   /** 用户输入框里有字（trim 后非空）——不是聚焦就触发 */
   typing?: boolean;
   /** 助手这条消息已经吐出内容（第一个字到了） */
   answering?: boolean;
 }): EmotionId {
-  const { isStreaming, stage, failed, typing, answering } = args;
+  const { isStreaming, stage, typing, answering } = args;
   if (!isStreaming) {
     if (typing) return "03";                   // 倾听：用户在打字
-    if (failed) return "21";                   // 出错
     return "01";                               // 待机
   }
   /* 13 = 书写（钢笔落笔），引擎 2.4s 后自动接 12，所以不用在这里计时 */

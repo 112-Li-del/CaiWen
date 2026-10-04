@@ -5,6 +5,8 @@
  *
  * emotionId 分段是对外契约，编号只增不改：
  *   00-09 生命周期 · 10-19 代理工作状态 · 20-29 结果反馈 · 30-49 预留 · 50+ 自定义
+ * 已退役：21 出错、22 惊讶（2026-10-04 删，不再用"出错/惊讶"这类拟人反馈）。
+ *   编号作废后不复用于别的表情——调用方可能还留着旧 id，复用会出现"同一 id 两种脸"。
  *
  * 姿态字段（引擎逐帧插值）：
  *   shape      主眼形：normal 胶囊 / wide 大眼 / happy 笑弧 / closed 闭眼 / cross 叉
@@ -279,23 +281,6 @@ export const STATES = {
     meridian: 1, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
     bounce: 0.5, pop: 0.14, blinkMs: null, glanceYaw: 0, glanceMs: null,
     gazeWeight: 1, shake: false, zzz: false, confetti: true
-  },
-  '21': {
-    id: '21', name: '出错', group: 'feedback', tip: '哎呀，出错了',
-    shape: 'cross', open: 1, w: 20, h: 26, tilt: 0, yaw: 0, pitch: 0.02,
-    squash: 0.04, taper: 0.1, lean: 0, breatheAmp: 0.006, breatheHz: 0.5,
-    meridian: 0.5, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
-    bounce: 0, pop: 0.05, blinkMs: null, glanceYaw: 0, glanceMs: null,
-    gazeWeight: 0, shake: true, zzz: false, confetti: false
-  },
-  '22': {
-    id: '22', name: '惊讶', group: 'feedback', tip: '真的吗？！',
-    shape: 'wide', open: 1, w: 24, h: 30, tilt: 0, yaw: 0, pitch: -0.06,
-    eyeL: { shape: 'normal', w: 10, h: 12 }, eyeR: { shape: 'wide', w: 27, h: 33 },
-    squash: -0.03, taper: 0, lean: 0, breatheAmp: 0.012, breatheHz: 0.45,
-    meridian: 1.6, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
-    bounce: 0, pop: 0.16, blinkMs: [3000, 5200], glanceYaw: 0, glanceMs: null,
-    gazeWeight: 1, shake: false, zzz: false, confetti: false
   },
   '23': {
     id: '23', name: '感叹', group: 'feedback', tip: '写完了！',
