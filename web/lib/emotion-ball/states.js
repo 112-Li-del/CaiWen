@@ -134,9 +134,9 @@ export const STATES = {
     micro: {
       every: [2600, 5600],
       items: [
-        { key: 'surprise', weight: 2, dur: 900, shape: 'normal', w: 25, h: 25 },
-        { key: 'widen', weight: 3, dur: 1100, shape: 'normal', w: 16, h: 36 },
-        { key: 'wink', weight: 3, dur: 760, shape: 'normal', w: 15, h: 32, wink: 'random' }
+        { key: 'surprise', weight: 2, dur: 900, shape: 'normal', w: 29, h: 29 },
+        { key: 'widen', weight: 3, dur: 1100, shape: 'normal', w: 18, h: 41 },
+        { key: 'wink', weight: 3, dur: 760, shape: 'normal', w: 16, h: 34, wink: 'random' }
       ]
     }
   },

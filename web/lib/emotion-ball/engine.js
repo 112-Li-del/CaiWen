@@ -224,6 +224,7 @@ export function create(container, opts = {}) {
   let microT0 = 0;           /* 本项开始时刻（毫秒） */
   let microNext = 0;         /* 下一次可以抽的时刻 */
   let microSide = 0;         /* wink 闭哪只眼：0=左 1=右 */
+  let microLast = '';        /* 上一次抽到的 key——下次要避开它，见下 */
   /* 形变轮播：只在 target.morph 存在时运转。tables 预烘焙各目标形状的半径表，
    * 每帧在「同角度的球半径」和「目标半径」之间插值，从数学上保证过渡无跳变。 */
   const MORPH_SAMPLES = 64;
@@ -460,6 +461,7 @@ export function create(container, opts = {}) {
     zzzNext = now;
     /* 微表情重新排队：切进来不要立刻变脸，先安静一个随机间隔 */
     micro = null;
+    microLast = '';
     microNext = target.micro && target.micro.every
       ? now + rand(target.micro.every[0], target.micro.every[1])
       : Infinity;
@@ -552,9 +554,17 @@ export function create(container, opts = {}) {
         micro = null;
         microNext = Math.max(microNext, now + 700);
       } else if (!micro && now >= microNext) {
-        micro = pickWeighted(mcfg.items);
+        /* 不连着做同一个微表情：纯加权随机在只有 3 种时会频繁连出同种
+         * （实测 7 次里就撞了 1 次 wink 接 wink），观感是"一直都在 wink"。
+         * 抽之前把上一次那个踢出候选池，剩下的仍按权重抽——交错但不呆板。
+         * 只剩一项（或清一色同名）时不踢，否则会永远抽不到。 */
+        const pool = mcfg.items.length > 1
+          ? mcfg.items.filter((it) => (it.key || it) !== microLast)
+          : mcfg.items;
+        micro = pickWeighted(pool.length ? pool : mcfg.items);
         microT0 = now;
-        microSide = micro.wink === 'L' ? 0 : micro.wink === 'R' ? 1 : (Math.random() < 0.5 ? 0 : 1);
+        microLast = micro ? (micro.key || micro) : '';
+        microSide = micro && (micro.wink === 'L' ? 0 : micro.wink === 'R' ? 1 : (Math.random() < 0.5 ? 0 : 1));
       }
       if (micro) {
         const dur = micro.dur > 0 ? micro.dur : 700;

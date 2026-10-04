@@ -93,6 +93,42 @@ test('待机微表情：三种都出现（圆眼 / 睁大胶囊 / 单眨眼）�
   ball.destroy();
 });
 
+test('微表情不连续重复：做完一种，下一次不还是它', async () => {
+  const pump = installFakeDom();
+  const { create } = await import('../src/engine.js');
+  const host = node('div');
+  const ball = create(host, {});
+  ball.setEmotion('01');
+
+  /* 恒定随机 0.05：永远落在 surprise 的权重桶里。没有去重的话，接下来每一次
+   * 都会是 surprise——观感就是"一直在瞪大眼"（用户实际撞到的是连着 wink）。 */
+  const kinds = [];
+  withCycledRandom([0.05], () => {
+    let prev = '';
+    for (let i = 0; i < 4000; i++) {              /* ≈64s，约 20 次微表情 */
+      pump.step(16);
+      const [L] = eyeRects(host).map(sizeOf);
+      const lids = closedLines(host).map((n) => parseFloat(n.attrs.opacity) || 0);
+      let cur = '';
+      if (Math.max(...lids) > 0.8 && Math.min(...lids) < 0.2) cur = 'wink';
+      else if (L.op > 0.85 && Math.abs(L.w - L.h) < 3 && L.w > 20) cur = 'round';
+      else if (L.op > 0.85 && L.h > 33) cur = 'widen';
+      if (cur && cur !== prev) kinds.push(cur);
+      prev = cur;
+    }
+  });
+
+  const uniq = [...new Set(kinds)];
+  assert.ok(uniq.length >= 2,
+    `恒定随机下也应出现不同微表情（去重生效），实际只有 ${JSON.stringify(uniq)}`);
+  for (let i = 1; i < kinds.length; i++) {
+    assert.notEqual(kinds[i], kinds[i - 1],
+      `第 ${i} 次微表情 ${kinds[i]} 与上一次 ${kinds[i - 1]} 相同——又连着做同一个了`);
+  }
+
+  ball.destroy();
+});
+
 test('微表情是短时的：大部分时间停在基础眼形，不会一直瞪着', async () => {
   const pump = installFakeDom();
   const { create } = await import('../src/engine.js');
