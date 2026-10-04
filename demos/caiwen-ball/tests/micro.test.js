@@ -8,6 +8,7 @@
  *   3. 睡眠/打盹期间不出现微表情——睡着的脸不做表情（曾因为微表情盖掉闭眼线
  *      ，导致"打盹时突然瞪大眼"）。
  *   4. 微表情是短时的：不会一直停在圆眼上（结束后回到基础 13×30）。
+ *   5. 一个动作轮次内只做一次（调度挂在形变轮播轮次上）。
  * ============================================================ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,9 +55,10 @@ test('待机微表情：三种都出现（圆眼 / 睁大胶囊 / 单眨眼）�
 
   let round = false, widen = false, wink = false, awakeInsideNap = 0;
 
-  /* 序列按权重区间走：surprise(<0.25) → widen(<0.625) → wink，循环保证三种都抽到 */
+  /* 序列按权重区间走：surprise(<0.25) → widen(<0.625) → wink，循环保证三种都抽到。
+   * 一个轮次只抽一次（12.6s/轮），所以帧数要够跨 8 轮，三种才都能轮到。 */
   withCycledRandom([0.05, 0.35, 0.75, 0.05, 0.35, 0.75, 0.05, 0.35, 0.75], () => {
-    for (let i = 0; i < 2600; i++) {              /* ≈41s，跨 3 轮形变+打盹周期 */
+    for (let i = 0; i < 6400; i++) {              /* ≈102s，8 轮形变+打盹周期 */
       pump.step(16);
       const [L, R] = eyeRects(host).map(sizeOf);
       const lids = closedLines(host).map((n) => parseFloat(n.attrs.opacity) || 0);
@@ -138,7 +140,7 @@ test('微表情是短时的：大部分时间停在基础眼形，不会一直�
 
   let base = 0, off = 0;
   withCycledRandom([0.05, 0.35, 0.75], () => {
-    for (let i = 0; i < 2600; i++) {              /* ≈41s */
+    for (let i = 0; i < 6400; i++) {              /* ≈102s，8 轮 */
       pump.step(16);
       const [L] = eyeRects(host).map(sizeOf);
       /* 基础眼形 13×30；微表情期间尺寸会明显偏离 */
@@ -150,6 +152,72 @@ test('微表情是短时的：大部分时间停在基础眼形，不会一直�
   assert.ok(off > 0, '应观测到微表情（尺寸偏离基础眼形）');
   assert.ok(base / (base + off) > 0.6,
     `微表情不应占据大部分时间：基础眼形只占 ${(100 * base / (base + off)).toFixed(0)}%`);
+
+  ball.destroy();
+});
+
+/**
+ * 帧序列 → 微表情区间：把连续 true 压成一段，允许 6 帧（≈100ms）以内的中断合并，
+ * 免得 alpha 过渡期的抖动被算成两次。
+ */
+function collapseRuns(flags, msPerFrame) {
+  const runs = [];
+  let start = -1, gap = 0;
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i]) { if (start < 0) start = i; gap = 0; }
+    else if (start >= 0 && ++gap > 6) {
+      /* (start+1)：第 i 帧观测到的是第 i+1 次 pump 之后的状态，时间要对齐，
+       * 否则跨轮次边界那一帧会被算进上一轮。 */
+      runs.push({ at: (start + 1) * msPerFrame, len: i - gap - start });
+      start = -1;
+    }
+  }
+  if (start >= 0) runs.push({ at: (start + 1) * msPerFrame, len: flags.length - 1 - start });
+  return runs;
+}
+
+test('一个动作轮次内只做一次微表情：做完就等下一轮', async () => {
+  const pump = installFakeDom();
+  const { create } = await import('../src/engine.js');
+  const { STATES, morphTimeline } = await import('../src/states.js');
+  const host = node('div');
+  const ball = create(host, {});
+  ball.setEmotion('01');
+  const tl = morphTimeline(STATES['01'].morph);
+  const ROUNDS = 5;
+  const STEP = 16;
+  const frames = Math.ceil((ROUNDS * tl.total) / STEP);
+
+  const flags = [];
+  withCycledRandom([0.05, 0.35, 0.75], () => {
+    for (let i = 0; i < frames; i++) {
+      pump.step(STEP);
+      const ph = pump.now % tl.total;
+      /* 打盹段（含进出的 fade 与眼形恢复尾巴）整只眼都换成睡眠的 26×26，尺寸天然
+       * 偏离基线，不能算微表情——这段直接不计入（nap 的 fade 从 napStart-350 起，
+       * 再往前留 350ms 余量）。触发窗口也刻意排在打盹之前。 */
+      if (ph > tl.napStart - 700) { flags.push(false); continue; }
+      const [L] = eyeRects(host).map(sizeOf);
+      const lids = closedLines(host).map((n) => parseFloat(n.attrs.opacity) || 0);
+      const wink = Math.max(...lids) > 0.8 && Math.min(...lids) < 0.2;
+      /* 眨眼只压 normal 矩形的 Y 变换、不改 width/height 属性，所以尺寸判据不会被
+       * 眨眼误伤；wink 才是唯一会让闭眼线亮起来的非睡眠情况。 */
+      flags.push(wink || Math.abs(L.w - 13) > 2 || Math.abs(L.h - 30) > 3);
+    }
+  });
+
+  /* 只留成段的：入场头几帧眼睛还在从 DOM 默认值逼近 13×30、轮次交替时刚从睡眠
+   * 形恢复，都会短暂偏离基线，这些几十毫秒的碎片不是微表情（最短的 wink 也有
+   * 760ms ≈ 47 帧）。 */
+  const runs = collapseRuns(flags, STEP).filter((r) => r.len >= 25);
+  const rounds = runs.map((r) => Math.floor(r.at / tl.total));
+
+  assert.ok(runs.length >= ROUNDS - 1,
+    `${ROUNDS} 个轮次里只做了 ${runs.length} 次微表情——基本每轮都该来一次`);
+  assert.ok(runs.length <= ROUNDS,
+    `${ROUNDS} 个轮次里做了 ${runs.length} 次——一个动作轮次内只能做一次`);
+  assert.equal(new Set(rounds).size, rounds.length,
+    `有两个微表情落在同一个动作轮次里：${JSON.stringify(rounds)}`);
 
   ball.destroy();
 });

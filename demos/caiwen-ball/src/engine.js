@@ -219,10 +219,16 @@ export function create(container, opts = {}) {
   NUM_KEYS.forEach((k) => { napVals[k] = target[k]; });
   let napFired = false;
   /* 微表情：待机时的短期眼睛变奏（大圆眼 / 睁大 / 单眨眼）。
-   * micro 只在清醒时抽，打盹（napK 高）会把它推后——睡着了的脸不该做表情。 */
+   * 调度**绑定在形变轮播的轮次上**：一个动作轮次（静止→饼→六角→三角→打盹→回球）
+   * 内最多做一次，下一轮才可能再抽一次——原来按独立随机间隔跑，一个轮次里会连做
+   * 两三回，观感是"表情太密"。有 morph 的状态用轮次制；没有 morph 的状态（如工作态）
+   * 退回按 micro.every 的随机间隔。
+   * 打盹（napK 高）依旧不抽也不续——睡着了的脸不该做表情。 */
   let micro = null;          /* 当前生效的一项，null = 无 */
   let microT0 = 0;           /* 本项开始时刻（毫秒） */
-  let microNext = 0;         /* 下一次可以抽的时刻 */
+  let microNext = 0;         /* 本轮排定的触发时刻（无 morph 时 = 下一次可以抽的时刻） */
+  let microDeadline = 0;     /* 本轮最后可触发时刻，过期本轮作废等下一轮 */
+  let microRound = -1;       /* 已排定的轮次序号，轮次一变就重排 */
   let microSide = 0;         /* wink 闭哪只眼：0=左 1=右 */
   let microLast = '';        /* 上一次抽到的 key——下次要避开它，见下 */
   /* 形变轮播：只在 target.morph 存在时运转。tables 预烘焙各目标形状的半径表，
@@ -459,10 +465,14 @@ export function create(container, opts = {}) {
     morphAnchor = now;
     napFired = false;
     zzzNext = now;
-    /* 微表情重新排队：切进来不要立刻变脸，先安静一个随机间隔 */
+    /* 微表情重新排队：切进来不要立刻变脸。有 morph 的状态交给 tick 按轮次排
+     * （microRound = -1 会让下一帧立刻排当前轮次），无 morph 的按 every 排。 */
     micro = null;
     microLast = '';
-    microNext = target.micro && target.micro.every
+    microRound = -1;
+    microDeadline = Infinity;
+    const hasMorph = !!(target.morph && target.morph.seq && target.morph.seq.length);
+    microNext = !hasMorph && target.micro && target.micro.every
       ? now + rand(target.micro.every[0], target.micro.every[1])
       : Infinity;
     if (target.confetti) burstConfetti(26);
@@ -506,6 +516,41 @@ export function create(container, opts = {}) {
     return { from: prev, kind: 'ball', t: easings.outBack(clamp(ph / morphMs, 0, 1)) };
   }
 
+  /**
+   * 微表情在本轮次内的可触发窗口（相对轮次起点的毫秒区间）。
+   * 默认 0.6s ~ 打盹开始前 0.6s：表情要落在"清醒且没在睡"的区间里，否则排到睡梦里
+   * 会被 napK 门控掐掉、本轮一次都做不成。没有打盹的状态取到轮次的 75%。
+   * 想手工控位置就在 states 的 micro 上写 window: [min, max]。
+   */
+  function microWindow(mcfg, tl) {
+    const w = Array.isArray(mcfg.window) ? mcfg.window : null;
+    const lo = Math.max(0, w ? w[0] : 600);
+    let hi = w ? w[1] : (tl.napEnd > tl.napStart ? tl.napStart - 600 : tl.total * 0.75);
+    if (!(hi > lo)) hi = tl.total * 0.75;
+    return [lo, Math.min(hi, Math.max(lo, tl.total - 200))];
+  }
+
+  /**
+   * 给当前轮次排定**唯一一次**微表情。
+   * 有 morph：在本轮窗口内随机取一个时刻，超过 deadline 还没做成（比如被睡觉门控
+   * 推过了头）就当本轮作废，等下一轮——宁可少做一次，也不在一个轮次里补做第二次。
+   * 无 morph（工作态那类）：退回 micro.every 的随机间隔。
+   */
+  function scheduleMicro(nowMs, tl, idx) {
+    if (tl) {
+      const start = morphAnchor + idx * tl.total;
+      const win = microWindow(target.micro, tl);
+      microNext = start + rand(win[0], win[1]);
+      microDeadline = start + win[1];
+      microRound = idx;
+    } else {
+      const iv = target.micro.every || [2600, 5600];
+      microNext = nowMs + rand(iv[0], iv[1]);
+      microDeadline = Infinity;
+      microRound = -1;
+    }
+  }
+
   /* ---------------- 每帧 ---------------- */
   function tick(ts, dt) {
     if (destroyed) return;
@@ -542,18 +587,26 @@ export function create(container, opts = {}) {
         (nap.fade != null ? nap.fade : 350) / 1000);
     }
 
-    /* 0.5) 微表情调度：清醒时按随机间隔抽一项短期眼睛变奏。
+    /* 0.5) 微表情调度：短期眼睛变奏（大圆眼 / 睁大 / 单眨眼）。
+     *    **一个动作轮次只做一次**：触发时刻按轮次排定（见 scheduleMicro），
+     *    做完就把 microNext 打到 Infinity，本轮不再抽，下一轮才重新排。
+     *    原来按独立随机间隔跑，一个 12.6s 的轮次里会连做两三回，表情太密。
      *    打盹（napK > 0.15）不抽也不续——睡眠表情保持不动，这是明确要求；
-     *    形变轮播期间照常出现（饼/六角/三角形态下也会眨一下、瞪一下）。 */
+     *    形变轮播期间照常出现（饼/六角/三角形态下也会瞪一下、眨一下）。 */
     let microK = 0;
     const mcfg = target.micro;
     if (mcfg && mcfg.items && mcfg.items.length) {
+      const mtl = target.morph && target.morph.seq && target.morph.seq.length
+        ? morphTimeline(target.morph) : null;
+      const idx = mtl ? Math.floor((now - morphAnchor) / mtl.total) : -1;
+      if (mtl ? idx !== microRound : !isFinite(microNext)) scheduleMicro(now, mtl, idx);
       if (napK > 0.15) {
         /* 睡着的脸不做表情：正在进行的一律收掉（否则微表情会盖掉睡眠闭眼线，
-         * 表现成"打盹时突然瞪大眼"），并把下一次推到醒来之后。 */
+         * 表现成"打盹时突然瞪大眼"），并把下一次推到醒来之后。已经做过的那轮
+         * microNext 是 Infinity，取 max 后仍是 Infinity → 本轮不会补做第二次。 */
         micro = null;
         microNext = Math.max(microNext, now + 700);
-      } else if (!micro && now >= microNext) {
+      } else if (!micro && now >= microNext && now <= microDeadline) {
         /* 不连着做同一个微表情：纯加权随机在只有 3 种时会频繁连出同种
          * （实测 7 次里就撞了 1 次 wink 接 wink），观感是"一直都在 wink"。
          * 抽之前把上一次那个踢出候选池，剩下的仍按权重抽——交错但不呆板。
@@ -565,14 +618,13 @@ export function create(container, opts = {}) {
         microT0 = now;
         microLast = micro ? (micro.key || micro) : '';
         microSide = micro && (micro.wink === 'L' ? 0 : micro.wink === 'R' ? 1 : (Math.random() < 0.5 ? 0 : 1));
+        microNext = Infinity;      /* 本轮用掉唯一名额 */
       }
       if (micro) {
         const dur = micro.dur > 0 ? micro.dur : 700;
         const a = now - microT0;
         if (a >= dur) {
           micro = null;
-          const iv = mcfg.every || [2600, 5600];
-          microNext = now + rand(iv[0], iv[1]);
         } else {
           microK = pulseAmount(a / 1000, 0, dur / 1000, (micro.fade != null ? micro.fade : 120) / 1000);
         }
