@@ -76,7 +76,7 @@ export function createTypeLine(host, opts = {}) {
     textEl.textContent = shown;
     /* 用 visibility 而不是 opacity：闪烁动画占用了 opacity，改它会失效 */
     cursorEl.style.visibility =
-      (o.hideCursorWhileTyping && shown.length < pending.length) ? 'hidden' : 'visible';
+      ((o.hideCursorWhileTyping && shown.length < pending.length) || pending.length === 0) ? 'hidden' : 'visible';
   }
 
   function stepType() {

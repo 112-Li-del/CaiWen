@@ -5,7 +5,8 @@
  *
  * emotionId 分段是对外契约，编号只增不改：
  *   00-09 生命周期 · 10-19 代理工作状态 · 20-29 结果反馈 · 30-49 预留 · 50+ 自定义
- * 已退役：21 出错、22 惊讶（2026-10-04 删，不再用"出错/惊讶"这类拟人反馈）。
+ * 已退役：21 出错、22 惊讶（2026-10-04 删，不再用"出错/惊讶"这类拟人反馈）、
+ *   23 感叹（同日删：手写不出像样的"!"，回答完直接进「完成」，少一道过门）。
  *   编号作废后不复用于别的表情——调用方可能还留着旧 id，复用会出现"同一 id 两种脸"。
  *
  * 姿态字段（引擎逐帧插值）：
@@ -69,13 +70,9 @@
  *   接翻知识库。外部切走表情（开始输出 → 12 / 完成 → 20）链立刻中断。
  *
  * pen 契约（书写过门，挂在 13 上）：{ dur, fade? }
- *   球缩没，原地变出一支钢笔，沿一条逐渐画出的墨线从左写到右；dur 毫秒后由
- *   chain 接力（书写本身就是过门，hold 与 dur 对齐）。fade 是进出缓入缓出
- *   （毫秒，默认 300）。
- *
- * exclaim 契约（感叹过门，挂在 23 上）：{ dur, fade? }
- *   球缩成 17% 挪到感叹号的点位——球自己就是"!"的那颗点，上方弹出锥形感叹条；
- *   dur 毫秒后由 chain 接力。fade 是进出缓入缓出（毫秒，默认 160）。
+ *   球缩没，原地变出一支钢笔（形状照还原稿采样，见引擎 penG），沿一行从左划到
+ *   右、再收回中间——**不留墨迹**；dur 毫秒后由 chain 接力（书写本身就是过门，
+ *   hold 与 dur 对齐）。fade 是进出缓入缓出（毫秒，默认 300）。
  * ============================================================ */
 
 import { IDLE_LINES } from './lines.js';
@@ -249,18 +246,27 @@ export const STATES = {
   },
   '12': {
     id: '12', name: '回答中', group: 'agent', tip: '正在回答…',
-    /* 脸照用户提供的目标图：右眼一颗**大圆眼**（w=h，rect 的 rx=w/2 正好是圆），
-     * 左眼一支小竖椭圆、随整体 tilt 微微左倾——"盯着自己说出来的字"的专注脸。
-     * tilt 对圆眼不可见（圆旋转没变化），-16° 只作用在左椭圆上，方向照图。 */
-    shape: 'normal', open: 1, w: 20, h: 26, tilt: -16, yaw: 0, pitch: -0.02,
-    eyeL: { shape: 'normal', w: 13, h: 26 }, eyeR: { shape: 'normal', w: 29, h: 29 },
+    /* bloub「轨道」动作（orbit），参数照官方源码（states.ts / decor.ts，
+     * 作者自述为对参考视频的实测值）：
+     *   六条 3D 轨道环（engine.js 的 RING_SEEDS，同种子逐字移植）各自以
+     *   3~3.7 圈/秒绕自己的倾斜轨道面旋转，是画面上最快、最主导的运动；
+     *   眼睛绕球面滑行 ±65°（gazeAmp）、6.5 rad/s（gazeHz），官方原话
+     *   "les yeux filent autour de la sphere"，是 orbit 的第二读字；
+     *   官方球面是素圆、不旋转，我们的经纬线也保持慢速漂移（全速自转会因
+     *   45° 等距经线自重合而变成"脉动"，不像旋转）。
+     * 脸照官方 orbit：两只等大的窄长胶囊眼（pair(0.18, 0.34~0.41)，按
+     * R=78 折算约 14×30），不是大小眼；不随机瞟、不受鼠标牵引
+     * （官方非 baseFace 状态关闭指针跟随）、不上下弹跳。 */
+    shape: 'normal', open: 1, w: 14, h: 30, tilt: 0, yaw: 0, pitch: -0.02,
+    eyeL: { shape: 'normal', w: 14, h: 30 }, eyeR: { shape: 'normal', w: 14, h: 30 },
     squash: 0, taper: 0, lean: 0, breatheAmp: 0.01, breatheHz: 0.55,
-    meridian: 1.2, driftYaw: 0.03, driftHz: 0.3, scanYaw: 0, scanHz: 0,
-    bounce: 1, pop: 0.07, blinkMs: [2000, 4200], glanceYaw: 0.22, glanceMs: [2400, 4200],
-    gazeWeight: 1, shake: false, zzz: false, confetti: false
+    meridian: 1.2, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
+    bounce: 0, pop: 0.07, blinkMs: [2000, 4200], glanceYaw: 0, glanceMs: null,
+    gazeWeight: 0, shake: false, zzz: false, confetti: false,
+    orbit: { gazeHz: 6.5, gazeAmp: 65 }
   },
   '13': {
-    id: '13', name: '书写', group: 'agent', tip: '开写啦～',
+    id: '13', name: '书写', group: 'agent', tip: '',
     /* 检索完毕、开始输出前的过门动作：球缩没，原地变出一支钢笔（倾斜圆角笔杆 +
      * 手绘凹凸边笔尖，形状照用户给的还原稿逐点采样，由引擎的 penG 画，
      * 整体比球小一号——笔尖要沿一行走位，大了会顶到画布边）。
@@ -283,20 +289,6 @@ export const STATES = {
     meridian: 1, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
     bounce: 0.5, pop: 0.14, blinkMs: null, glanceYaw: 0, glanceMs: null,
     gazeWeight: 1, shake: false, zzz: false, confetti: true
-  },
-  '23': {
-    id: '23', name: '感叹', group: 'feedback', tip: '写完了！',
-    /* 回答完成 → 完成之间的过门（23 → 20）：球缩成 17% 挪到感叹号的点位——
-     * 它自己就是"!"的那颗点，上方由引擎弹出锥形感叹条（exBar，墨色）。
-     * 1s 后 chain 接「完成」（20），彩带接住感叹，一气呵成。
-     * 感叹用墨色不用红——刚写完最后一个字，"!"是墨迹收笔的那一下。 */
-    shape: 'normal', open: 1, w: 13, h: 30, tilt: 0, yaw: 0, pitch: 0,
-    squash: 0, taper: 0, lean: 0, breatheAmp: 0.008, breatheHz: 0.5,
-    meridian: 1, driftYaw: 0, driftHz: 0, scanYaw: 0, scanHz: 0,
-    bounce: 0, pop: 0.1, blinkMs: null, glanceYaw: 0, glanceMs: null,
-    gazeWeight: 0, shake: false, zzz: false, confetti: false,
-    exclaim: { dur: 1000, fade: 160 },
-    chain: { to: '20', hold: 1000 }
   }
 };
 

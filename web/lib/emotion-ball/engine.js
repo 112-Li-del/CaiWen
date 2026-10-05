@@ -44,6 +44,88 @@ const RIBBON_TILTS = [-0.95, -0.12, 0.72];   /* 三条轨道的基础倾角（�
 const MERIDIAN_BASE = 0.20;
 const MERIDIAN_GAIN = 0.45;
 
+/* ---------------- 轨道环（bloub「orbit」的六条 3D 环，逐字移植官方源码） ----------------
+ * 参数出自 bloub src/bot/decor.ts 的 RINGS，作者自述是对参考视频的实测值：
+ *   6 条环，半长轴 1.30~1.40 倍球半径（明显大于球），扁率 ≤0.45（轨道面被侧视），
+ *   长轴屏幕倾角六环均布再抖动，转速 3~3.7 圈/秒，弧段占比 0.6~0.85，
+ *   描边宽 0.05~0.062 倍球半径，颜色走完整色相轮（S55 L62 恒定亮度）+ 沿描边渐变。 */
+
+/* bloub 的 mulberry32：同种子 0xa11ce + 同样的取数顺序 → 生成与官方完全相同的六组参数 */
+function bloubRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* bloub 的色轮 wheel()：HSL → hex，六环铺满色相环、亮度恒定 */
+function ringHue(hue) {
+  const h = ((hue % 360) + 360) % 360;
+  const s = 0.55, l = 0.62;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+const RING_SEEDS = (() => {
+  const rng = bloubRng(0xa11ce);
+  return Array.from({ length: 6 }, (_, i) => ({
+    a: 1.3 + rng() * 0.1,                    /* 半长轴（球半径倍数） */
+    k: 0.05 + rng() * 0.4,                   /* 扁率 b/a */
+    tilt: (i / 6) * Math.PI + rng() * 0.5,   /* 长轴屏幕倾角（弧度） */
+    speed: 3 + rng() * 0.7,                  /* 圈/秒 */
+    phase: rng() * TAU,
+    sweep: 0.6 + rng() * 0.25,               /* 实际画的弧段占比 */
+    hue: (i * 360) / 6 + rng() * 30,
+    hueSpan: 60 + rng() * 60,                /* 沿描边的渐变色相跨度 */
+    width: 0.05 + rng() * 0.012,             /* 描边宽（球半径倍数） */
+    cx: 0, cy: 0.1
+  }));
+})();
+
+/* 3D 圆的正交投影（bloub decor.ts arcRender 原样移植）：
+ * 圆在 u（屏幕内）与 v（扎进深度）张成的平面里转，z<0 的半段是"球后"。
+ * 返回前/后两段 path——后段画在球身之下被遮挡，这是环读作"轨道"
+ * 而不是"贴纸"的关键；渐变沿长轴铺，首中尾三个色相停靠点。 */
+function arcRender(seed, t, scale) {
+  const spin = seed.phase + t * seed.speed * TAU;
+  const cu = Math.cos(seed.tilt), su = Math.sin(seed.tilt);
+  const kz = Math.sqrt(Math.max(0, 1 - seed.k * seed.k));
+  const N = 64, span = seed.sweep * TAU;
+  let front = '', back = '', prev = null;
+  for (let i = 0; i <= N; i++) {
+    const th = spin + (i / N) * span;
+    const ct = Math.cos(th), st = Math.sin(th);
+    const x = seed.a * (ct * cu + st * -su * seed.k) + seed.cx;
+    const y = seed.a * (ct * su + st * cu * seed.k) + seed.cy;
+    const z = seed.a * st * kz;
+    const behind = z < 0;
+    const sx = Math.round(x * scale * 100) / 100;
+    const sy = Math.round(y * scale * 100) / 100;
+    const cmd = behind !== prev ? 'M' : 'L';
+    if (behind) back += `${cmd}${sx} ${sy}`; else front += `${cmd}${sx} ${sy}`;
+    prev = behind;
+  }
+  const gx = Math.cos(seed.tilt) * seed.a * scale;
+  const gy = Math.sin(seed.tilt) * seed.a * scale;
+  return {
+    front, back,
+    width: seed.width * scale,
+    grad: {
+      x1: seed.cx * scale - gx, y1: seed.cy * scale - gy,
+      x2: seed.cx * scale + gx, y2: seed.cy * scale + gy,
+      stops: [ringHue(seed.hue), ringHue(seed.hue + seed.hueSpan * 0.5), ringHue(seed.hue + seed.hueSpan)]
+    }
+  };
+}
+
 let seq = 0;
 
 function el(tag, attrs, parent) {
@@ -205,21 +287,19 @@ export function create(container, opts = {}) {
        'L125.1 215.4 L125.7 217.5 L127.2 219.5 L126.5 221.8 Z'
   }, penMap);
 
-  /* 感叹（23）的感叹条："!"的上半截，锥形圆头；下面那颗点是缩小的球自己。
-   * 墨色（#73101F）——刚写完最后一个字，"!"是收笔的那一下墨迹。 */
-  const EX_TOP = CY - 64, EX_BOT = CY - 4, EX_MID = CY - 34;
-  const exBar = el('path', {
-    d: `M ${CX - 15} ${EX_TOP + 20} Q ${CX - 15} ${EX_TOP} ${CX} ${EX_TOP} ` +
-       `Q ${CX + 15} ${EX_TOP} ${CX + 15} ${EX_TOP + 20} ` +
-       `L ${CX + 8.5} ${EX_BOT - 8} Q ${CX + 8} ${EX_BOT} ${CX} ${EX_BOT} ` +
-       `Q ${CX - 8} ${EX_BOT} ${CX - 8.5} ${EX_BOT - 8} Z`,
-    fill: '#73101F', opacity: 0
-  }, svg);
-
   /* 彩带的"球后"层：画在球身之下，丝带绕到背面的弧段被球身自然遮挡，
    * 只在超出轮廓的两端露头——这是"环绕"而不是"贴在球上"的关键。
    * 每帧把 rig 的刚体 transform 同步给它，pop/弹跳时里外层不脱节。 */
   const ribbonBack = el('g', opts.glow !== false ? { filter: `url(#cw-glow-${n})` } : {}, svg);
+  /* 轨道环的"球后"层：bloub 的做法——环的 z<0 半段画在球身之下被遮挡，
+   * 只在轮廓外露头，环才读作"轨道"。整组透明度由 tick 驱动（渐显/淡出）。
+   * arcRender 输出的是以球心为原点、球半径为单位的坐标（官方 viewBox 原点
+   * 就在球心），这里必须平移到 (CX,CY)；渐变用 userSpaceOnUse，会随同组
+   * transform 一起平移。漏了这层平移，环会以画布左上角为中心——即"错位"。 */
+  const ringBackG = el('g', {
+    fill: 'none', 'stroke-linecap': 'round', opacity: 0,
+    transform: `translate(${CX} ${CY})`
+  }, svg);
   const rig = el('g', {}, svg);
   const clipped = el('g', { 'clip-path': `url(#cw-clip-${n})` }, rig);
   /* cw-hit：点击命中标记。宿主上层可能把 svg 整体 pointer-events:none（球叠在
@@ -257,6 +337,26 @@ export function create(container, opts = {}) {
   /* 彩带的"球前"层：最顶层，丝带在观众这一侧的弧段压在球脸上。
    * 两层都挂经线同款发光滤镜——丝带是"光带"，不是纸条 */
   const ribbonFront = el('g', opts.glow !== false ? { filter: `url(#cw-glow-${n})` } : {}, svg);
+
+  /* 轨道环（回答中）：6 条环 × 前/后两段 path + 沿长轴的渐变描边。
+   * 几何每帧按 arcRender 重算；渐变首中尾三个停靠点的颜色只依赖种子，建一次即可。
+   * 与 ringBackG 同样平移到球心（见上）。 */
+  const ringFrontG = el('g', {
+    fill: 'none', 'stroke-linecap': 'round', opacity: 0,
+    transform: `translate(${CX} ${CY})`
+  }, svg);
+  const ringEls = RING_SEEDS.map((seed, i) => {
+    const gid = `cw-ring-${n}-${i}`;
+    const g = el('linearGradient', { id: gid, gradientUnits: 'userSpaceOnUse' }, defs);
+    [0, 0.5, 1].forEach((off) =>
+      el('stop', { offset: off, 'stop-color': ringHue(seed.hue + seed.hueSpan * off) }, g));
+    const common = { stroke: `url(#${gid})`, fill: 'none', 'stroke-linecap': 'round' };
+    return {
+      grad: g,
+      back: el('path', common, ringBackG),
+      front: el('path', common, ringFrontG)
+    };
+  });
 
   /* 眼睛：五种字形共存，靠透明度交叉淡入 */
   function buildEye(sign) {
@@ -339,11 +439,12 @@ export function create(container, opts = {}) {
   let zzzNext = 0;
   let bookK = 0;             /* 道具书的显示浓度（approach 渐显渐隐） */
   let penK = 0;              /* 钢笔（书写）的显示浓度——approach 让外部切走时渐隐收场 */
-  let exK = 0;               /* 感叹条（"!"上半截）的显示浓度 */
   let particles = [];
   /* 点球转体：twirl = { t0, dir }，dir ∈ {+1,-1} 随机（顺/逆时针） */
   let twirl = null;
   let ribbons = [];
+  let ringVis = 0;              /* 轨道环整组可见度：进入 0.8s 渐显，离开淡出 */
+  let ringT = 0;                /* 环相位用的状态年龄：离开状态时冻结，环原地淡出 */
   let destroyed = false;
   const listeners = { change: [], error: [] };
 
@@ -752,9 +853,9 @@ export function create(container, opts = {}) {
       dotsK = pulseAmount(ph, fade, dur, fade);
     }
 
-    /* 0.47) 书写（13）/ 感叹（23）的显示脉冲。和 dots 一样用"进入状态多久"
-     *       算相位（都是一次性过门，不循环）；下游再用 approach 追这个脉冲，
-     *       外部切走时是渐隐收场而不是"啪"地消失。 */
+    /* 0.47) 书写（13）的显示脉冲。和 dots 一样用"进入状态多久"算相位（都是一次性
+     *       过门，不循环）；下游再用 approach 追这个脉冲，外部切走时是渐隐收场
+     *       而不是"啪"地消失。 */
     const penCfg = target.pen;
     let penPulse = 0;
     if (penCfg) {
@@ -762,15 +863,8 @@ export function create(container, opts = {}) {
       const fade = (penCfg.fade != null ? penCfg.fade : 300) / 1000;
       penPulse = pulseAmount(age, 0, dur, fade);
     }
-    const exCfg = target.exclaim;
-    let exPulse = 0;
-    if (exCfg) {
-      const dur = (exCfg.dur || 1000) / 1000;
-      const fade = (exCfg.fade != null ? exCfg.fade : 160) / 1000;
-      exPulse = pulseAmount(age, 0, dur, fade);
-    }
-    /* 脸（眼睛/经线/影子）的可见度：三种"球让位"的过门取最深的那个 */
-    const faceK = 1 - Math.max(dotsK, penK, exK);
+    /* 脸（眼睛/经线/影子）的可见度：两种"球让位"的过门取最深的那个 */
+    const faceK = 1 - Math.max(dotsK, penK);
 
     /* 0.46) 思考链（10 → 11）：dots 播完再琢磨 chain.hold 毫秒，模型还没开始输出
      *        就自动接上「翻知识库」——一直干坐着思考不像在找答案。
@@ -910,11 +1004,18 @@ export function create(container, opts = {}) {
     bodyPath.setAttribute('d', d);
     clipPath.setAttribute('d', d);
 
-    /* 3) 经纬线自转
+    /* 3) 经纬线自转（轨道状态也保持慢速漂移，不接管为全速自转）
      *    cos 决定这条经线此刻被压得多窄（正对观众时最宽、侧对时收成一条线），
      *    sin 的符号区分它在球的正面还是背面——背面压暗一半，转动才有"绕过去"的立体感，
-     *    否则四条线亮度一样，看起来只是在原地缩放。 */
-    if (!twirl) meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
+     *    否则四条线亮度一样，看起来只是在原地缩放。
+     *    对齐 bloub orbit（states.ts）：官方的球是素圆，轮廓旋转本身不可见，
+     *    "转起来"完全由快速旋转的轨道环 + 眼睛绕球面滑行传达，球面并不转。
+     *    我们的四条经线等距 45°，全速自转时图案每 45° 自重合，只会看到各条线
+     *    轮流宽窄的"脉动"而不是连贯自转（旧版 1.25 圈/秒接管即此问题）。
+     *    故 orbit 期间球面维持平时的慢速漂移，旋转交给环和眼睛。 */
+    if (!twirl) {
+      meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
+    }
     /* 省略号/书写/感叹阶段整组经线淡出：发光线缩在让位的球上是噪点 */
     meridianLayer.setAttribute('opacity', faceK.toFixed(3));
     meridians.forEach((m, i) => {
@@ -952,11 +1053,19 @@ export function create(container, opts = {}) {
       wanderPitch = loopNoise(ty, wb.periods, 2.1) * (wb.ampPitch != null ? wb.ampPitch : (wb.amp || 0) * 0.6) * fade;
     }
 
+    /* 轨道状态：眼睛绕球面滑行（bloub states.ts 的 gaze：yaw = sin(t*6.5)*65°，
+     * "les yeux filent autour de la sphere"——比轮廓旋转快约 3 倍的节奏，
+     * 是 orbit"转起来"的主要读字；滑到侧面时 projectEye 自带透视压缩）。 */
+    const orbitGaze = target.orbit
+      ? Math.sin(age * (target.orbit.gazeHz || 6.5)) * (target.orbit.gazeAmp || 65) * Math.PI / 180
+      : 0;
+
     const headYaw = cur.yaw
       + spinYaw
       + gazeX * 0.5 * gazeW
       + glanceCur
       + wanderYaw
+      + orbitGaze
       + Math.sin((now / 1000) * (cur.scanHz || 0) * TAU) * cur.scanYaw
       + Math.sin((now / 1000) * (cur.driftHz || 0) * TAU) * cur.driftYaw;
     /* 视线符号映射（易错点，别随手改符号）：
@@ -1043,8 +1152,41 @@ export function create(container, opts = {}) {
       p.node.setAttribute('opacity', (p.text ? k * 0.9 : Math.min(1, k * 2)).toFixed(3));
     }
 
-    /* 9.5) 彩带轨道（点球触发的环绕特效） */
+    /* 9.5) 彩带轨道（点球/完成触发的环绕特效；轨道状态改用 9.6 的环） */
     updateRibbons(dt);
+
+    /* 9.6) 轨道环（bloub orbit 的六条 3D 环）
+     * 进入：0.8s 整组渐显（bloub 的 fade = clamp(t/0.8)），每环再错峰
+     * 0.13s/0.3s 进场（官方 stagger）；离开：相位冻结、整组淡出。
+     * 几何/渐变逐帧按 arcRender 重算（64 采样，前后分段）。 */
+    if (target.orbit) {
+      ringVis = Math.min(1, age / 0.8);
+      ringT = age;
+    } else if (ringVis > 0) {
+      ringVis = approach(ringVis, 0, 6, dt);
+    }
+    if (ringVis > 0.001) {
+      ringBackG.setAttribute('opacity', ringVis.toFixed(3));
+      ringFrontG.setAttribute('opacity', ringVis.toFixed(3));
+      RING_SEEDS.forEach((seed, i) => {
+        const r = arcRender(seed, ringT, R);
+        const stagger = clamp((ringT - i * 0.13) / 0.3, 0, 1);
+        const e = ringEls[i];
+        e.back.setAttribute('d', r.back);
+        e.front.setAttribute('d', r.front);
+        e.back.setAttribute('stroke-width', r.width.toFixed(2));
+        e.front.setAttribute('stroke-width', r.width.toFixed(2));
+        e.back.setAttribute('opacity', stagger.toFixed(3));
+        e.front.setAttribute('opacity', stagger.toFixed(3));
+        e.grad.setAttribute('x1', r.grad.x1.toFixed(2));
+        e.grad.setAttribute('y1', r.grad.y1.toFixed(2));
+        e.grad.setAttribute('x2', r.grad.x2.toFixed(2));
+        e.grad.setAttribute('y2', r.grad.y2.toFixed(2));
+      });
+    } else if (ringBackG.getAttribute('opacity') !== '0') {
+      ringBackG.setAttribute('opacity', '0');
+      ringFrontG.setAttribute('opacity', '0');
+    }
 
     /* 10) 刚体：pop / 弹跳 / 抖动 / 完成时的转体（点球转身不走这里，
      *     它是 yaw 层的球面旋转——rig 的 2D rotate 会把眼睛翻倒，不符合"地球自转"） */
@@ -1052,6 +1194,9 @@ export function create(container, opts = {}) {
     const bounceY = -Math.abs(Math.sin(now / 280)) * 5 * cur.bounce;
     const shakeX = target.shake ? Math.sin(now * 0.045) * 2.6 : 0;
     const confettiSpin = target.confetti ? 360 * (age < 0.9 ? (1 - Math.pow(1 - Math.min(1, age / 0.9), 3)) : 1) : 0;
+    /* 注意：轨道（12）的"自转"不走 rig 的 2D rotate——那会把眼睛翻倒，
+     * 而 bloub 的 orbit 里眼睛从不翻转，是贴着球面滑行的。我们的自转 =
+     * 经线全速转（见 3)）+ 眼睛滑行（见 4)），球体看得到在转、脸始终朝前。 */
 
     /* 入场弹跳（hop）：像拍篮球——先弹起来，再一跳比一跳矮地连弹几下。
      * ① 高度用抛物线 4f(1-f) 而不是 |sin|：正弦的上升段太"飘"，抛物线才是重力下的轨迹；
@@ -1080,16 +1225,13 @@ export function create(container, opts = {}) {
     /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
      * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
     const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
-    /* 收身的三种过门共用一个前置变换：省略号缩到 20%、书写直接缩没（让位给
-     * 钢笔），感叹缩到 17% 并挪到感叹号的点位——缩成的那颗小球就是"!"的点。 */
+    /* 收身的两种过门共用一个前置变换：省略号缩到 20%（中间那颗点就是球自己）、
+     * 书写直接缩没——钢笔是道具层画的，球得整颗让位。 */
     let preT = '';
     const hideK = Math.max(dotsK * 0.8, penK);
     if (hideK > 0.001) {
       const s = Math.max(0, 1 - hideK);
       preT = `translate(${CX} ${CY}) scale(${s.toFixed(3)}) translate(${-CX} ${-CY}) `;
-    } else if (exK > 0.001) {
-      const s = lerp(1, 0.17, exK);
-      preT = `translate(${CX} ${CY + 34}) scale(${s.toFixed(3)}) translate(${-CX} ${-(CY + 34)})`;
     }
     rig.setAttribute('transform', preT + rigT);
     ribbonBack.setAttribute('transform', preT + rigT);   /* 球后彩带层与球身同步运动 */
@@ -1125,15 +1267,6 @@ export function create(container, opts = {}) {
       const wig = Math.sin(now * 0.02) * 1.6;
       penMove.setAttribute('transform',
         `translate(${px.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
-    }
-    /* 感叹（23）：感叹条 outBack 弹出（50% → 100% 带过冲），球的缩身由上面
-     * 的 preT 负责。exK 同样 approach——1s 后链切 20，彩带接住收场。 */
-    exK = approach(exK, exPulse, 16, dt);
-    exBar.setAttribute('opacity', exK.toFixed(3));
-    if (exK > 0.004) {
-      const s = 0.5 + 0.5 * easings.outBack(clamp(age / 0.32, 0, 1));
-      exBar.setAttribute('transform',
-        `translate(${CX} ${EX_MID}) scale(${s.toFixed(3)}) translate(${-CX} ${-EX_MID})`);
     }
     if (bookK > 0.01) {
       /* 跟呼吸同频的一点点浮动，书不是钉死的 */

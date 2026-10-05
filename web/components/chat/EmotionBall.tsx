@@ -22,7 +22,7 @@ import { create as createBall } from "@/lib/emotion-ball/engine";
 export type EmotionId =
   | "00" | "01" | "02" | "03"
   | "10" | "11" | "12" | "13"
-  | "20" | "23";
+  | "20";
 
 /** 引擎实例句柄（只用到这俩方法，多余的不暴露） */
 interface BallHandle {

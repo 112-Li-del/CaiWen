@@ -1,18 +1,15 @@
 /* ============================================================
- * 书写（13）与感叹（23）：两条过门动作
+ * 书写（13）：检索完到回答中之间的过门动作
  * ------------------------------------------------------------
  * 流程：检索完（11）→ 13 钢笔写字 2.4s → 12 回答中（大圆眼）
- *       → 回答完 → 23 感叹号 1s → 20 完成（彩带）。
- * 锁六件事：
+ *       → 回答完直接 → 20 完成（彩带）。（感叹过门 23 已退役。）
+ * 锁四件事：
  *   1. 13：球缩没（rig scale→0）、钢笔显形；走位是"划过去一行再回中间"
  *      （x 越过中点到行尾后收回 CX），且不留墨迹（DOM 里没有墨线）。
  *   2. 13：2.4s 后自动接「回答中」（12），钢笔渐隐收场（opacity→0）。
- *   3. 23：球缩成"!"的点（rig 挂 translate(100 139) scale(0.17x)），
- *      感叹条弹出（opacity→1，且带 outBack 的放大）。
- *   4. 23：1s 后自动接「完成」（20）。
- *   5. 契约：12 右眼是大圆眼（w==h 且大于左眼）；13 带 pen、23 带 exclaim；
- *      不许再出现 notif（徽章方案已废弃）。
- *   6. 待机（01）没有笔、没有感叹条、球不缩。
+ *   3. 契约：12 右眼是大圆眼（w==h 且大于左眼）；13 带 pen；
+ *      不许再出现 notif / exclaim（徽章、感叹方案已废弃）。
+ *   4. 待机（01）没有笔、球不缩。
  * ============================================================ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,8 +28,6 @@ const penGOf = (host) => { const nib = nibOf(host); return nib && nib.parent.par
 /** 走位组 = 扇贝点的祖父（penTilt → penMove），transform 是每帧更新的 translate+rotate */
 const moveOf = (host) => { const nib = nibOf(host); return nib && nib.parent.parent; };
 const moveXOf = (host) => parseFloat(moveOf(host).attrs.transform.match(/translate\(([\d.-]+) /)[1]);
-/** 感叹条：fill #73101F 且路径用 Q 段（笔尖扇贝点是 smoothClosedPath 的 C 段，不撞） */
-const exBarOf = (host) => walk(host).find((n) => n.tag === 'path' && n.attrs.fill === '#73101F' && (n.attrs.d || '').includes('Q '));
 const opacity = (n) => parseFloat(n.attrs.opacity);
 
 test('书写（13）：球缩没、钢笔显形，划过去一行再回到中间（不留墨迹）', async () => {
@@ -100,63 +95,27 @@ test('书写（13）：2.4s 后自动接回答中（12），钢笔渐隐收场',
   ball.destroy();
 });
 
-test('感叹（23）：球缩成"!"的点，感叹条弹出；1s 后接完成（20）', async () => {
-  const pump = installFakeDom();
-  const { create } = await import('../src/engine.js');
-  const host = node('div');
-  const ball = create(host, {});
-  ball.setEmotion('23');
-
-  STEPS(pump, 30);                                    /* ≈0.5s，感叹已立起来 */
-  const bar = exBarOf(host);
-  assert.ok(bar, '感叹时应该有感叹条');
-  assert.ok(opacity(bar) > 0.5, `感叹条应已显形：${bar.attrs.opacity}`);
-
-  /* 从头重进一次采样弹出曲线：outBack 中途应有过冲（scale > 1），
-   * 收在 1 附近——死板的淡入（峰值 ≤1）或停在峰值都不合格 */
-  ball.setEmotion('01');
-  STEPS(pump, 30);                                    /* 让旧状态彻底收场 */
-  ball.setEmotion('23');
-  let peak = 0;
-  for (let i = 0; i < 24; i++) {                      /* ≈0.38s，覆盖 0.32s 的弹出 */
-    pump.step(16);
-    const m = bar.attrs.transform.match(/scale\(([\d.]+)\)/);
-    if (m) peak = Math.max(peak, parseFloat(m[1]));
-  }
-  assert.ok(peak > 1.02, `感叹条弹出应带过冲：峰值 ${peak.toFixed(3)}`);
-  STEPS(pump, 10);
-  const rest = parseFloat(bar.attrs.transform.match(/scale\(([\d.]+)\)/)[1]);
-  assert.ok(Math.abs(rest - 1) < 0.02, `弹出后应落回 1：${rest.toFixed(3)}`);
-
-  const rig = rigOf(host).attrs.transform;
-  assert.ok(/translate\(100 139\) scale\(0\.1/.test(rig),
-    `球应缩成 17% 并挪到感叹号的点位：${rig.slice(0, 70)}`);
-
-  STEPS(pump, 40);                                    /* ≈1.1s，越过 1s 的链触发点 */
-  assert.equal(ball.emotion, '20', '1s 后应自动接「完成」');
-  ball.destroy();
-});
-
-test('契约：12 大圆眼、13 带笔、23 带感叹，且徽章方案不许回来', async () => {
+test('契约：12 两只等大窄长胶囊眼 + 轨道环/眼睛滑行、13 带笔，且徽章/感叹方案不许回来', async () => {
   const { STATES } = await import('../src/states.js');
   const s12 = STATES['12'];
-  assert.equal(s12.eyeR.w, s12.eyeR.h, '右眼应是圆（w==h）');
-  assert.ok(s12.eyeR.w > s12.eyeL.w, '右眼应比左眼大（目标图就是大小眼）');
-  assert.ok(s12.eyeR.w >= 28, `右眼要够大（目标图的大圆眼）：${s12.eyeR.w}`);
+  /* 对齐 bloub orbit（states.ts pair(0.18, 0.34~0.41)）：两只等大的窄长胶囊，
+   * 不再是大小眼；按 R=78 折算约 14×30。 */
+  assert.equal(s12.eyeL.w, s12.eyeR.w, '左右眼应等宽');
+  assert.equal(s12.eyeL.h, s12.eyeR.h, '左右眼应等高');
+  assert.ok(s12.eyeL.h > s12.eyeL.w * 1.8, `眼睛应是窄长胶囊：${s12.eyeL.w}×${s12.eyeL.h}`);
+  assert.ok(s12.orbit && s12.orbit.gazeHz === 6.5 && s12.orbit.gazeAmp === 65,
+    '回答中应带 bloub 实测的眼睛滑行契约（6.5 rad/s、±65°）');
+  assert.equal(s12.orbit.spin, undefined, '球面不再全速自转（旋转交给轨道环与眼睛）');
 
   const s13 = STATES['13'];
   assert.equal(s13.chain.to, '12', '书写完应接回答中');
   assert.equal(s13.chain.hold, 2400, '书写 2.4s');
   assert.ok(s13.pen && s13.pen.dur === 2400, '应带 pen 契约且与链对齐');
   assert.ok(!('notif' in s13), '徽章方案已废弃，不许回来');
-
-  const s23 = STATES['23'];
-  assert.equal(s23.chain.to, '20', '感叹完应接完成');
-  assert.equal(s23.chain.hold, 1000, '感叹 1s');
-  assert.ok(s23.exclaim && s23.exclaim.dur === 1000, '应带 exclaim 契约');
+  assert.ok(!('exclaim' in s13) && !('23' in STATES), '感叹方案已退役，不许回来');
 });
 
-test('待机（01）：没有笔、没有感叹条、球不缩', async () => {
+test('待机（01）：没有笔、球不缩', async () => {
   const pump = installFakeDom();
   const { create } = await import('../src/engine.js');
   const host = node('div');
@@ -164,7 +123,6 @@ test('待机（01）：没有笔、没有感叹条、球不缩', async () => {
   ball.setEmotion('01');
   STEPS(pump, 60);
   assert.ok(opacity(penGOf(host)) < 0.02, '待机不该有钢笔');
-  assert.ok(opacity(exBarOf(host)) < 0.02, '待机不该有感叹条');
   assert.ok(!/scale\(0\./.test(rigOf(host).attrs.transform), '待机球不该缩');
   ball.destroy();
 });

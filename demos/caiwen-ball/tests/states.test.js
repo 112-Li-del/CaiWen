@@ -72,8 +72,13 @@ test('emotionId 分段符合对外契约', () => {
 });
 
 test('每个表情都带中文提示文案', () => {
+  /* 13（书写）是钢笔过门动作：球缩没、原地写一行字，刻意不配提示文案——
+   * 用户要求"书写下面不要字"，所以 tip 留空、typeline 连光标都不显示。 */
+  const textless = new Set(['13']);
   for (const key of ids) {
-    assert.ok(typeof STATES[key].tip === 'string' && STATES[key].tip.length > 0, `${key} 缺 tip`);
+    if (!textless.has(key)) {
+      assert.ok(typeof STATES[key].tip === 'string' && STATES[key].tip.length > 0, `${key} 缺 tip`);
+    }
     assert.ok(typeof STATES[key].name === 'string' && STATES[key].name.length > 0, `${key} 缺 name`);
   }
 });
