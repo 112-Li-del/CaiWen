@@ -20,8 +20,8 @@ const rigOf = (host) => walk(host).find((n) => n.tag === 'g' && /translate\(100 
 const shadowOf = (host) => walk(host).find((n) => n.tag === 'ellipse' && n.attrs.cy === '188');
 /** 思考旁点：fill #8E1424 的 circle */
 const sideDots = (host) => walk(host).filter((n) => n.tag === 'circle' && n.attrs.fill === '#8E1424');
-/** 书组：transform 带 rotate(-8) 的 g */
-const bookOf = (host) => walk(host).find((n) => n.tag === 'g' && (n.attrs.transform || '').includes('rotate(-8)'));
+/** 书组：transform 带 rotate(-5) 的 g */
+const bookOf = (host) => walk(host).find((n) => n.tag === 'g' && (n.attrs.transform || '').includes('rotate(-5)'));
 /** 左眼宿主 g：眼 rect(#FFF6DC) → inner(g) → eye.g(带 translate transform) */
 const leftEyeG = (host) => {
   const r = walk(host).find((n) => n.tag === 'rect' && n.attrs.fill === '#FFF6DC');
@@ -69,13 +69,23 @@ test('检索（11）：左下角一本打开的书渐显，眼睛真的沿书页
   assert.ok(parseFloat(book.attrs.opacity) > 0.9, `书应渐显到位：${book.attrs.opacity}`);
   const pages = walk(book).filter((n) => n.tag === 'path' && n.attrs.stroke === '#73101F');
   assert.ok(pages.length >= 3, `书应有左右两页 + 中缝（现 ${pages.length} 条 path）`);
+  /* 重做后的书：酒红硬皮封面（无描边的填色 path）+ 一张会翻的书页（嵌套 g） */
+  const covers = walk(book).filter((n) => n.tag === 'path' && n.attrs.fill === '#73101F' && !n.attrs.stroke);
+  assert.ok(covers.length >= 2, `应有左右两片酒红封面（现 ${covers.length}）`);
+  const innerGroups = walk(book).filter((n) => n.tag === 'g');
+  assert.ok(innerGroups.length >= 2, `应有内层组 + 翻页组（现 ${innerGroups.length} 个 g）`);
+  /* 书要捧在身前（在球身之上）：bookG 应是 svg 的最后一个子节点 */
+  const svg = book.parent;
+  assert.equal(svg.children[svg.children.length - 1], book, '书应在最前景层（身前）');
 
   /* 眼睛在书上左右来回看：headYaw 是正弦摆，单点采样会撞上相位近似相等的位置
-   * （实测两次只差 1.5px），所以在 2.5s 窗口里扫出落点范围，摆幅必须明显。 */
+   * （实测两次只差 1.5px），所以在 2.5s 窗口里扫出落点范围。
+   * 扫幅刻意收小（scanYaw 0.22→0.1）：扫大了球面透视会把靠边那只眼压窄 20%，
+   * 两眼就不对称了（用户参考图是两只等大胶囊）。阈值从 12 降到 7。 */
   const xs = [];
   for (let i = 0; i < 156; i++) { pump.step(16); xs.push(translateX(leftEyeG(host))); }
   const span = Math.max(...xs) - Math.min(...xs);
-  assert.ok(span > 12, `眼睛应左右扫视：2.5s 内落点范围只有 ${span.toFixed(1)}px，像在摆拍`);
+  assert.ok(span > 7, `眼睛应左右扫视：2.5s 内落点范围只有 ${span.toFixed(1)}px，像在摆拍`);
 
   /* 切回待机，书要收起来 */
   ball.setEmotion('01');

@@ -215,10 +215,22 @@ test('思考（10）：省略号只播一次 + 思考链接翻书 + 歪头大小
   assert.ok(s.tilt > 8, '两眼应整体歪着（tilt > 8）');
 });
 
-test('检索（11）：低头看书 + 左右扫视 + 带道具书', () => {
+test('检索（11）：对称胶囊眼看向左下角的书（参考图水平镜像）+ 带道具书', () => {
   const s = STATES['11'];
   assert.equal(s.book, true, '检索应带道具书');
-  assert.ok(s.pitch < -0.2, `眼位应压低看向书（pitch=${s.pitch}）`);
-  assert.ok(s.scanYaw > 0.2 && s.scanHz > 0, '应沿书页左右来回扫视');
+  assert.ok(s.pitch < -0.35, `眼位应压低看向书（pitch=${s.pitch}）`);
+  assert.ok(s.yaw < -0.15 && s.yaw > -0.3, `视线偏左但别太大——yaw 大了两眼透视一宽一窄（yaw=${s.yaw}）`);
+  assert.ok(s.scanYaw > 0 && s.scanYaw <= 0.15 && s.scanHz > 0, '扫视只留一点当活气，大了会破坏对称');
+  /* 参考图（往右下看）水平镜像成往左下看：
+   * "/"(+13°) 翻成 "\\"(tilt -14)；右眼低翻成**左眼低**（dy ±5，参考图高差 ≈0.12R）；
+   * 两眼**等大**（对称的核心），单眼只许动 dy、不许动 w/h。 */
+  assert.ok(s.w >= 22 && s.h >= 55, `眼睛要够大：${s.w}×${s.h}`);
+  assert.ok(s.tilt < -8, `两眼应平行"\\\\"倾（镜像后）：tilt=${s.tilt}`);
+  assert.ok(s.eyeL && s.eyeR, '应有单眼覆盖（左右眼高低差）');
+  assert.equal(s.eyeL.w, s.eyeR.w && s.w, '左右眼等宽');
+  assert.equal(s.eyeL.h, s.eyeR.h, '左右眼等高');
+  assert.ok(s.eyeL.dy > 0 && s.eyeR.dy < 0, '左眼低（dy 正）、右眼高（dy 负）——镜像参考图');
+  assert.ok(!s.eyeL.tilt && !s.eyeR.tilt, '单眼不加倾角，平行倾斜走全局 tilt');
+  assert.equal(s.gazeWeight, 0, '视线锁死在书上，不跟鼠标');
 });
 

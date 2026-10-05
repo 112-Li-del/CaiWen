@@ -15,8 +15,8 @@ import { node, walk, installFakeDom } from './fakedom.js';
 const STEPS = (pump, frames) => { for (let i = 0; i < frames; i++) pump.step(16); };
 /** rig 组：刚体变换每帧都带 `translate(100 105) rotate(`（CX CY 是球心，写死在引擎里） */
 const rigOf = (host) => walk(host).find((n) => n.tag === 'g' && /translate\(100 105\) rotate\(/.test(n.attrs.transform || ''));
-/** 书组：transform 带 rotate(-8) 的 g（引擎常驻，靠 opacity 收放） */
-const bookOf = (host) => walk(host).find((n) => n.tag === 'g' && (n.attrs.transform || '').includes('rotate(-8)'));
+/** 书组：transform 带 rotate(-5) 的 g（引擎常驻，靠 opacity 收放） */
+const bookOf = (host) => walk(host).find((n) => n.tag === 'g' && (n.attrs.transform || '').includes('rotate(-5)'));
 /** 是否处于"缩成点"阶段 */
 const isDot = (host) => /scale\(0\./.test(rigOf(host).attrs.transform);
 

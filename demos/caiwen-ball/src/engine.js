@@ -157,7 +157,8 @@ function eyeBlend(a, b, k) {
   return {
     shape: k < 0.5 ? a.shape : b.shape,
     w: lerp(a.w, b.w, k), h: lerp(a.h, b.h, k),
-    dy: lerp(a.dy || 0, b.dy || 0, k)
+    dy: lerp(a.dy || 0, b.dy || 0, k),
+    tilt: lerp(a.tilt || 0, b.tilt || 0, k)
   };
 }
 
@@ -231,21 +232,52 @@ export function create(container, opts = {}) {
     return c;
   });
 
-  /* 检索的道具书：一本摊开的书垫在左下角，检索时眼睛沿书页左右扫。
-   * 书是刚性道具，不进 rig（不跟着 pop/挤压），只带一点点呼吸浮动。 */
+  /* 检索的道具书：一本摊开的书捧在身前下方（参考"熊猫捧书"：书贴着下半身
+   * 居中、略偏左，脸从书页上方往下看），检索时眼睛沿书页左右扫。
+   * 书是刚性道具，不进 rig（不跟着 pop/挤压），只带一点点呼吸浮动。
+   * 结构（从下往上）：酒红硬皮封面 → 两页奶油色内页 → 书脊中缝与内侧阴影
+   * → 每页三行文字 → 一张周期性翻过书脊的书页。组原点 = 书脊底部中点。
+   * bookG 在所有图层建好后 appendChild 到最前（要"捧在身前"，压在球身上）。 */
   const bookG = el('g', { opacity: 0 }, svg);
   const bookInner = el('g', {}, bookG);
-  const BOOK_POS = `translate(${CX - 58} ${CY + 62}) rotate(-8)`;
+  /* 书在左下角（视线落点）：CX-34 / CY+90 / scale 0.92。
+   * 位置约束是夹出来的：书的上缘（CY+90-31*0.92≈CY+61）必须在眼睛下端
+   * （≈CY+60）之下——否则盖住左眼下截，两眼看成一长一短；书的下缘
+   * （≈CY+94）又不能超出 viewBox 太多——否则压到 svg 底下的台词文字。
+   * rotate(-5) 别动——chain.test.js 靠这个字符串找书。 */
+  const BOOK_POS = `translate(${CX - 34} ${CY + 90}) rotate(-5) scale(0.92)`;
   bookG.setAttribute('transform', BOOK_POS);
-  const bookPage = (d) => el('path', {
-    d, fill: '#FFF6DC', stroke: '#73101F', 'stroke-width': 2, 'stroke-linejoin': 'round'
-  }, bookInner);
-  bookPage('M -34 -10 Q -17 -17 0 -9 L 0 14 Q -17 8 -34 14 Z');
-  bookPage('M 34 -10 Q 17 -17 0 -9 L 0 14 Q 17 8 34 14 Z');
-  el('path', {
-    d: 'M 0 -9 L 0 14', fill: 'none', stroke: '#73101F',
-    'stroke-width': 2, 'stroke-linecap': 'round'
-  }, bookInner);
+  const BOOK_INK = '#73101F';
+  const BOOK_CREAM = '#FFF6DC';
+  /* 封面：比内页大一圈的酒红硬皮，外缘圆角 */
+  el('path', { d: 'M 0 -31 L -37 -31 Q -42 -31 -42 -26 L -42 -1 Q -42 4 -37 4 L 0 4 Z', fill: BOOK_INK }, bookInner);
+  el('path', { d: 'M 0 -31 L 37 -31 Q 42 -31 42 -26 L 42 -1 Q 42 4 37 4 L 0 4 Z', fill: BOOK_INK }, bookInner);
+  /* 内页 */
+  const bookPageL = 'M 0 -29 L -35 -29 Q -39 -29 -39 -25 L -39 -2 Q -39 1 -35 1 L 0 1 Z';
+  const bookPageR = 'M 0 -29 L 35 -29 Q 39 -29 39 -25 L 39 -2 Q 39 1 35 1 L 0 1 Z';
+  el('path', { d: bookPageL, fill: BOOK_CREAM, stroke: BOOK_INK, 'stroke-width': 1.4, 'stroke-linejoin': 'round' }, bookInner);
+  el('path', { d: bookPageR, fill: BOOK_CREAM, stroke: BOOK_INK, 'stroke-width': 1.4, 'stroke-linejoin': 'round' }, bookInner);
+  /* 书脊：中缝线 + 内侧弧形阴影 */
+  el('path', { d: 'M 0 -29 Q -2.4 -14 0 1', fill: 'none', stroke: BOOK_INK, 'stroke-width': 1.2, opacity: 0.35 }, bookInner);
+  el('line', { x1: 0, y1: -29, x2: 0, y2: 1, stroke: BOOK_INK, 'stroke-width': 1.6, 'stroke-linecap': 'round' }, bookInner);
+  /* 文字行：每页三行，最下面一行短一点（段落收尾） */
+  [-20, -12, -4].forEach((y, i) => {
+    const end = i === 2 ? 24 : 31;
+    el('line', { x1: 6, y1: y, x2: end, y2: y, stroke: BOOK_INK, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: 0.3 }, bookInner);
+    el('line', { x1: -6, y1: y, x2: -end, y2: y, stroke: BOOK_INK, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: 0.3 }, bookInner);
+  });
+  /* 翻动的书页：形状同右内页，翻页时绕书脊 scaleX 1→-1 落到左页；
+   * flipShade 是随掀起程度变浓的弧形阴影。 */
+  const bookFlip = el('g', { opacity: 0 }, bookInner);
+  el('path', { d: bookPageR, fill: BOOK_CREAM, stroke: BOOK_INK, 'stroke-width': 1.4, 'stroke-linejoin': 'round' }, bookFlip);
+  const flipShade = el('path', { d: bookPageR, fill: BOOK_INK, opacity: 0 }, bookFlip);
+  /* 翻动页上也带文字行，坐标与右页一致：起始（scaleX=1）与右页完全重合，
+   * 翻过书脊（scaleX=-1）后镜像成左页行、与左页完全重合——两端都无跳变，
+   * 不会出现"右页文字被空白页盖住"或"书页一藏文字行突然冒回来"。 */
+  [-20, -12, -4].forEach((y, i) => {
+    const end = i === 2 ? 24 : 31;
+    el('line', { x1: 6, y1: y, x2: end, y2: y, stroke: BOOK_INK, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: 0.3 }, bookFlip);
+  });
 
   /* 书写（13）的钢笔：形状照用户给的还原稿（原图 246×280 逐点采样）——
    *   笔杆 = 一根圆角粗条，中心线倾角约 17.7°（上端向右），粗 52，圆头靠
@@ -357,6 +389,8 @@ export function create(container, opts = {}) {
       front: el('path', common, ringFrontG)
     };
   });
+  /* 道具书移到最前：捧在球身前面（眼睛在 rig 内、书页位置更低，不遮挡） */
+  svg.appendChild(bookG);
 
   /* 眼睛：五种字形共存，靠透明度交叉淡入 */
   function buildEye(sign) {
@@ -379,7 +413,7 @@ export function create(container, opts = {}) {
     nodes.cross = cg;
     const alpha = {};
     SHAPES.forEach((s) => { alpha[s] = s === 'normal' ? 1 : 0; });
-    return { g, inner, nodes, sign, alpha, w: 20, h: 26, dy: 0, visible: true };
+    return { g, inner, nodes, sign, alpha, w: 20, h: 26, dy: 0, tilt: 0, visible: true };
   }
   const eyes = [buildEye(-1), buildEye(1)];
 
@@ -960,13 +994,14 @@ export function create(container, opts = {}) {
       let tc = eyeTargets[i];
       if (micro && microK > 0.5) {
         if (micro.wink && microSide === i) {
-          tc = { shape: 'closed', w: Math.max(tc.w, (micro.w || tc.w) * 1.15), h: tc.h, dy: tc.dy };
+          tc = { shape: 'closed', w: Math.max(tc.w, (micro.w || tc.w) * 1.15), h: tc.h, dy: tc.dy, tilt: tc.tilt };
         } else {
           tc = {
             shape: micro.shape || tc.shape,
             w: micro.w != null ? micro.w : tc.w,
             h: micro.h != null ? micro.h : tc.h,
-            dy: tc.dy
+            dy: tc.dy,
+            tilt: tc.tilt
           };
         }
       }
@@ -974,6 +1009,7 @@ export function create(container, opts = {}) {
       eye.w = approach(eye.w, tc.w, 9, dt);
       eye.h = approach(eye.h, tc.h, 9, dt);
       eye.dy = approach(eye.dy, tc.dy || 0, 9, dt);
+      eye.tilt = approach(eye.tilt, tc.tilt || 0, 9, dt);
     }
 
     /* 2) 身形：低频调和形变（连续半径函数，天然光滑，无圆包络的扇贝纹）。
@@ -1100,7 +1136,7 @@ export function create(container, opts = {}) {
       eye.g.setAttribute('opacity', p.visible ? faceK.toFixed(3) : '0');
       if (!p.visible) continue;
       eye.g.setAttribute('transform',
-        `translate(${fixed.x.toFixed(2)} ${(fixed.y + eye.dy).toFixed(2)}) rotate(${cur.tilt.toFixed(2)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`);
+        `translate(${fixed.x.toFixed(2)} ${(fixed.y + eye.dy).toFixed(2)}) rotate(${(cur.tilt + eye.tilt).toFixed(2)}) scale(${p.sx.toFixed(3)} ${p.sy.toFixed(3)})`);
       /* open 的纵向压缩只作用于矩形类眼形（normal/wide）。
        * 描边类眼形（happy 笑弧 / closed 闭眼线 / cross 叉）一旦被非均匀 scale，
        * 描边粗细会被一起压掉——睡眠那条闭眼线就是这样消失的。 */
@@ -1269,9 +1305,23 @@ export function create(container, opts = {}) {
         `translate(${px.toFixed(2)} ${(PEN_Y + Math.sin(now * 0.017) * 1.2).toFixed(2)}) rotate(${wig.toFixed(2)})`);
     }
     if (bookK > 0.01) {
+      const tSec = now / 1000;
       /* 跟呼吸同频的一点点浮动，书不是钉死的 */
-      const bob = Math.sin(now / 1000 * (cur.breatheHz || 0.4) * TAU) * 1.6;
+      const bob = Math.sin(tSec * (cur.breatheHz || 0.4) * TAU) * 1.6;
       bookInner.setAttribute('transform', `translate(0 ${bob.toFixed(2)})`);
+      /* 翻页：每 2.2s 翻一页，动作占 0.9s。scaleX 1→-1 让右页绕书脊翻到左页，
+       * sin 拱起 = 书页被掀起的弧度，阴影随掀起程度变浓；停歇期藏起翻页。 */
+      const cycle = (tSec + 0.4) % 2.2;
+      if (cycle < 0.9) {
+        const p = cycle / 0.9;
+        const sx = Math.cos(p * Math.PI);
+        const lift = Math.sin(p * Math.PI) * 7;
+        bookFlip.setAttribute('opacity', '1');
+        bookFlip.setAttribute('transform', `translate(0 ${(-lift).toFixed(2)}) scale(${sx.toFixed(3)} 1)`);
+        flipShade.setAttribute('opacity', (0.28 * Math.sin(p * Math.PI)).toFixed(3));
+      } else {
+        bookFlip.setAttribute('opacity', '0');
+      }
     }
   }
 

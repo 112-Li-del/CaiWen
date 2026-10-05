@@ -233,15 +233,21 @@ export const STATES = {
   },
   '11': {
     id: '11', name: '检索中', group: 'agent', tip: '翻翻知识库…',
-    /* 低头翻资料：眼位压低（pitch -0.34，看向左下角那本打开的书，book: true 由引擎画），
-     * scanYaw 0.42 / scanHz 0.32 让脑袋沿书页左右来回扫（约 3s 一个来回），
-     * meridian 放慢（检索是"细看"，不是"晕头转向"）。右上角的小轨道点保留——
-     * 对照 bloub reading 状态，那颗绕球的小点是"在找东西"的符号。 */
-    shape: 'normal', open: 1, w: 16, h: 26, tilt: 0, yaw: 0, pitch: -0.34,
-    squash: 0, taper: 0, lean: 0.08, breatheAmp: 0.006, breatheHz: 0.6,
-    meridian: 1.6, driftYaw: 0, driftHz: 0, scanYaw: 0.3, scanHz: 0.32,
+    /* 低头翻资料：书在左下角（BOOK_POS），两眼看向左下角的书。
+     * 眼形照用户参考图（bloub reading 镜像）：参考图往**右下**看——双眼平行"/"倾
+     * +13°、右眼低、眼位偏右；水平镜像成往**左下**看——"/"翻成"\\"（tilt -14，
+     * SVG rotate 正 = 顶端向右，实测参考图 +12~14°）、**左眼低右眼高**（dy ±5，
+     * 参考图两眼高度差 ≈0.12R，R=78 折算 ±5）、眼位随 yaw 偏左。
+     * 对称的关键：透视压缩 sx=cos(yaw±0.34)，yaw 大了两眼一宽一窄——
+     * yaw 收到 -0.2、扫视收小（原 0.22 太大，扫到边上时左眼被压窄 20%），
+     * gazeWeight 0 把视线锁死在书上不跟鼠标。pitch -0.45 压低视线落书页。 */
+    shape: 'normal', open: 1, w: 24, h: 58, tilt: -14, yaw: -0.2, pitch: -0.45,
+    squash: 0, taper: 0, lean: 0, breatheAmp: 0.006, breatheHz: 0.6,
+    meridian: 1.6, driftYaw: 0, driftHz: 0, scanYaw: 0.1, scanHz: 0.3,
     bounce: 0, pop: 0.05, blinkMs: [3600, 6400], glanceYaw: 0, glanceMs: null,
-    gazeWeight: 0.2, shake: false, zzz: false, confetti: false,
+    gazeWeight: 0, shake: false, zzz: false, confetti: false,
+    eyeL: { shape: 'normal', w: 24, h: 58, dy: 5 },
+    eyeR: { shape: 'normal', w: 24, h: 58, dy: -5 },
     book: true
   },
   '12': {
