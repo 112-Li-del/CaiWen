@@ -34,11 +34,10 @@ import FilePreviewDrawer from "@/components/chat/preview/FilePreviewDrawer";
 import {
   useUnifiedChat,
   type MessageAttachment,
-  type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
-import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/lib/unified-ws";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
@@ -343,6 +342,27 @@ export default function ChatPage() {
   >([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [skillsAutoMode, setSkillsAutoMode] = useState(false);
+  // 快速模式开关：勾选后知识库问答走快路径（跳过思考/观察，检索可能不全面）。
+  // 默认关闭 = 完整链路；偏好记在 localStorage，刷新后保留。
+  const [fastMode, setFastMode] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      setFastMode(window.localStorage.getItem("deeptutor-fast-mode") === "1");
+    } catch {
+      setFastMode(false);
+    }
+  }, []);
+  const toggleFastMode = useCallback(() => {
+    setFastMode((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("deeptutor-fast-mode", next ? "1" : "0");
+      } catch {
+        // localStorage unavailable (private mode etc.) — keep in-memory state.
+      }
+      return next;
+    });
+  }, []);
   const [selectedMemoryFiles, setSelectedMemoryFiles] = useState<
     SpaceMemoryFile[]
   >([]);
@@ -487,64 +507,6 @@ export default function ChatPage() {
       console.error("Failed to copy assistant message:", error);
     }
   }, []);
-  const handleAnswerNow = useCallback(
-    (
-      snapshot?: MessageRequestSnapshot,
-      assistantMsg?: { content: string; events?: StreamEvent[] },
-    ) => {
-      if (!snapshot || !state.isStreaming) return;
-      const answerNowEvents = (assistantMsg?.events ?? []).map((event) => ({
-        type: event.type,
-        stage: event.stage,
-        content: event.content,
-        metadata: event.metadata ?? {},
-      }));
-      cancelStreamingTurn();
-      // Preserve the original capability — each capability now owns its
-      // own answer-now fast-path (deep_solve jumps to writing,
-      // deep_question to direct quiz synthesis, math_animator to
-      // code-gen + render, etc.). The backend orchestrator only falls
-      // back to ``chat`` if the requested capability is missing.
-      const answerNowSnapshot: MessageRequestSnapshot = {
-        ...snapshot,
-        language: appLanguage,
-        config: {
-          ...(snapshot.config || {}),
-          answer_now_context: {
-            original_user_message: snapshot.content,
-            partial_response: assistantMsg?.content || "",
-            events: answerNowEvents,
-          },
-        },
-      };
-      window.setTimeout(() => {
-        sendMessage(
-          answerNowSnapshot.content,
-          answerNowSnapshot.attachments,
-          answerNowSnapshot.config,
-          answerNowSnapshot.notebookReferences,
-          answerNowSnapshot.historyReferences,
-          {
-            displayUserMessage: false,
-            persistUserMessage: false,
-            requestSnapshotOverride: answerNowSnapshot,
-            bookReferences: answerNowSnapshot.bookReferences,
-          },
-          answerNowSnapshot.questionNotebookReferences,
-          answerNowSnapshot.skills,
-          answerNowSnapshot.memoryReferences,
-        );
-        shouldAutoScrollRef.current = true;
-      }, 0);
-    },
-    [
-      appLanguage,
-      cancelStreamingTurn,
-      sendMessage,
-      shouldAutoScrollRef,
-      state.isStreaming,
-    ],
-  );
 
   /* ---- URL-driven session loading ---- */
   useEffect(() => {
@@ -1050,6 +1012,10 @@ export default function ChatPage() {
         config = buildMathAnimatorWSConfig(mathAnimatorConfig);
       if (isVisualizeMode) config = buildVisualizeWSConfig(visualizeConfig);
       if (isResearchMode) config = buildResearchWSConfig(researchConfig);
+      // 快速模式仅对普通 chat 的知识库问答生效；其他能力不读该字段。
+      if (fastMode && activeCap.value === "chat") {
+        config = { ...(config ?? {}), fast_mode: true };
+      }
 
       const skillsPayload = skillsAutoMode ? ["auto"] : [...selectedSkills];
       const memoryPayload = [...memoryReferencesPayload];
@@ -1097,8 +1063,10 @@ export default function ChatPage() {
       setSelectedMemoryFiles([]);
     },
     [
+      activeCap.value,
       attachments,
       bookReferencesPayload,
+      fastMode,
       historyReferencesPayload,
       isMathAnimatorMode,
       isQuizMode,
@@ -1416,7 +1384,6 @@ export default function ChatPage() {
               isStreaming={state.isStreaming}
               sessionId={state.sessionId}
               language={state.language}
-              onAnswerNow={handleAnswerNow}
               onCopyAssistantMessage={copyAssistantMessage}
               onRegenerateMessage={handleRegenerateMessage}
               onConfirmOutline={handleConfirmOutline}
@@ -1513,6 +1480,8 @@ export default function ChatPage() {
           onSetSkillsAuto={handleSetSkillsAuto}
           onToggleMemoryFile={handleToggleMemoryFile}
           onToggleResearchSource={toggleResearchSource}
+          fastMode={fastMode}
+          onToggleFastMode={toggleFastMode}
           onSend={handleSend}
           onRemoveAttachment={removeAttachment}
           onPreviewAttachment={handlePreviewPendingAttachment}

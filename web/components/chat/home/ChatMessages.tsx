@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo } from "react";
 import {
   BookOpen,
   Brain,
@@ -16,7 +16,6 @@ import {
   ScrollText,
   Wand2,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -106,7 +105,6 @@ const AssistantMessage = memo(function AssistantMessage({
   sessionId,
   language,
   onConfirmOutline,
-  onAnswerNow,
   onPreviewSource,
 }: {
   msg: { content: string; capability?: string; events?: StreamEvent[] };
@@ -119,7 +117,6 @@ const AssistantMessage = memo(function AssistantMessage({
     topic: string,
     researchConfig?: Record<string, unknown> | null,
   ) => void;
-  onAnswerNow?: () => void;
   onPreviewSource?: (source: SourceItem) => void;
 }) {
   const events = useMemo(() => msg.events ?? [], [msg.events]);
@@ -181,9 +178,6 @@ const AssistantMessage = memo(function AssistantMessage({
     <>
       {hasCallTrace ? (
         <CallTracePanel events={events} isStreaming={isStreaming} />
-      ) : null}
-      {isStreaming && onAnswerNow ? (
-        <AnswerNowRow onAnswerNow={onAnswerNow} />
       ) : null}
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <ResearchOutlineEditor
@@ -411,53 +405,6 @@ const SourcesPanel = memo(function SourcesPanel({
   );
 });
 SourcesPanel.displayName = "SourcesPanel";
-
-/**
- * Inline "Answer now" affordance shown alongside the active assistant turn.
- * Lives outside the trace panel so it is visible as soon as the turn starts
- * — i.e. even before any tool / reasoning trace has been emitted, which is
- * the common case for the very first user message.
- */
-const AnswerNowRow = memo(function AnswerNowRow({
-  onAnswerNow,
-}: {
-  onAnswerNow: () => void;
-}) {
-  const { t } = useTranslation();
-  // Local single-shot guard: once the user has fired "answer now" we lock
-  // the button so a second click can't queue a duplicate cancel + restart
-  // race against the in-flight synthesis turn. The next assistant turn
-  // mounts a fresh ``AnswerNowRow`` with its own state, so this naturally
-  // resets per turn without any external bookkeeping.
-  const [triggered, setTriggered] = useState(false);
-  const handleClick = useCallback(() => {
-    if (triggered) return;
-    setTriggered(true);
-    onAnswerNow();
-  }, [triggered, onAnswerNow]);
-
-  return (
-    <div className="mt-1.5 mb-3 flex items-center">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={triggered}
-        title={t("Skip reasoning and answer now")}
-        aria-disabled={triggered}
-        className="group inline-flex items-center gap-1.5 rounded-md border border-[var(--border)]/60 bg-[var(--card)]/60 px-2.5 py-1 text-[11.5px] font-medium text-[var(--muted-foreground)] shadow-sm transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/5 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-[var(--border)]/60 disabled:hover:bg-[var(--card)]/60 disabled:hover:text-[var(--muted-foreground)]"
-      >
-        <Zap
-          size={12}
-          strokeWidth={1.8}
-          className="shrink-0 transition-colors group-hover:text-[var(--primary)] group-disabled:group-hover:text-[var(--muted-foreground)]"
-        />
-        <span>{triggered ? t("Answering…") : t("Answer now")}</span>
-      </button>
-    </div>
-  );
-});
-
-AnswerNowRow.displayName = "AnswerNowRow";
 
 function CostFooter({
   cost,
@@ -865,7 +812,6 @@ export const ChatMessageList = memo(function ChatMessageList({
   isStreaming,
   sessionId,
   language,
-  onAnswerNow,
   onCopyAssistantMessage,
   onRegenerateMessage,
   onConfirmOutline,
@@ -876,10 +822,6 @@ export const ChatMessageList = memo(function ChatMessageList({
   isStreaming: boolean;
   sessionId?: string | null;
   language?: string;
-  onAnswerNow: (
-    snapshot?: MessageRequestSnapshot,
-    assistantMsg?: { content: string; events?: StreamEvent[] },
-  ) => void;
   onCopyAssistantMessage: (content: string) => void | Promise<void>;
   onRegenerateMessage: () => void;
   onConfirmOutline?: (
@@ -981,18 +923,6 @@ export const ChatMessageList = memo(function ChatMessageList({
           (!pairedUserMessage?.capability ||
             pairedUserMessage?.capability === "chat");
 
-        // The "Answer now" affordance lives inside the trace panel for the
-        // currently-streaming assistant turn. We hand the panel a thin
-        // closure so it does not need to know about MessageRequestSnapshot.
-        const handleTraceAnswerNow =
-          isActiveAssistant && pairedUserMessage?.requestSnapshot
-            ? () =>
-                onAnswerNow(pairedUserMessage.requestSnapshot, {
-                  content: msg.content,
-                  events: msg.events,
-                })
-            : undefined;
-
         const costSummary = (() => {
           if (!msgDone) return null;
           const resultEv = msg.events?.find((e) => e.type === "result");
@@ -1020,7 +950,6 @@ export const ChatMessageList = memo(function ChatMessageList({
               sessionId={sessionId}
               language={language}
               onConfirmOutline={onConfirmOutline}
-              onAnswerNow={handleTraceAnswerNow}
               onPreviewSource={onPreviewSource}
             />
             {(showActions || costSummary) && (

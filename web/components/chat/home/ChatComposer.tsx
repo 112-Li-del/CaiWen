@@ -21,6 +21,7 @@ import {
   Sparkles,
   Square,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -46,6 +47,7 @@ import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
 import ModelSelector from "./ModelSelector";
+import GooeyButton from "./GooeyButton";
 
 type SpaceSelectionCounts = {
   chatHistory: number;
@@ -179,6 +181,8 @@ export default memo(function ChatComposer({
   onSetSkillsAuto,
   onToggleMemoryFile,
   onToggleResearchSource,
+  fastMode,
+  onToggleFastMode,
   onSend,
   onRemoveAttachment,
   onPreviewAttachment,
@@ -274,6 +278,9 @@ export default memo(function ChatComposer({
   onSetSkillsAuto: (auto: boolean) => void;
   onToggleMemoryFile: (file: SpaceMemoryFile) => void;
   onToggleResearchSource: (source: ResearchSource) => void;
+  /** 快速模式（仅 chat 能力下显示）：勾选后知识库问答走快路径，跳过思考/观察阶段。 */
+  fastMode: boolean;
+  onToggleFastMode: () => void;
   onSend: (content: string) => void;
   onRemoveAttachment: (index: number) => void;
   onPreviewAttachment?: (index: number) => void;
@@ -897,6 +904,16 @@ export default memo(function ChatComposer({
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {activeCapabilityKey === "chat" && (
+                  <GooeyButton
+                    active={fastMode}
+                    onToggle={onToggleFastMode}
+                    label="快速回答"
+                    title="快速回答：跳过思考与观察阶段、直接检索作答，响应更快但检索可能不够全面；再次点击取消，走完整链路"
+                    icon={<Zap size={12} strokeWidth={1.8} />}
+                    compact={toolbarLevel >= 2}
+                  />
+                )}
                 <ModelSelector
                   options={llmOptions}
                   activeDefault={activeLLMDefault}

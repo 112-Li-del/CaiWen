@@ -676,3 +676,235 @@
     animation: none;
   }
 }
+
+/* ----- GooeyButton（快速回答）的 goo 点击效果 ----------------------------
+   逐字移植 ReactBits GooeyNav 的 GooeyNav.css，差异见
+   components/chat/home/GooeyButton.tsx 头注释：
+   · goo 滤镜用 SVG（保品牌色）而非官方 CSS blur+contrast+lighten；
+   · 粒子/气泡 20px→14px（等比适配 29px 高的按钮）；
+   · keyframes、-350ms 负延迟、官方 --linear-ease 过冲曲线均照抄。 */
+
+/* 官方 GooeyNav 的 --linear-ease：自带 1.27 倍过冲 + 回落的自定义缓动 */
+.dt-gooey-pill {
+  --dt-linear-ease: linear(
+    0,
+    0.068,
+    0.19 2.7%,
+    0.804 8.1%,
+    1.037,
+    1.199 13.2%,
+    1.245,
+    1.27 15.8%,
+    1.274,
+    1.272 17.4%,
+    1.249 19.1%,
+    0.996 28%,
+    0.949,
+    0.928 33.3%,
+    0.926,
+    0.933 36.8%,
+    1.001 45.6%,
+    1.013,
+    1.019 50.8%,
+    1.018 54.4%,
+    1 63.1%,
+    0.995 68%,
+    1.001 85%,
+    1
+  );
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.22s ease-in, transform 0.22s ease-in;
+}
+.dt-gooey-pill.active {
+  opacity: 1;
+  transform: scale(1);
+  animation: dt-gooey-pill-in 0.3s var(--dt-linear-ease) both;
+}
+@keyframes dt-gooey-pill-in {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* goo 层：滤镜在组件内联 style 上（url(#id)），这里只负责定位与配色。
+   --color-1..4 是粒子气泡的四档深浅（官方是四档白）。 */
+.dt-gooey-filter {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  --color-1: var(--primary);
+  --color-2: color-mix(in srgb, var(--primary) 82%, #ffffff);
+  --color-3: color-mix(in srgb, var(--primary) 64%, #ffffff);
+  --color-4: color-mix(in srgb, var(--primary) 55%, #000000);
+}
+
+/* 常驻小圆点：关态可见，点亮时被药丸吞掉（同在 goo 层里融合） */
+.dt-gooey-dot {
+  position: absolute;
+  left: 8.5px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+}
+
+/* 粒子（外层负责位移+旋转）与气泡（内层负责缩放显隐）——官方原样 */
+.dt-gooey-particle,
+.dt-gooey-point {
+  display: block;
+  opacity: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 100%;
+  transform-origin: center;
+}
+.dt-gooey-particle {
+  position: absolute;
+  top: calc(50% - 7px);
+  left: calc(50% - 7px);
+  animation: dt-gooey-particle calc(var(--time)) ease 1 -350ms;
+}
+.dt-gooey-point {
+  background: var(--color);
+  opacity: 1;
+  animation: dt-gooey-point calc(var(--time)) ease 1 -350ms;
+}
+@keyframes dt-gooey-particle {
+  0% {
+    transform: rotate(0deg) translate(calc(var(--start-x)), calc(var(--start-y)));
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  70% {
+    transform: rotate(calc(var(--rotate) * 0.5)) translate(calc(var(--end-x) * 1.2), calc(var(--end-y) * 1.2));
+    opacity: 1;
+    animation-timing-function: ease;
+  }
+  85% {
+    transform: rotate(calc(var(--rotate) * 0.66)) translate(calc(var(--end-x)), calc(var(--end-y)));
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(calc(var(--rotate) * 1.2)) translate(calc(var(--end-x) * 0.5), calc(var(--end-y) * 0.5));
+    opacity: 1;
+  }
+}
+@keyframes dt-gooey-point {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  25% {
+    transform: scale(calc(var(--scale) * 0.25));
+  }
+  38% {
+    opacity: 1;
+  }
+  65% {
+    transform: scale(var(--scale));
+    opacity: 1;
+    animation-timing-function: ease;
+  }
+  85% {
+    transform: scale(var(--scale));
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+/* 减弱动效：去掉粒子爆发与药丸过冲，只留干净的显隐 */
+@media (prefers-reduced-motion: reduce) {
+  .dt-gooey-particle {
+    display: none;
+  }
+  .dt-gooey-pill.active {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* LatticeLoader（web/components/ui/LatticeLoader.tsx，React Bits 移植） */
+/* 格子点亮动画。峰值/闲置亮度走 CSS 变量，组件容器内联注入 --dt-lattice-idle； */
+/* 动画名后缀 -45/-35/-25 对应 lit 低亮度档位（详见组件头注释）。 */
+@keyframes dt-lattice-on {
+  0%,
+  100% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+  18%,
+  42% {
+    opacity: var(--dt-lattice-peak, 1);
+  }
+  62% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+}
+@keyframes dt-lattice-on-45 {
+  0%,
+  100% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+  13%,
+  31% {
+    opacity: var(--dt-lattice-peak, 1);
+  }
+  45% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+}
+@keyframes dt-lattice-on-35 {
+  0%,
+  100% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+  10%,
+  24% {
+    opacity: var(--dt-lattice-peak, 1);
+  }
+  35% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+}
+@keyframes dt-lattice-on-25 {
+  0%,
+  100% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+  7%,
+  17% {
+    opacity: var(--dt-lattice-peak, 1);
+  }
+  25% {
+    opacity: var(--dt-lattice-idle, 0.15);
+  }
+}
+
+/* 减弱动效：拉长周期、去逐格延迟、峰值压暗。
+   组件的 animation 简写是内联样式，只能用 !important 覆盖。 */
+@media (prefers-reduced-motion: reduce) {
+  .dt-lattice-run {
+    --dt-lattice-peak: 0.7;
+  }
+  .dt-lattice-run .dt-lattice-cell {
+    animation-delay: 0ms !important;
+    animation-duration: 1400ms !important;
+  }
+}

@@ -208,7 +208,18 @@ class AgenticChatPipeline:
                 metadata={"reason": "rag_without_kb"},
             )
 
-        if enabled_tools == ["rag"] and self._selected_kbs(context):
+        # Fast mode is opt-in (composer "快速模式" toggle → config.fast_mode):
+        # only then do KB-only turns take the latency-optimized fast path
+        # (model policy router + one-shot reformulated retrieval, skipping
+        # thinking/observing). With fast mode off (default) KB questions go
+        # through the full agentic pipeline (thinking → acting with
+        # model-planned parallel retrieval → observing → responding) for
+        # fuller coverage.
+        fast_mode = self._fast_mode_enabled(context)
+        rag_only_with_kb = enabled_tools == ["rag"] and bool(
+            self._selected_kbs(context)
+        )
+        if rag_only_with_kb and fast_mode:
             route = await self._classify_rag_turn(context.user_message)
             if route == "sensitive":
                 refusal = self._sensitive_refuse_message()
@@ -223,6 +234,23 @@ class AgenticChatPipeline:
                 # a KB is selected. Removing RAG for this turn prevents the
                 # empty-retrieval guard from rejecting greetings and thanks.
                 enabled_tools = []
+        elif rag_only_with_kb:
+            # Full pipeline: skip the model-based router (it is itself an LLM
+            # hop and could mis-route factual questions away from retrieval).
+            # Keep only the zero-cost local guards: hard secret patterns still
+            # refuse, and obvious greetings/thanks bypass retrieval so the
+            # empty-retrieval guard cannot reject social chat.
+            message = str(context.user_message or "").strip()
+            if self._matches_hard_sensitive_rule(message):
+                refusal = self._sensitive_refuse_message()
+                await stream.content(refusal, source="chat", stage="responding")
+                await stream.result(
+                    {"response": refusal, "policy_route": "sensitive"},
+                    source="chat",
+                )
+                return
+            if not message or self._is_obvious_casual_message(message):
+                enabled_tools = []
         # ---- Fast paths (latency optimizations) -----------------------------
         # Fast paths skip the serial thinking / acting / observing LLM
         # round-trips when they would add latency without adding information.
@@ -234,11 +262,11 @@ class AgenticChatPipeline:
             thinking_text = ""
             tool_traces: list[ToolTrace] = []
             skip_observing = True
-        elif enabled_tools == ["rag"] and self._selected_kbs(context):
-            # RAG-only turn with a selected KB: run deterministic retrieval
-            # (the user's question is the retrieval query) instead of an LLM
-            # tool-planning round-trip, then respond grounded in the passages.
-            # This removes two serial LLM calls from the common KB Q&A path.
+        elif fast_mode and enabled_tools == ["rag"] and self._selected_kbs(context):
+            # RAG-only turn with a selected KB and fast mode on: run
+            # deterministic retrieval (reformulated queries at higher top_k)
+            # instead of an LLM tool-planning round-trip, then respond
+            # grounded in the passages.
             thinking_text = ""
             tool_traces = await self._run_direct_rag(context, stream)
             skip_observing = True
@@ -1720,6 +1748,19 @@ class AgenticChatPipeline:
             tool_list=tool_list or self._fallback_empty_tool_list(),
             kb_hint=kb_hint,
         )
+
+    @staticmethod
+    def _fast_mode_enabled(context: UnifiedContext) -> bool:
+        """Whether the caller opted into the latency-optimized fast path.
+
+        Reads ``config_overrides['fast_mode']``, set by the composer's
+        "快速模式" toggle. Defaults to False so KB questions use the full
+        thinking → acting → observing → responding pipeline.
+        """
+        raw = context.config_overrides.get("fast_mode", False)
+        if isinstance(raw, str):
+            return raw.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(raw)
 
     def _selected_kbs(self, context: UnifiedContext) -> list[str]:
         return [str(kb).strip() for kb in context.knowledge_bases if str(kb).strip()]
