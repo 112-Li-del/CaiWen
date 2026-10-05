@@ -1,18 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  BrainCircuit,
-  ChevronDown,
-  Database,
-  Loader2,
-  MessageSquare,
-  PenLine,
-  Sparkles,
-  Terminal,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import LatticeLoader from "@/components/ui/LatticeLoader";
 import type { StreamEvent } from "@/lib/unified-ws";
 
 type TraceMetadata = {
@@ -135,6 +127,11 @@ function getTraceGroup(events: StreamEvent[]) {
   return "";
 }
 
+/** 统一的秒数格式：保留一位小数（0.4s、6.3s），最低 0.1s 防止闪 0.0s */
+function formatSeconds(seconds: number) {
+  return `${Math.max(0.1, seconds).toFixed(1)}s`;
+}
+
 function getTraceDurationLabel(events: StreamEvent[]) {
   let start: number | null = null;
   let end: number | null = null;
@@ -145,8 +142,7 @@ function getTraceDurationLabel(events: StreamEvent[]) {
       end = event.timestamp;
   }
   if (start === null || end === null) return "";
-  const seconds = Math.max(1, Math.round(end - start));
-  return `${seconds}s`;
+  return formatSeconds(end - start);
 }
 
 function getTraceStartTimestamp(events: StreamEvent[]) {
@@ -163,7 +159,7 @@ function getActiveTraceDurationSeconds(
 ) {
   const start = getTraceStartTimestamp(events);
   if (start === null) return null;
-  return Math.max(1, Math.round(nowSeconds - start));
+  return Math.max(0.1, nowSeconds - start);
 }
 
 function isTracePending(events: StreamEvent[]) {
@@ -177,9 +173,9 @@ function isTracePending(events: StreamEvent[]) {
   return hasRunning && !hasTerminal;
 }
 
-function getTraceHeader(
+/** 只算行标题（不含用时后缀），供运行中行拼接活计时用 */
+function getTraceTitle(
   events: StreamEvent[],
-  nowSeconds?: number,
   nested?: boolean,
   t: (key: string, opts?: Record<string, unknown>) => string = (k) => k,
 ) {
@@ -188,12 +184,7 @@ function getTraceHeader(
   const group = getTraceGroup(events);
   const kind = getTraceCallKind(events);
   const meta = getTraceMeta(events[0]);
-  const duration =
-    kind === "math_render_output" && isTracePending(events) && nowSeconds
-      ? `${getActiveTraceDurationSeconds(events, nowSeconds) ?? 1}s`
-      : getTraceDurationLabel(events);
 
-  let title = label;
   if (
     [
       "math_concept_analysis",
@@ -204,38 +195,53 @@ function getTraceHeader(
       "math_render_output",
     ].includes(kind)
   ) {
-    title = label;
+    return label;
   } else if (role === "retrieve") {
-    title = t("Retrieve");
+    return t("Retrieve");
   } else if (kind === "tool_planning") {
-    title = t("Tool call");
+    return t("Tool call");
   } else if (group === "react_round") {
     if (nested) {
-      title = meta.round ? t("Round {{n}}", { n: meta.round }) : label;
+      return meta.round ? t("Round {{n}}", { n: meta.round }) : label;
     } else {
       const step = meta.step_id ? t("Step {{n}}", { n: meta.step_id }) : "";
       const round = meta.round ? t("Round {{n}}", { n: meta.round }) : label;
-      title = [step, round].filter(Boolean).join(" · ");
+      return [step, round].filter(Boolean).join(" · ");
     }
   } else if (role === "plan" && kind === "llm_planning") {
-    title = t("Plan");
+    return t("Plan");
   } else if (role === "observe" || kind === "llm_observation") {
-    title = t("Observe");
+    return t("Observe");
   } else if (role === "response" || kind === "llm_final_response") {
-    title = t("Response");
+    return t("Response");
   } else if (role === "thought" || kind === "llm_reasoning") {
-    title = t("Thought");
+    return t("Thought");
   } else if (kind === "llm_generation") {
     if (/^generate\s+/i.test(label)) {
-      title = t("Generating {{label}}", {
+      return t("Generating {{label}}", {
         label: label.replace(/^generate\s+/i, ""),
       });
     } else if (/^write\s+/i.test(label)) {
-      title = t("Writing {{label}}", {
+      return t("Writing {{label}}", {
         label: label.replace(/^write\s+/i, ""),
       });
     }
   }
+  return label;
+}
+
+function getTraceHeader(
+  events: StreamEvent[],
+  nowSeconds?: number,
+  nested?: boolean,
+  t: (key: string, opts?: Record<string, unknown>) => string = (k) => k,
+) {
+  const title = getTraceTitle(events, nested, t);
+  const kind = getTraceCallKind(events);
+  const duration =
+    kind === "math_render_output" && isTracePending(events) && nowSeconds
+      ? formatSeconds(getActiveTraceDurationSeconds(events, nowSeconds) ?? 0.1)
+      : getTraceDurationLabel(events);
 
   return duration
     ? t("{{title}} for {{duration}}", { title, duration })
@@ -331,7 +337,7 @@ function getStepGroupDuration(traces: TraceItem[]): string {
     }
   }
   if (start === null || end === null) return "";
-  return `${Math.max(1, Math.round(end - start))}s`;
+  return formatSeconds(end - start);
 }
 
 /* ------------------------------------------------------------------ */
@@ -373,25 +379,72 @@ function ScrollableTraceBody({
   );
 }
 
-function TraceIcon({ kind, phase }: { kind: string; phase: string }) {
-  const Icon =
-    kind === "rag_retrieval"
-      ? Database
-      : kind === "llm_final_response"
-        ? MessageSquare
-        : kind === "llm_observation"
-          ? BrainCircuit
-          : kind === "llm_generation"
-            ? PenLine
-            : phase === "writing"
-              ? PenLine
-              : phase === "planning"
-                ? Sparkles
-                : phase === "acting"
-                  ? Terminal
-                  : BrainCircuit;
-  return <Icon size={12} strokeWidth={1.6} className="shrink-0" />;
+/**
+ * 行首状态格阵（React Bits LatticeLoader 移植件的调用封装）：
+ * - 运行中（active）：南财红点亮 orbit 动画
+ * - 正常结束：绿色 ✓ 标记格
+ * - 出错：红色 ✕ 标记格
+ * 取代了原先的 lucide 图标（Database/BrainCircuit/...）+ Loader2 旋转圈：
+ * 行的类型靠文字（思考/工具调用/检索/观察）区分，图标统一交给格阵。
+ */
+function TraceStatusLattice({
+  active,
+  hasError,
+  cellSize = 4,
+  gap = 1.5,
+}: {
+  active: boolean;
+  hasError: boolean;
+  cellSize?: number;
+  gap?: number;
+}) {
+  return (
+    <LatticeLoader
+      status={active ? "working" : hasError ? "error" : "done"}
+      pattern="orbit"
+      grid={3}
+      cellSize={cellSize}
+      gap={gap}
+      color={active ? "var(--primary)" : "currentColor"}
+      doneColor="#22c55e"
+    />
+  );
 }
+
+/**
+ * 运行中行的活计时：每 100ms 自刷新，显示到小数点后一位（如 7.3s）。
+ * 对应 React Bits LatticeLoader 原版内置计时器的观感——原版是组件内
+ * setInterval 每 100ms 写 DOM，这里因为标题/计时由调用侧拼装，把计时
+ * 拆成独立小组件而不是复用父级的 1s nowSeconds（整数精度不够）。
+ * 只挂在 active 行上，静态行不产生任何定时器。
+ */
+function LiveDuration({ start }: { start: number }) {
+  const [now, setNow] = useState(() => Date.now() / 1000);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now() / 1000), 100);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <span className="tabular-nums">{formatSeconds(now - start)}</span>
+  );
+}
+
+/** 一组 trace 里最早的运动开始时间（给 Step/Round 级活计时用） */
+function getEarliestRunningStart(traceItems: TraceItem[]) {
+  let earliest: number | null = null;
+  for (const trace of traceItems) {
+    for (const event of trace.events) {
+      if (String(getTraceMeta(event).call_state || "") !== "running") continue;
+      if (earliest === null || event.timestamp < earliest) {
+        earliest = event.timestamp;
+      }
+    }
+  }
+  return earliest;
+}
+
 
 function TraceSection({
   title,
@@ -713,9 +766,6 @@ export function CallTracePanel({
     isGloballyLast: boolean,
     nested: boolean,
   ) {
-    const first = callEvents[0];
-    const meta = getTraceMeta(first);
-    const phase = String(meta.phase || first.stage || "");
     const role = getTraceRole(callEvents);
     const group = getTraceGroup(callEvents);
     const kind = getTraceCallKind(callEvents);
@@ -729,6 +779,8 @@ export function CallTracePanel({
     const expandable = hasExpandableContent(callEvents, group, role);
     if (!expandable && !active) return null;
 
+    const activeStart = active ? getTraceStartTimestamp(callEvents) : null;
+
     const summaryRow = (
       <div className="flex list-none items-center gap-2 py-0.5 not-italic text-[12px] font-medium text-[var(--muted-foreground)]">
         {expandable ? (
@@ -739,9 +791,20 @@ export function CallTracePanel({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <TraceIcon kind={kind} phase={phase} />
-        <span>{header}</span>
-        {active && <Loader2 size={11} className="animate-spin" />}
+        <TraceStatusLattice
+          active={active}
+          hasError={callEvents.some((event) => event.type === "error")}
+        />
+        {activeStart !== null ? (
+          // 运行中：标题 + 每百毫秒跳动的活计时（对齐 LatticeLoader 原版观感）
+          <span>
+            {getTraceTitle(callEvents, nested, t)}
+            <span className="opacity-60"> · </span>
+            <LiveDuration start={activeStart} />
+          </span>
+        ) : (
+          <span>{header}</span>
+        )}
       </div>
     );
 
@@ -795,7 +858,10 @@ export function CallTracePanel({
             Boolean(isStreaming) &&
             isLastDisplayItem &&
             isTracePending(lastTrace.events);
-          const stepDuration = isActiveStep
+          const stepActiveStart = isActiveStep
+            ? getEarliestRunningStart(item.traces)
+            : null;
+          const stepDuration = stepActiveStart
             ? ""
             : getStepGroupDuration(item.traces);
 
@@ -811,15 +877,24 @@ export function CallTracePanel({
                     size={12}
                     className="shrink-0 transition-transform group-open/step:rotate-180"
                   />
-                  <Sparkles size={12} strokeWidth={1.6} className="shrink-0" />
+                  <TraceStatusLattice
+                    active={isActiveStep}
+                    hasError={false}
+                  />
                   <span>Step {item.stepId}</span>
                   <span className="text-[11px] opacity-60">
                     {roundCount} {roundCount === 1 ? "round" : "rounds"}
-                    {stepDuration ? ` · ${stepDuration}` : ""}
+                    {stepActiveStart !== null ? (
+                      <>
+                        {" · "}
+                        <LiveDuration start={stepActiveStart} />
+                      </>
+                    ) : stepDuration ? (
+                      ` · ${stepDuration}`
+                    ) : (
+                      ""
+                    )}
                   </span>
-                  {isActiveStep && (
-                    <Loader2 size={11} className="animate-spin" />
-                  )}
                 </div>
               </summary>
               <ScrollableTraceBody
@@ -864,13 +939,27 @@ export function CallTracePanel({
                             <span className="font-bold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                               Round {roundNum}
                             </span>
-                            {duration && (
-                              <span className="font-normal text-[var(--muted-foreground)]/40">
-                                {duration}
-                              </span>
-                            )}
-                            {roundActive && (
-                              <Loader2 size={10} className="animate-spin" />
+                            {roundActive ? (
+                              <>
+                                <LiveDuration
+                                  start={
+                                    getTraceStartTimestamp(trace.events) ??
+                                    Date.now() / 1000
+                                  }
+                                />
+                                <TraceStatusLattice
+                                  active
+                                  hasError={false}
+                                  cellSize={3}
+                                  gap={1}
+                                />
+                              </>
+                            ) : (
+                              duration && (
+                                <span className="font-normal text-[var(--muted-foreground)]/40">
+                                  {duration}
+                                </span>
+                              )
                             )}
                           </div>
                           <div className="space-y-1.5 pl-0.5">
@@ -1135,10 +1224,7 @@ export function ResearchStagePanel({
               <span className="font-semibold">{card.title}</span>
               <span className="text-[11px] opacity-60">{summary}</span>
               {active && (
-                <Loader2
-                  size={11}
-                  className="animate-spin text-[var(--primary)]"
-                />
+                <TraceStatusLattice active hasError={false} />
               )}
             </div>
             {hasTrace ? (
