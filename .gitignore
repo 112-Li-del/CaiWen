@@ -292,3 +292,9 @@ celerybeat.pid
 *.wav
 *.ogg
 !demo/*.mp4
+
+# ============================================
+# Local one-off mockups / scratch files
+# ============================================
+exclamation-mark.svg
+exclamation-redraw.html
