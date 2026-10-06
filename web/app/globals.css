@@ -49,27 +49,28 @@
     --ring: #d4734b;
   }
 
+  /* 「南财」主题（内部 key 仍为 snow）：纸白内容区 + 南财红强调 + 深藏蓝侧边栏 */
   .theme-snow {
     color-scheme: light;
-    --background: #f8fafc;
-    --foreground: #0f172a;
+    --background: #f6f8fb;
+    --foreground: #1e2430;
     --card: #ffffff;
-    --card-foreground: #0f172a;
+    --card-foreground: #1e2430;
     --popover: #ffffff;
-    --popover-foreground: #0f172a;
-    --primary: #b0501e;
+    --popover-foreground: #1e2430;
+    --primary: #d22630; /* 南财红 */
     --primary-foreground: #ffffff;
-    --secondary: #e8eef5;
-    --secondary-foreground: #0f172a;
-    --muted: #e8eef5;
-    --muted-foreground: #5a6b82;
-    --accent: #e8eef5;
-    --accent-foreground: #0f172a;
+    --secondary: #eceff4; /* 浅蓝灰表面：消息气泡 / 次要按钮 */
+    --secondary-foreground: #1e2430;
+    --muted: #eceff4;
+    --muted-foreground: #6b7488;
+    --accent: #eceff4;
+    --accent-foreground: #1e2430;
     --destructive: #c7281f;
     --destructive-foreground: #ffffff;
-    --border: #cbd5e1;
-    --input: #cbd5e1;
-    --ring: #b0501e;
+    --border: #dde2ea;
+    --input: #dde2ea;
+    --ring: #d22630;
   }
 
   .theme-glass {
@@ -205,6 +206,17 @@
   summary::-webkit-details-marker {
     display: none;
   }
+}
+
+/*
+ * 「南财」主题侧边栏专属覆盖（未分层，优先级高于 tailwind bg 工具类）。
+ * 侧边栏用南财深藏蓝；局部重定义 --background 为亮蓝，使栏内选中/hover
+ * 表面（bg-[var(--background)]/xx）呈亮蓝、白字清晰。不污染内容区变量，
+ * 消息气泡 / 次要按钮仍用浅蓝灰表面。
+ */
+.theme-snow aside {
+  background-color: #14315e;
+  --background: #2b4f86;
 }
 
 @layer components {
