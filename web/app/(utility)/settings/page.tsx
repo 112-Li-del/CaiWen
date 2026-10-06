@@ -75,7 +75,7 @@ type Catalog = {
 };
 
 type UiSettings = {
-  theme: "light" | "dark" | "glass" | "snow"| "goldred";
+  theme: "light" | "dark" | "glass" | "snow" | "goldred" | "brocade";
   language: "en" | "zh";
 };
 
@@ -585,7 +585,7 @@ function SettingsPageContent() {
   const { t } = useTranslation();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark" | "glass" | "snow"| "goldred">(
+  const [theme, setTheme] = useState<"light" | "dark" | "glass" | "snow" | "goldred" | "brocade">(
     "light",
   );
   const [language, setLanguage] = useState<"en" | "zh">("en");
@@ -734,7 +734,7 @@ function SettingsPageContent() {
   // -- UI preference helpers ----------------------------------------------
 
   const persistUi = async (
-    nextTheme: "light" | "dark" | "glass" | "snow"| "goldred",
+    nextTheme: "light" | "dark" | "glass" | "snow" | "goldred" | "brocade",
     nextLanguage: "en" | "zh",
   ) => {
     await apiFetch(apiUrl("/api/v1/settings/ui"), {
@@ -745,7 +745,7 @@ function SettingsPageContent() {
   };
 
   const updateTheme = async (
-    nextTheme: "light" | "dark" | "glass" | "snow"| "goldred",
+    nextTheme: "light" | "dark" | "glass" | "snow" | "goldred" | "brocade",
   ) => {
     setTheme(nextTheme);
     applyThemePreference(nextTheme);
@@ -1114,7 +1114,7 @@ function SettingsPageContent() {
               {t("Theme")}
             </span>
             <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["snow", "light", "dark", "glass", "goldred"] as const).map((v) => (
+              {(["snow", "light", "dark", "glass", "brocade", "goldred"] as const).map((v) => (
                 <button
                   key={v}
                   onClick={() => updateTheme(v)}
@@ -1132,7 +1132,9 @@ function SettingsPageContent() {
                         ? t("Dark")
                         : v === "glass"
                           ? t("Glass")
-                          : t("GoldRed")}
+                          : v === "brocade"
+                            ? t("Brocade")
+                            : t("GoldRed")}
                 </button>
               ))}
             </div>

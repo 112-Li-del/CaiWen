@@ -3,7 +3,7 @@
  * Handles light/dark theme with localStorage fallback and system preference detection
  */
 
-export type Theme = "light" | "dark" | "glass" | "snow"| "goldred";
+export type Theme = "light" | "dark" | "glass" | "snow" | "goldred" | "brocade";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
 
@@ -39,8 +39,9 @@ export function getStoredTheme(): Theme | null {
       stored === "light" ||
       stored === "dark" ||
       stored === "glass" ||
-      stored === "snow"||
-      stored === "goldred" 
+      stored === "snow" ||
+      stored === "goldred" ||
+      stored === "brocade"
     ) {
       return stored;
     }
@@ -91,6 +92,7 @@ export function applyThemeToDocument(theme: Theme): void {
     "theme-snow",
     "theme-goldred",
     "theme-light",
+    "theme-brocade",
   );
 
   if (theme === "dark") {
@@ -102,6 +104,9 @@ export function applyThemeToDocument(theme: Theme): void {
   } else if (theme === "goldred") {
     // 红黄主题（亮色底+红黄主色，或深色底+红黄强调色）
     html.classList.add("theme-goldred");
+  } else if (theme === "brocade") {
+    // 云锦：玄黑织金深色主题
+    html.classList.add("theme-brocade");
   } else if (theme === "light") {
     // 青瓷主题：内容区变量走 :root，theme-light 仅负责深墨绿侧边栏覆盖
     html.classList.add("theme-light");

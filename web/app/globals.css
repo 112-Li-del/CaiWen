@@ -121,6 +121,33 @@
   --ring: #ff0033;
 }
 
+/*
+ * 「云锦」主题（brocade）：南京云锦织金意象的深色主题。
+ * 玄青黑底 + 云锦金线主色（金底深字）+ 南财云锦红危险色，绢白文字。
+ */
+.theme-brocade {
+  color-scheme: dark;
+  --background: #16131f;
+  --foreground: #ede6d6;
+  --card: #1f1b2c;
+  --card-foreground: #ede6d6;
+  --popover: #241f33;
+  --popover-foreground: #ede6d6;
+  --primary: #c9a24b; /* 云锦金 */
+  --primary-foreground: #1a1508;
+  --secondary: #2a2440; /* 玄紫：侧边栏 / 气泡 */
+  --secondary-foreground: #ede6d6;
+  --muted: #262038;
+  --muted-foreground: #9d95ab;
+  --accent: #352d4d;
+  --accent-foreground: #ede6d6;
+  --destructive: #e05246; /* 云锦红 */
+  --destructive-foreground: #ffffff;
+  --border: #3a3354;
+  --input: #3a3354;
+  --ring: #c9a24b;
+}
+
 .theme-goldred body {
   background-color: var(--color-background);
   color: var(--color-text);

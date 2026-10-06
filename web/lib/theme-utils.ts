@@ -9,7 +9,7 @@ import { setTheme, type Theme } from "./theme";
  * Toggle theme between light and dark
  */
 export function toggleTheme(currentTheme: Theme): Theme {
-  const order: Theme[] = ["snow", "light", "dark", "glass","goldred"];
+  const order: Theme[] = ["snow", "light", "dark", "glass", "brocade", "goldred"];
   const idx = order.indexOf(currentTheme);
   const newTheme = order[(idx + 1) % order.length];
   setTheme(newTheme);
@@ -41,6 +41,7 @@ export function getThemeClass(theme: Theme): string {
   if (theme === "glass") return "dark theme-glass";
   if (theme === "snow") return "theme-snow";
   if (theme === "goldred") return "theme-goldred";
+  if (theme === "brocade") return "theme-brocade";
   if (theme === "light") return "theme-light";
   return "";
 }
@@ -71,8 +72,9 @@ export function onThemeChange(callback: (theme: Theme) => void): () => void {
       (e.newValue === "light" ||
         e.newValue === "dark" ||
         e.newValue === "glass" ||
-        e.newValue === "snow"||
-        e.newValue === "goldred")
+        e.newValue === "snow" ||
+        e.newValue === "goldred" ||
+        e.newValue === "brocade")
     ) {
       callback(e.newValue);
     }

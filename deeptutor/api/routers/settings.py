@@ -62,14 +62,14 @@ class SidebarNavOrder(BaseModel):
 
 
 class UISettings(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow","goldred"] = "light"
+    theme: Literal["light", "dark", "glass", "snow", "goldred", "brocade"] = "light"
     language: Literal["zh", "en"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow", "goldred"]
+    theme: Literal["light", "dark", "glass", "snow", "goldred", "brocade"]
 
 
 class LanguageUpdate(BaseModel):
@@ -265,7 +265,8 @@ async def get_themes():
             {"id": "light", "name": "Light"},
             {"id": "dark", "name": "Dark"},
             {"id": "glass", "name": "Glass"},
-            {"id": "goldred", "name": "GoldRed"}, 
+            {"id": "brocade", "name": "Brocade"},
+            {"id": "goldred", "name": "GoldRed"},
         ]
     }
 
