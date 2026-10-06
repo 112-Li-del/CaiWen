@@ -1,0 +1,277 @@
+/* React Bits BranchedMenu — 财问会话列表用（与 BranchedMenu.tsx 配套） */
+
+.branched-menu {
+  --bm-w: 240px;
+  --bm-ink: #f5f5f5;
+  --bm-accent: #f5f5f5;
+  --bm-line: #3f3f46;
+  --bm-font: 14px;
+  --bm-row: 36px;
+  --bm-indent: 40px;
+  --bm-line-w: 1.5;
+  --bm-draw: 400ms;
+  --bm-fold: 300ms;
+  --bm-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --bm-muted: color-mix(in srgb, var(--bm-ink) 55%, transparent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  max-width: min(var(--bm-w), 100%);
+  padding-left: 14px;
+  color: var(--bm-ink);
+  font-family: inherit;
+  font-size: var(--bm-font);
+  line-height: 1.2;
+}
+.branched-menu::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--bm-line) 0%,
+    var(--bm-line) 55%,
+    transparent 100%
+  );
+}
+.branched-menu__marker {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  z-index: 1;
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--bm-accent);
+  opacity: 0;
+  transition: top 220ms var(--bm-ease-out), opacity 150ms ease;
+}
+.branched-menu__marker[data-on] {
+  opacity: 1;
+}
+.branched-menu__section {
+  display: flex;
+  flex-direction: column;
+}
+.branched-menu__head {
+  display: block;
+  margin: 0;
+  padding: 9px 0;
+  border: 0;
+  background: none;
+  color: var(--bm-muted);
+  font: inherit;
+  font-size: calc(var(--bm-font) + 1px);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 200ms ease;
+}
+.branched-menu__section[data-open] .branched-menu__head,
+.branched-menu__head[data-active] {
+  color: var(--bm-ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  .branched-menu__head:hover {
+    color: var(--bm-ink);
+  }
+}
+.branched-menu__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--bm-fold) var(--bm-ease-out);
+}
+.branched-menu__section[data-open] .branched-menu__body {
+  grid-template-rows: 1fr;
+}
+.branched-menu__fold {
+  min-height: 0;
+  overflow: hidden;
+}
+.branched-menu__tree {
+  position: relative;
+  padding: 6px 0;
+  box-sizing: border-box;
+}
+.branched-menu__lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.branched-menu__section[data-open] .branched-menu__lines {
+  opacity: 1;
+  transition: opacity 250ms ease 100ms;
+}
+.branched-menu__base,
+.branched-menu__reach {
+  fill: none;
+  stroke-width: var(--bm-line-w);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.branched-menu__base {
+  stroke: var(--bm-line);
+}
+.branched-menu__reach {
+  stroke: var(--bm-accent);
+  transition: stroke-dashoffset var(--bm-draw) var(--bm-ease-out);
+}
+
+/* ---- 子项：label + 更多按钮 ---- */
+.branched-menu__item-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.branched-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: var(--bm-row);
+  margin: 0;
+  padding: 0 0 0 var(--bm-indent);
+  border: 0;
+  background: none;
+  color: var(--bm-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 200ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .branched-menu__item:hover {
+    color: var(--bm-ink);
+  }
+}
+.branched-menu__item.is-active,
+.branched-menu__item[data-active] {
+  color: var(--bm-accent);
+  font-weight: 500;
+}
+.branched-menu__icon {
+  display: inline-flex;
+  flex: none;
+}
+.branched-menu__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+/* ---- 更多按钮（hover 显示） ---- */
+.branched-menu__more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--bm-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+}
+.branched-menu__item-wrap:hover .branched-menu__more,
+.branched-menu__more.is-open,
+.branched-menu__more:focus-visible {
+  opacity: 1;
+}
+.branched-menu__more:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--bm-ink);
+}
+
+/* ---- 更多下拉菜单（fixed 定位由 inline style 控制，portal 到 body） ---- */
+.branched-menu__more-menu {
+  z-index: 9999;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: branched-menu-pop 120ms ease-out;
+}
+@keyframes branched-menu-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+.branched-menu__more-action {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  color: #1f2937;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.branched-menu__more-action:hover {
+  background: #f3f4f6;
+}
+.branched-menu__more-action.is-danger {
+  color: #dc2626;
+}
+.branched-menu__more-action.is-danger:hover {
+  background: #fef2f2;
+}
+
+/* ---- 重命名输入框 ---- */
+.branched-menu__rename-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--bm-accent);
+  color: var(--bm-ink);
+  font: inherit;
+  font-size: var(--bm-font);
+  outline: none;
+  padding: 2px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .branched-menu__marker {
+    transition: opacity 150ms ease;
+  }
+  .branched-menu__body {
+    transition: none;
+  }
+  .branched-menu__reach {
+    transition: none;
+  }
+}

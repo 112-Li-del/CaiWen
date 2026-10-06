@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
@@ -20,7 +20,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import SessionList from "@/components/SessionList";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
@@ -28,6 +27,10 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import StaggeredMenu, {
   type StaggeredMenuItem,
 } from "@/components/ui/StaggeredMenu";
+import BranchedMenu, {
+  type BranchedMenuSection,
+  type BranchedMenuItem,
+} from "@/components/ui/BranchedMenu";
 
 interface NavEntry {
   href: string;
@@ -201,6 +204,65 @@ export function SidebarShell({
       accentColor="#EF4444"
     />
   ) : null;
+
+  /* 会话重命名编辑态（BranchedMenu 子项 input） */
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null,
+  );
+
+  /* 会话按时间分组（今天 / 昨天 / 更早），转成 BranchedMenu items */
+  const sessionMenuItems = useMemo<BranchedMenuSection[]>(() => {
+    if (!sessions.length) return [];
+    const now = new Date();
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    ).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const groups: { label: string; items: SessionSummary[] }[] = [
+      { label: "今天", items: [] },
+      { label: "昨天", items: [] },
+      { label: "更早", items: [] },
+    ];
+    for (const s of sessions) {
+      /* 后端 time.time() 返回秒级时间戳，前端比较前 ×1000 转毫秒 */
+      const ts = (s.updated_at || s.created_at) * 1000;
+      if (ts >= todayStart) groups[0].items.push(s);
+      else if (ts >= yesterdayStart) groups[1].items.push(s);
+      else groups[2].items.push(s);
+    }
+    return groups
+      .filter((g) => g.items.length > 0)
+      .map((g) => ({
+        label: g.label,
+        children: g.items.map(
+          (s): BranchedMenuItem => ({
+            value: s.session_id,
+            label: s.title || "新对话",
+            actions: [
+              {
+                label: "重命名",
+                onClick: () => setRenamingSessionId(s.session_id),
+              },
+              {
+                label: "删除",
+                danger: true,
+                onClick: () => onDeleteSession?.(s.session_id),
+              },
+            ],
+          }),
+        ),
+      }));
+  }, [sessions, onDeleteSession]);
+
+  /* 是否渲染会话树（BranchedMenu）：有会话 + 三个回调齐全 */
+  const showSessionTree =
+    showSessions &&
+    !!onSelectSession &&
+    !!onRenameSession &&
+    !!onDeleteSession &&
+    sessionMenuItems.length > 0;
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -411,12 +473,6 @@ export function SidebarShell({
 
           {visibleNav.map((item) => {
             const active = pathname.startsWith(item.href);
-            const hasSessionsBelow =
-              item.href === "/chat" &&
-              showSessions &&
-              onSelectSession &&
-              onRenameSession &&
-              onDeleteSession;
             const hasBots = item.href === "/agents";
             return (
               <div key={item.href}>
@@ -431,21 +487,6 @@ export function SidebarShell({
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
                   <span>{t(item.label)}</span>
                 </Link>
-                {hasSessionsBelow && (
-                  <div
-                    className={`${sessionViewportClassName} overflow-y-auto`}
-                  >
-                    <SessionList
-                      sessions={sessions}
-                      activeSessionId={activeSessionId}
-                      loading={loadingSessions}
-                      onSelect={onSelectSession}
-                      onRename={onRenameSession}
-                      onDelete={onDeleteSession}
-                      compact
-                    />
-                  </div>
-                )}
                 {hasBots && <TutorBotRecent />}
               </div>
             );
@@ -453,8 +494,32 @@ export function SidebarShell({
         </div>
       </nav>
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* 会话树：占满 nav 与知识库之间的剩余空间，只与知识库留一点间距 */}
+      {showSessionTree ? (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2">
+          <BranchedMenu
+            items={sessionMenuItems}
+            active={activeSessionId ?? undefined}
+            defaultOpen={[0]}
+            onSelect={(value) => onSelectSession?.(value)}
+            editingValue={renamingSessionId}
+            onRenameSubmit={(value, title) => {
+              onRenameSession?.(value, title);
+              setRenamingSessionId(null);
+            }}
+            onRenameCancel={() => setRenamingSessionId(null)}
+            color="rgba(255,255,255,0.85)"
+            accentColor="#fff"
+            lineColor="rgba(255,255,255,0.2)"
+            width={200}
+            rowHeight={34}
+            indent={36}
+            fontSize={13.5}
+          />
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {/* 管理员：知识库 + 功能（紧贴分隔线上方；分隔线本身不动，仍隔开设置） */}
       {isAdmin && (
