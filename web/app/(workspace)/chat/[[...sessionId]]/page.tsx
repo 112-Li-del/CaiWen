@@ -1466,12 +1466,14 @@ export default function ChatPage() {
         <EmotionBall
           emotion={ballEmotion}
           size={120}
-          className="pointer-events-none relative z-30 flex shrink-0 pb-2 max-[1399px]:pb-2 min-[1400px]:absolute min-[1400px]:bottom-6 min-[1400px]:left-3 min-[1400px]:pb-0 min-[1400px]:[&>div:first-child]:!w-24"
+          className="cw-ball-host pointer-events-none relative z-30 flex shrink-0 pb-2 max-[1399px]:pb-2 min-[1400px]:absolute min-[1400px]:bottom-6 min-[1400px]:left-3 min-[1400px]:pb-0 min-[1400px]:[&>div:first-child]:!w-24"
         />
         <div className="min-w-0 flex-1">
           {/* 窄屏下输入框不再伸到贴边：右缘收进来到 860px 封顶（左缘仍贴着球，
-              ml-0 覆盖 mx-auto 的居中）。宽屏维持 960 居中与消息列对齐。 */}
-          <div className="mx-auto w-full max-w-[960px] max-[1399px]:ml-0 max-[1399px]:max-w-[860px]">
+              ml-0 覆盖 mx-auto 的居中）。宽屏维持 960 居中与消息列对齐。
+              预览抽屉打开时由 globals.css 的 .cw-composer-host 规则强制回到这套
+              左对齐布局（内容区被右推 560px，居中会与 absolute 的球重叠）。 */}
+          <div className="cw-composer-host mx-auto w-full max-w-[960px] max-[1399px]:ml-0 max-[1399px]:max-w-[860px]">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}

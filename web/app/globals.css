@@ -665,6 +665,34 @@
   }
 }
 
+/*
+ * 预览抽屉打开时内容区被右推 560px，但表情球仍按「视口」断点 min-[1400px]
+ * 做 absolute 贴左、输入框仍按 960 居中——视口够宽（100%/110% 缩放）时二者
+ * 会重叠；只有视口跌破 1400（如 125% 缩放）走窄屏并排才正常。
+ * 这里在「抽屉真正挤压内容区」（≥1024 且 data-preview-open=true）时，强制
+ * 恢复窄屏那套「球 + 输入框」并排文档流，与视口宽度/缩放比例无关。
+ * 抽屉关闭（data-preview-open=false）时这些规则全部不生效，宽屏仍是球贴左、
+ * 输入框居中的原设计。
+ */
+@media (min-width: 1024px) {
+  .chat-preview-shell[data-preview-open="true"] .cw-ball-host {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    padding-bottom: 0.5rem !important;
+  }
+  /* 宽屏把球收成 96px（!w-24），并排时恢复 size=120 的自然直径 */
+  .chat-preview-shell[data-preview-open="true"] .cw-ball-host > div:first-child {
+    width: 120px !important;
+  }
+  /* 输入框由 960 居中改为左对齐贴球、860 封顶，复刻窄屏布局 */
+  .chat-preview-shell[data-preview-open="true"] .cw-composer-host {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+    max-width: 860px !important;
+  }
+}
+
 /* Sidebar tooltip */
 .dt-tooltip-wrapper {
   @apply relative inline-flex;
