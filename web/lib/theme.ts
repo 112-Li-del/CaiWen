@@ -85,7 +85,13 @@ export function applyThemeToDocument(theme: Theme): void {
 
   const html = document.documentElement;
 
-  html.classList.remove("dark", "theme-glass", "theme-snow", "theme-goldred");
+  html.classList.remove(
+    "dark",
+    "theme-glass",
+    "theme-snow",
+    "theme-goldred",
+    "theme-light",
+  );
 
   if (theme === "dark") {
     html.classList.add("dark");
@@ -96,6 +102,9 @@ export function applyThemeToDocument(theme: Theme): void {
   } else if (theme === "goldred") {
     // 红黄主题（亮色底+红黄主色，或深色底+红黄强调色）
     html.classList.add("theme-goldred");
+  } else if (theme === "light") {
+    // 青瓷主题：内容区变量走 :root，theme-light 仅负责深墨绿侧边栏覆盖
+    html.classList.add("theme-light");
   }
 }
 

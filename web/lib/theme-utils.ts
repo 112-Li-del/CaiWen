@@ -41,6 +41,7 @@ export function getThemeClass(theme: Theme): string {
   if (theme === "glass") return "dark theme-glass";
   if (theme === "snow") return "theme-snow";
   if (theme === "goldred") return "theme-goldred";
+  if (theme === "light") return "theme-light";
   return "";
 }
 

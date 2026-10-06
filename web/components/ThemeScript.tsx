@@ -13,7 +13,7 @@ export default function ThemeScript() {
     (function() {
       try {
         const stored = localStorage.getItem('deeptutor-theme');
-        document.documentElement.classList.remove('dark', 'theme-glass', 'theme-snow', 'theme-goldred');
+        document.documentElement.classList.remove('dark', 'theme-glass', 'theme-snow', 'theme-goldred', 'theme-light');
 
         if (stored === 'dark') {
           document.documentElement.classList.add('dark');
@@ -24,7 +24,7 @@ export default function ThemeScript() {
         } else if (stored === 'goldred') { // 新增
           document.documentElement.classList.add('theme-goldred');
         } else if (stored === 'light') {
-          // already clean
+          document.documentElement.classList.add('theme-light');
         } else {
           document.documentElement.classList.add('theme-goldred');
           localStorage.setItem('deeptutor-theme', 'goldred');

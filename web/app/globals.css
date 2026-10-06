@@ -3,27 +3,31 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * 「青瓷」主题（默认 / light，内部 key 为 light）：
+   * 宣纸青白内容区 + 青瓷釉绿主色 + 深松墨绿侧边栏。
+   */
   :root {
     color-scheme: light;
-    --background: #faf9f6;
-    --foreground: #1f1d1b;
+    --background: #f4f7f5;
+    --foreground: #1c2a26;
     --card: #ffffff;
-    --card-foreground: #1f1d1b;
+    --card-foreground: #1c2a26;
     --popover: #ffffff;
-    --popover-foreground: #1f1d1b;
-    --primary: #b0501e;
+    --popover-foreground: #1c2a26;
+    --primary: #2c7a66; /* 青瓷釉绿 */
     --primary-foreground: #ffffff;
-    --secondary: #ece7dd;
-    --secondary-foreground: #1f1d1b;
-    --muted: #ece7dd;
-    --muted-foreground: #6b655f;
-    --accent: #ece7dd;
-    --accent-foreground: #1f1d1b;
-    --destructive: #c53a2c;
+    --secondary: #e8efea; /* 淡青灰表面：消息气泡 / 次要按钮 */
+    --secondary-foreground: #1c2a26;
+    --muted: #e8efea;
+    --muted-foreground: #5e7169;
+    --accent: #e8efea;
+    --accent-foreground: #1c2a26;
+    --destructive: #c0463a;
     --destructive-foreground: #ffffff;
-    --border: #dbd4c8;
-    --input: #dbd4c8;
-    --ring: #b0501e;
+    --border: #d5e0d8;
+    --input: #d5e0d8;
+    --ring: #2c7a66;
   }
 
   .dark {
@@ -217,6 +221,15 @@
 .theme-snow aside {
   background-color: #14315e;
   --background: #2b4f86;
+}
+
+/*
+ * 「青瓷」主题侧边栏专属覆盖：深松墨绿底，局部 --background 重映射为
+ * 亮绿供栏内选中/hover 表面使用，白字清晰；不污染内容区浅色变量。
+ */
+.theme-light aside {
+  background-color: #15352c;
+  --background: #2c5a4b;
 }
 
 @layer components {
