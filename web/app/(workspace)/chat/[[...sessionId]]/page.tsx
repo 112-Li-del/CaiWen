@@ -82,7 +82,13 @@ import {
   knowledgeBaseFilePath,
   listKnowledgeBases,
 } from "@/lib/knowledge-api";
-import { fetchAuthStatus } from "@/lib/auth";
+import { fetchAuthStatus, AUTH_ENABLED } from "@/lib/auth";
+import {
+  HIDDEN_CAPABILITIES,
+  MENU_TOOLS,
+  ALWAYS_ON_TOOLS,
+  ENABLED_SPACE_KEYS,
+} from "@/lib/features";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import type { SpaceMemoryFile } from "@/lib/space-items";
@@ -327,6 +333,8 @@ export default function ChatPage() {
   const [showMemoryPicker, setShowMemoryPicker] = useState(false);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
+  /* 左端加号（统一来源菜单：上传/联网搜索/空间引用） */
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [kbMenuOpen, setKbMenuOpen] = useState(false);
   const [selectedNotebookRecords, setSelectedNotebookRecords] = useState<
     SelectedRecord[]
@@ -375,10 +383,15 @@ export default function ChatPage() {
   const spaceBtnRef = useRef<HTMLButtonElement>(null);
   const kbMenuRef = useRef<HTMLDivElement>(null);
   const kbBtnRef = useRef<HTMLButtonElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const plusBtnRef = useRef<HTMLButtonElement>(null);
   const initialLoadRef = useRef(false);
   const kbInitialAutoSelectDoneRef = useRef(false);
   // null = role not yet resolved; drives KB default-selection per role.
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  // 「收入口不删码」（lib/features.ts）：普通用户只留 Chat + rag/web_search。
+  // AUTH 关闭（本地单用户）视为管理员，全量开放，避免本地开发被收。
+  const showAllFeatures = !AUTH_ENABLED || isAdmin !== false;
 
   const activeCap = useMemo(
     () => getCapability(state.activeCapability),
@@ -399,8 +412,27 @@ export default function ChatPage() {
   const { ref: composerRef, height: composerHeight } =
     useMeasuredHeight<HTMLDivElement>();
   const visibleTools = useMemo(
-    () => ALL_TOOLS.filter((t) => activeCap.allowedTools.includes(t.name)),
+    () =>
+      ALL_TOOLS.filter(
+        (t) =>
+          activeCap.allowedTools.includes(t.name) &&
+          (MENU_TOOLS as readonly string[]).includes(t.name),
+      ),
     [activeCap.allowedTools],
+  );
+  /* 能力选择器对所有角色都只剩 Chat（HIDDEN_CAPABILITIES 无差别生效，
+     2026-10-06 二次裁剪），选择器按钮因仅剩一项而自动隐藏。 */
+  const visibleCapabilities = useMemo(
+    () =>
+      CAPABILITIES.filter((c) => !HIDDEN_CAPABILITIES.has(c.value)),
+    [],
+  );
+  /* 「空间」@ 引用菜单：普通用户整个隐藏（空数组 → ChatComposer 不渲染
+     空间按钮、ComposerInput 不响应 @），管理员只留 memory。
+     见 lib/features.ts 的 ENABLED_SPACE_KEYS 注释。 */
+  const visibleSpaceKeys = useMemo(
+    () => (showAllFeatures ? [...ENABLED_SPACE_KEYS] : []),
+    [showAllFeatures],
   );
   const researchValidation = useMemo(
     () => validateResearchConfig(researchConfig),
@@ -606,6 +638,14 @@ export default function ChatPage() {
     });
   }, []);
 
+  /* 残留了被隐藏能力的选中态（持久化在会话状态里）时强制回落到 Chat，
+     避免选择器隐藏后仍停留在 deep_solve 等模式下提问。对所有角色生效。 */
+  useEffect(() => {
+    if (HIDDEN_CAPABILITIES.has(state.activeCapability ?? "")) {
+      setCapability(null);
+    }
+  }, [state.activeCapability, setCapability]);
+
   /* Load KBs */
   useEffect(() => {
     void refreshKnowledgeBases({ force: true });
@@ -706,18 +746,39 @@ export default function ChatPage() {
         !kbBtnRef.current.contains(t)
       )
         setKbMenuOpen(false);
+      if (
+        plusMenuRef.current &&
+        !plusMenuRef.current.contains(t) &&
+        plusBtnRef.current &&
+        !plusBtnRef.current.contains(t)
+      )
+        setPlusMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   useEffect(() => {
-    const allowed = new Set(visibleTools.map((tool) => tool.name));
+    const allowed = new Set([
+      ...visibleTools.map((tool) => tool.name),
+      // rag 常开（ALWAYS_ON_TOOLS）：菜单里已无开关，裁剪时不能把它剔出
+      // enabledTools，否则知识库检索静默失效
+      ...ALWAYS_ON_TOOLS,
+    ]);
     const nextTools = state.enabledTools.filter((tool) =>
       allowed.has(tool as ToolName),
     );
-    if (nextTools.length !== state.enabledTools.length) setTools(nextTools);
-  }, [setTools, state.enabledTools, visibleTools]);
+    // rag 允许但未启用（如旧持久化状态里被关过）→ 补回，保证检索默认在
+    const ragAllowed = activeCap.allowedTools.includes("rag");
+    const ragOn = nextTools.includes("rag");
+    if (ragAllowed && !ragOn) nextTools.push("rag");
+    if (
+      nextTools.length !== state.enabledTools.length ||
+      (ragAllowed && !ragOn)
+    ) {
+      setTools(nextTools);
+    }
+  }, [setTools, state.enabledTools, visibleTools, activeCap.allowedTools]);
 
   /* ---- handlers ---- */
 
@@ -1449,6 +1510,10 @@ export default function ChatPage() {
           kbMenuOpen={kbMenuOpen}
           kbMenuRef={kbMenuRef}
           kbBtnRef={kbBtnRef}
+          plusMenuOpen={plusMenuOpen}
+          plusMenuRef={plusMenuRef}
+          plusBtnRef={plusBtnRef}
+          onSetPlusMenuOpen={setPlusMenuOpen}
           isStreaming={state.isStreaming}
           isResearchMode={isResearchMode}
           isQuizMode={isQuizMode}
@@ -1461,7 +1526,8 @@ export default function ChatPage() {
           researchConfig={researchConfig}
           researchValidationErrors={researchValidation.errors}
           panelCollapsed={panelCollapsed}
-          capabilities={CAPABILITIES}
+          capabilities={visibleCapabilities}
+          spaceKeys={visibleSpaceKeys}
           researchSources={RESEARCH_SOURCES}
           onSetCapMenuOpen={setCapMenuOpen}
           onSetToolMenuOpen={setToolMenuOpen}

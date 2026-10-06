@@ -639,6 +639,8 @@ export const SpaceContextChips = memo(function SpaceContextChips({
   selectedSkills,
   skillsAutoMode,
   memoryFiles,
+  webSearchOn,
+  onToggleWebSearch,
   onRemoveHistory,
   onRemoveBookReference,
   onRemoveNotebook,
@@ -654,6 +656,9 @@ export const SpaceContextChips = memo(function SpaceContextChips({
   selectedSkills: string[];
   skillsAutoMode: boolean;
   memoryFiles: SpaceMemoryFile[];
+  /** 联网搜索开关态：开启时显示一个可关闭的蓝色胶囊（与 space 引用胶囊同形态） */
+  webSearchOn: boolean;
+  onToggleWebSearch: () => void;
   onRemoveHistory: (sessionId: string) => void;
   onRemoveBookReference: (bookId: string) => void;
   onRemoveNotebook: (notebookId: string) => void;
@@ -670,12 +675,29 @@ export const SpaceContextChips = memo(function SpaceContextChips({
     questionEntries.length === 0 &&
     selectedSkills.length === 0 &&
     !skillsAutoMode &&
-    memoryFiles.length === 0
+    memoryFiles.length === 0 &&
+    !webSearchOn
   )
     return null;
 
   return (
     <div className="mb-3 flex flex-wrap gap-2">
+      {webSearchOn && (
+        <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[12px] text-blue-800 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+          <Globe size={12} strokeWidth={1.8} className="shrink-0" />
+          <span className="shrink-0 font-medium">{t("Web Search")}</span>
+          <span className="truncate text-blue-700/90 dark:text-blue-200/90">
+            {t("Enabled")}
+          </span>
+          <button
+            onClick={onToggleWebSearch}
+            title={t("Web Search")}
+            className="shrink-0 opacity-60 transition hover:opacity-100"
+          >
+            <X size={12} />
+          </button>
+        </span>
+      )}
       {historySessions.map((session) => (
         <span
           key={session.sessionId}

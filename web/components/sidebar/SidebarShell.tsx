@@ -84,12 +84,20 @@ interface SidebarShellProps {
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
   footerSlot?: ReactNode;
-  /** When false (default), Knowledge and Space nav items are hidden. */
+  /** When false (default), admin-only nav items are hidden (see ADMIN_ONLY_HREFS). */
   isAdmin?: boolean;
 }
 
-/** Nav entries that are only visible to admin users. */
-const ADMIN_ONLY_HREFS = new Set(["/knowledge", "/space"]);
+/** Nav entries that are only visible to admin users.
+ *  「收入口不删码」：辅导机器人/智能写作/书籍对普通用户隐藏（管理员演示用），
+ *  路由级兜底见 middleware.ts 的 ADMIN_ROUTES。 */
+const ADMIN_ONLY_HREFS = new Set([
+  "/knowledge",
+  "/space",
+  "/agents",
+  "/co-writer",
+  "/book",
+]);
 
 export function SidebarShell({
   sessions = [],

@@ -13,6 +13,18 @@ type SelectableSpaceKey =
   | "skills"
   | "memory";
 
+export type { SelectableSpaceKey };
+
+/** 全量菜单项顺序（含 books，其定义内联在下方 map 里而非 SPACE_ITEMS） */
+const FULL_ITEM_ORDER: SelectableSpaceKey[] = [
+  "chat_history",
+  "books",
+  "notebooks",
+  "question_bank",
+  "skills",
+  "memory",
+];
+
 export interface ChatSpaceSelectionCounts {
   chatHistory: number;
   books: number;
@@ -26,16 +38,14 @@ interface ChatSpaceMenuProps {
   variant: "toolbar" | "mention";
   selectedCounts: ChatSpaceSelectionCounts;
   onSelectItem: (key: SelectableSpaceKey) => void;
+  /**
+   * 可见项白名单（财问功能裁剪：管理员只剩 memory，普通用户整个菜单
+   * 不渲染，见 lib/features.ts 的 ENABLED_SPACE_KEYS）。缺省为全量。
+   */
+  enabledKeys?: readonly SelectableSpaceKey[];
 }
 
-const ITEM_ORDER: SelectableSpaceKey[] = [
-  "chat_history",
-  "books",
-  "notebooks",
-  "question_bank",
-  "skills",
-  "memory",
-];
+const ITEM_ORDER: SelectableSpaceKey[] = FULL_ITEM_ORDER;
 
 function countFor(
   key: SelectableSpaceKey,
@@ -63,22 +73,25 @@ export default memo(function ChatSpaceMenu({
   variant,
   selectedCounts,
   onSelectItem,
+  enabledKeys = FULL_ITEM_ORDER,
 }: ChatSpaceMenuProps) {
   const { t } = useTranslation();
   const compact = variant === "toolbar";
 
   // Render the items in a fixed, hand-tuned order so the menu always reads
   // the same regardless of how SPACE_ITEMS may be reordered for navigation.
-  const items = ITEM_ORDER.map((key) =>
-    key === "books"
-      ? {
-          key,
-          label: "Books",
-          description: "Reference generated book chapters in chat.",
-          icon: BookOpen,
-        }
-      : SPACE_ITEMS.find((it) => it.key === key)!,
-  ).filter(Boolean);
+  const items = ITEM_ORDER.filter((key) => enabledKeys.includes(key))
+    .map((key) =>
+      key === "books"
+        ? {
+            key,
+            label: "Books",
+            description: "Reference generated book chapters in chat.",
+            icon: BookOpen,
+          }
+        : SPACE_ITEMS.find((it) => it.key === key)!,
+    )
+    .filter(Boolean);
 
   return (
     <div

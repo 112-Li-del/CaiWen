@@ -908,3 +908,60 @@
     animation-duration: 1400ms !important;
   }
 }
+
+/* 菜单/弹层进场：React Bits PromptBar 的 `prompt-bar-pop` 移植件
+   （原版 @keyframes prompt-bar-pop：scale 0.96 → 1 + fade，180ms ease-out）。
+   给聊天输入区的「+ 来源菜单 / 知识库菜单 / 模型菜单」统一进场观感，
+   纯 CSS，不需要 JS 逐帧。 */
+@keyframes dt-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dt-pop {
+  animation: dt-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: bottom left;
+}
+
+/* 靠右对齐的弹层（知识库菜单等 right-0 的），缩放原点跟着换边 */
+.dt-pop-right {
+  transform-origin: bottom right;
+}
+
+/* ── PromptBar 移植：输入卡片光效 ─────────────────────────────
+   快速模式开启时，卡片左下角亮起一圈品牌红径向渐变（与粒子同现同灭）。
+   原版写法是 .prompt-bar__field::before + data-max 选择器切 opacity；
+   这里触发条件换成 React 条件挂载（快速模式），其余照搬：
+   140% 120% 椭圆、锚点 0% 100%（左下角）、62% 处淡出。 */
+.dt-composer-glow {
+  background: radial-gradient(
+    140% 120% at 0% 100%,
+    color-mix(in srgb, var(--primary) 20%, transparent),
+    transparent 62%
+  );
+  animation: dt-glow-in 600ms ease both;
+}
+
+@keyframes dt-glow-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-composer-glow {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-pop {
+    animation: none;
+  }
+}

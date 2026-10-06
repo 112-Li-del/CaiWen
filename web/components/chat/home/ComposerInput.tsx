@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "react-i18next";
 import ChatSpaceMenu, {
   type ChatSpaceSelectionCounts,
+  type SelectableSpaceKey,
 } from "@/components/chat/space/ChatSpaceMenu";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 
@@ -35,6 +36,8 @@ interface ComposerInputProps {
   onSelectQuestionBankPicker: () => void;
   onSelectSkillsPicker: () => void;
   onSelectMemoryPicker: () => void;
+  /** 「空间」@ 引用菜单可见项；为空时输入 @ 不再弹菜单（财问裁剪） */
+  spaceKeys: readonly SelectableSpaceKey[];
 }
 
 export interface ComposerInputHandle {
@@ -69,6 +72,7 @@ export const ComposerInput = memo(
       onSelectQuestionBankPicker,
       onSelectSkillsPicker,
       onSelectMemoryPicker,
+      spaceKeys,
     },
     ref,
   ) {
@@ -104,6 +108,13 @@ export const ComposerInput = memo(
     useLayoutEffect(() => {
       const el = textareaRef.current;
       if (!el) return;
+      // 自适应高度：先归零再测 scrollHeight（它取 max(内容高, 客户区高)，
+      // 不归零会被旧高度托底）。
+      // ⚠️ 不要给 height 加 CSS transition（如 height 0.15s ease-out）：
+      // 归零设置与 scrollHeight 读取在同一帧内，过渡起始值仍是旧的大高度，
+      // 客户区高度被钉住 → 输入框只涨不缩。要动画就得在测量期间临时
+      // transition:"none" 并 void el.offsetHeight 提交后再恢复，得不偿失，
+      // 直接即时伸缩即可。
       el.style.height = "28px";
       const next = Math.max(el.scrollHeight, 28);
       const bounded = Math.min(next, 200);
@@ -117,13 +128,15 @@ export const ComposerInput = memo(
         const cursorPos = e.target.selectionStart ?? value.length;
         setInputBoth(value);
         onInputChange(value);
-        setShowAtPopup(shouldOpenAtPopup(value, cursorPos));
+        // 财问裁剪：无可引用项时 @ 不弹菜单
+        setShowAtPopup(spaceKeys.length > 0 && shouldOpenAtPopup(value, cursorPos));
       },
-      [setInputBoth, onInputChange],
+      [setInputBoth, onInputChange, spaceKeys.length],
     );
 
     const handleTextareaClick = useCallback(
       (e: React.MouseEvent<HTMLTextAreaElement>) => {
+        if (spaceKeys.length === 0) return;
         const target = e.currentTarget;
         setShowAtPopup(
           shouldOpenAtPopup(
@@ -132,7 +145,7 @@ export const ComposerInput = memo(
           ),
         );
       },
-      [],
+      [spaceKeys.length],
     );
 
     const doSend = useCallback(() => {
@@ -214,6 +227,7 @@ export const ComposerInput = memo(
             <ChatSpaceMenu
               variant="mention"
               selectedCounts={selectedCounts}
+              enabledKeys={spaceKeys}
               onSelectItem={handleSelectSpaceItem}
             />
           </div>
@@ -237,7 +251,7 @@ export const ComposerInput = memo(
                 : t("How can I help you today?")
           }
           className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
-          style={{ transition: "height 0.15s ease-out", minHeight: 28 }}
+          style={{ minHeight: 28 }}
         />
       </div>
     );

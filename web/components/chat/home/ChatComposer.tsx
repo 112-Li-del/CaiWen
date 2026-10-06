@@ -13,11 +13,12 @@ import {
 import Image from "next/image";
 import {
   ArrowUp,
-  AtSign,
+  BookOpen,
   ChevronDown,
   Database,
   Layers,
   Paperclip,
+  Plus,
   Sparkles,
   Square,
   X,
@@ -43,8 +44,12 @@ import type {
   DeepResearchFormConfig,
   ResearchSource,
 } from "@/lib/research-types";
-import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
+import ChatSpaceMenu, {
+  type SelectableSpaceKey,
+} from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
+import { SPACE_ITEMS } from "@/lib/space-items";
+import PromptBarSparks from "@/components/ui/PromptBarSparks";
 import type { SelectedBookReference } from "@/lib/book-references";
 import ModelSelector from "./ModelSelector";
 import GooeyButton from "./GooeyButton";
@@ -120,6 +125,11 @@ export default memo(function ChatComposer({
   toolBtnRef,
   spaceMenuRef,
   spaceBtnRef,
+  spaceKeys,
+  plusMenuOpen,
+  plusMenuRef,
+  plusBtnRef,
+  onSetPlusMenuOpen,
   dragCounter,
   dragging,
   capMenuOpen,
@@ -213,6 +223,13 @@ export default memo(function ChatComposer({
   toolBtnRef: RefObject<HTMLButtonElement | null>;
   spaceMenuRef: RefObject<HTMLDivElement | null>;
   spaceBtnRef: RefObject<HTMLButtonElement | null>;
+  /** 「空间」@ 引用菜单可见项；现在收编进加号菜单（财问裁剪） */
+  spaceKeys: SelectableSpaceKey[];
+  /** 左端加号（统一来源菜单）的开关与定位 ref */
+  plusMenuOpen: boolean;
+  plusMenuRef: RefObject<HTMLDivElement | null>;
+  plusBtnRef: RefObject<HTMLButtonElement | null>;
+  onSetPlusMenuOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
   dragCounter: RefObject<number>;
   dragging: boolean;
   capMenuOpen: boolean;
@@ -310,6 +327,14 @@ export default memo(function ChatComposer({
   const CapIcon = activeCap.icon;
 
   const [hasContent, setHasContent] = useState(false);
+  /* 加号菜单的跟随高亮（React Bits PromptBar plus 菜单同款）：记录鼠标所在
+   * 行的真实 offsetTop/Height，灰色圆角块平滑滑过去。行数随角色变化
+   * （普通用户 2 行、管理员 3 行）且行高受 i18n 影响，所以不用 CSS 写死
+   * nth-child 位移；mouseenter 时读一次布局，不是每帧算，开销可忽略。 */
+  const [plusHover, setPlusHover] = useState<{
+    top: number;
+    height: number;
+  } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -334,6 +359,12 @@ export default memo(function ChatComposer({
     });
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  /* 加号菜单行 mouseenter：读一次该行的真实位置驱动高亮块滑动 */
+  const handlePlusRowEnter = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    setPlusHover({ top: el.offsetTop, height: el.offsetHeight });
   }, []);
 
   const handlePickFiles = useCallback(() => {
@@ -393,6 +424,10 @@ export default memo(function ChatComposer({
     skillsAutoMode ||
     !!selectedMemoryFiles.length;
 
+  /* 联网搜索是开关型工具：开启后像 space 引用一样在输入框上方显示胶囊，
+     学生一眼能看到「这条回答会联网」，点 × 即关 */
+  const webSearchOn = selectedTools.has("web_search");
+
   const canSend =
     (hasContent || hasReferences) &&
     !isStreaming &&
@@ -417,6 +452,45 @@ export default memo(function ChatComposer({
     spaceSelectionCounts.questionBank +
     spaceSelectionCounts.skills +
     spaceSelectionCounts.memory;
+
+  /* 加号菜单里的「空间引用」行：按 spaceKeys 生成（普通用户为空数组 →
+     整段不渲染；管理员只有 memory）。恢复其它空间项只要改 lib/features.ts
+     的 ENABLED_SPACE_KEYS，这里不用动。 */
+  const spaceRows = spaceKeys
+    .map((key) => {
+      if (key === "memory")
+        return {
+          key,
+          label: "Memory",
+          description: "Long-form memory the assistant carries across sessions.",
+          icon: SPACE_ITEMS.find((it) => it.key === "memory")!.icon,
+          run: onSelectMemoryPicker,
+        } as const;
+      if (key === "books")
+        return {
+          key,
+          label: "Books",
+          description: "Reference generated book chapters in chat.",
+          icon: BookOpen,
+          run: onSelectBookPicker,
+        } as const;
+      const item = SPACE_ITEMS.find((it) => it.key === key);
+      if (!item) return null;
+      const runners: Record<string, () => void> = {
+        chat_history: onSelectHistoryPicker,
+        notebooks: onSelectNotebookPicker,
+        question_bank: onSelectQuestionBankPicker,
+        skills: onSelectSkillsPicker,
+      };
+      return {
+        key,
+        label: item.label,
+        description: item.description,
+        icon: item.icon,
+        run: runners[key] ?? onSelectMemoryPicker,
+      } as const;
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   const handleManualSend = useCallback(() => {
     if (!canSend) return;
@@ -479,10 +553,10 @@ export default memo(function ChatComposer({
 
       <div className="relative">
         <div
-          className={`relative rounded-2xl border bg-[var(--card)] shadow-[0_1px_8px_rgba(0,0,0,0.03)] transition-colors ${
+          className={`relative rounded-2xl border bg-[var(--card)] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-8px_rgba(0,0,0,0.08)] transition-[border-color,box-shadow] duration-200 focus-within:shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_28px_-6px_rgba(0,0,0,0.11)] ${
             dragging
-              ? "border-[var(--primary)] bg-[var(--primary)]/[0.03]"
-              : "border-[var(--border)]"
+              ? "border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_3%,transparent)]"
+              : "border-[var(--border)] focus-within:border-[color-mix(in_srgb,var(--primary)_35%,transparent)]"
           }`}
           onDragEnter={onDragEnter}
           onDragLeave={onDragLeave}
@@ -490,6 +564,17 @@ export default memo(function ChatComposer({
           onDrop={onDrop}
           data-drag-counter={dragCounter.current}
         >
+          {/* 快速模式开启 = 走快路径：铺一层上升粒子作为状态反馈（React Bits
+              PromptBar 移植件）。关闭即卸载，不留在后台；
+              prefers-reduced-motion 下组件内部直接不渲染。 */}
+          {fastMode && (
+            <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
+              {/* PromptBar 原版同款：左下角径向渐变光晕，与粒子同现（globals.css） */}
+              <div className="dt-composer-glow absolute inset-0" />
+              <PromptBarSparks />
+            </div>
+          )}
+
           {dragging && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--primary)]/50 bg-[var(--primary)]/[0.04]">
               <div className="flex flex-col items-center gap-1 text-[var(--primary)]">
@@ -515,9 +600,11 @@ export default memo(function ChatComposer({
             tabIndex={-1}
           />
 
-          {hasReferences && (
+          {(hasReferences || webSearchOn) && (
             <div className="px-4 pt-3.5 [&>div]:mb-0">
               <SpaceContextChips
+                webSearchOn={webSearchOn}
+                onToggleWebSearch={() => onToggleTool("web_search")}
                 historySessions={selectedHistorySessions}
                 bookReferences={selectedBookReferences}
                 notebookGroups={notebookReferenceGroups}
@@ -552,6 +639,7 @@ export default memo(function ChatComposer({
             onSelectQuestionBankPicker={onSelectQuestionBankPicker}
             onSelectSkillsPicker={onSelectSkillsPicker}
             onSelectMemoryPicker={onSelectMemoryPicker}
+            spaceKeys={spaceKeys}
           />
 
           {!!attachments.length && (
@@ -684,29 +772,36 @@ export default memo(function ChatComposer({
             </div>
           )}
 
-          <div className="border-t border-[var(--border)]/35 px-3 py-2">
+          {/* ChatGPT/Doubao 式：工具栏与输入区之间不画线，只靠留白分区 */}
+          <div className="px-3 pb-2.5 pt-1.5">
             <div ref={toolbarRowRef} className="flex items-center gap-2">
-              <button
-                ref={capBtnRef}
-                onClick={() => onSetCapMenuOpen((v) => !v)}
-                title={t(activeCap.label)}
-                className={`inline-flex shrink-0 items-center gap-1.5 py-1.5 px-1 text-[12px] transition-colors ${
-                  capMenuOpen
-                    ? "text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                <CapIcon size={14} strokeWidth={1.6} />
-                <span className={`font-medium ${toolbarLevel >= 2 ? "hidden" : ""}`}>
-                  {t(activeCap.label)}
-                </span>
-                <ChevronDown
-                  size={11}
-                  className={`transition-transform ${capMenuOpen ? "rotate-180" : ""}`}
-                />
-              </button>
+              {/* 只剩 Chat 一个能力时（普通用户，见 lib/features.ts）整个选择器
+                  收掉——产品定位就是「进来直接问」，不挑模式。 */}
+              {capabilities.length > 1 && (
+                <button
+                  ref={capBtnRef}
+                  onClick={() => onSetCapMenuOpen((v) => !v)}
+                  title={t(activeCap.label)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 py-1.5 px-1 text-[12px] transition-colors ${
+                    capMenuOpen
+                      ? "text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <CapIcon size={14} strokeWidth={1.6} />
+                  <span className={`font-medium ${toolbarLevel >= 2 ? "hidden" : ""}`}>
+                    {t(activeCap.label)}
+                  </span>
+                  <ChevronDown
+                    size={11}
+                    className={`transition-transform ${capMenuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+              )}
 
-              <div className="h-3.5 w-px bg-[var(--border)]/30" />
+              {capabilities.length > 1 && (
+                <div className="h-3.5 w-px bg-[var(--border)]/30" />
+              )}
 
               <div className="flex min-w-0 flex-1 items-center gap-1">
                 {isResearchMode ? (
@@ -780,124 +875,150 @@ export default memo(function ChatComposer({
                       </div>
                     )}
                   </div>
-                ) : visibleTools.length > 0 ? (
-                  <div className="relative flex items-center gap-0.5">
-                    <button
-                      ref={toolBtnRef}
-                      onClick={() => onSetToolMenuOpen((v) => !v)}
-                      title={t("Tools")}
-                      className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                    >
-                      <Sparkles size={12} strokeWidth={1.7} />
-                      <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Tools")}</span>
-                      <ChevronDown
-                        size={10}
-                        className={`transition-transform ${toolMenuOpen ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {selectedTools.size > 0 && (
-                      <div className="flex items-center gap-[3px] overflow-hidden">
-                        {visibleTools
-                          .filter((vt) => selectedTools.has(vt.name))
-                          .map((vt, i) => (
-                            <span
-                              key={vt.name}
-                              className="shrink-0 text-[10px] text-[var(--muted-foreground)]/35"
-                            >
-                              {i > 0 && (
-                                <span className="text-[12px] leading-none">
-                                  ·
-                                </span>
-                              )}
-                              {t(vt.label)}
-                            </span>
-                          ))}
-                      </div>
-                    )}
-                    {toolMenuOpen && (
-                      <div
-                        ref={toolMenuRef}
-                        className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
-                      >
-                        {visibleTools.map((tool) => {
-                          const active = selectedTools.has(tool.name);
-                          const Icon = tool.icon;
-                          return (
-                            <button
-                              key={tool.name}
-                              onClick={() => onToggleTool(tool.name)}
-                              className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
-                                active
-                                  ? "text-[var(--primary)]"
-                                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                              } hover:bg-[var(--muted)]/40`}
-                            >
-                              <Icon size={13} strokeWidth={1.7} />
-                              <span className="flex-1 font-medium">
-                                {t(tool.label)}
-                              </span>
-                              {active && (
-                                <div className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={handlePickFiles}
-                  title={t("Attach files")}
-                  aria-label={t("Attach files")}
-                  className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                >
-                  <Paperclip size={12} strokeWidth={1.7} />
-                  <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Attach")}</span>
-                </button>
-
-                <div className="relative flex items-center gap-0.5">
+                {/* 财问输入区左端：加号 = 统一来源菜单（React Bits PromptBar
+                    的 plus 菜单形态，图标 + 名称 + 描述）。
+                    原先的「工具」「附件」「空间」三个独立按钮全部收编到这里
+                    —— 跟 ChatGPT / Claude 一致：左侧一个 +，右侧是模型/知识库/
+                    发送。菜单项随 lib/features.ts 的开关自动增减。 */}
+                <div className="relative flex items-center">
                   <button
-                    ref={spaceBtnRef}
+                    ref={plusBtnRef}
                     type="button"
-                    onClick={() => onSetSpaceMenuOpen((v) => !v)}
-                    title={t("Space")}
-                    className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    onClick={() => {
+                      onSetPlusMenuOpen((v) => !v);
+                      setPlusHover(null); // 重开菜单时不残留上次的 hover 块
+                    }}
+                    title={t("Add")}
+                    aria-label={t("Add")}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                      plusMenuOpen
+                        ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"
+                        : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+                    }`}
                   >
-                    <AtSign size={12} strokeWidth={1.7} />
-                    <span className={toolbarLevel >= 1 ? "hidden" : ""}>{t("Space")}</span>
-                    <ChevronDown
-                      size={10}
-                      className={`transition-transform ${spaceMenuOpen ? "rotate-180" : ""}`}
-                    />
+                    <Plus size={14} strokeWidth={2} />
                   </button>
-                  {spaceSelectionCount > 0 && (
-                    <span className="shrink-0 rounded-full bg-[var(--primary)]/10 px-1.5 py-px text-[9px] font-semibold text-[var(--primary)]">
-                      {spaceSelectionCount}
-                    </span>
-                  )}
-                  {spaceMenuOpen && (
+                  {plusMenuOpen && (
                     <div
-                      ref={spaceMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1.5"
+                      ref={plusMenuRef}
+                      onMouseLeave={() => setPlusHover(null)}
+                      className="dt-pop absolute bottom-full left-0 z-50 mb-2 w-[252px] rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1.5 shadow-lg backdrop-blur-md"
                     >
-                      <ChatSpaceMenu
-                        variant="toolbar"
-                        selectedCounts={spaceSelectionCounts}
-                        onSelectItem={(key) => {
-                          onSetSpaceMenuOpen(false);
-                          if (key === "chat_history") onSelectHistoryPicker();
-                          else if (key === "books") onSelectBookPicker();
-                          else if (key === "notebooks")
-                            onSelectNotebookPicker();
-                          else if (key === "question_bank")
-                            onSelectQuestionBankPicker();
-                          else if (key === "skills") onSelectSkillsPicker();
-                          else if (key === "memory") onSelectMemoryPicker();
+                      {/* 跟随高亮块：鼠标所在行亮起，行间平滑滑动，离开菜单淡出。
+                          行的 hover:bg 已去掉，避免「块在滑 + 行在闪」双重反馈；
+                          选中色只留给联网搜索（开关态）。
+                          两个坑：① 半透明**不能**写成 bg-[var(--muted)]/50 ——
+                          Tailwind v3 对「CSS 变量 + /透明度」不生成任何规则
+                          （--muted 是十六进制 #ece7dd，v3 解析不了就直接跳过），
+                          所以这里用实心 bg + inline opacity；② 必须显式 top-0，
+                          否则 absolute 块落在静态位置（容器 padding 之后）会整体
+                          下移；③ 加 -z-10，让块压在行文字下面而不是盖住文字。 */}
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-x-1.5 top-0 -z-10 rounded-lg bg-[var(--muted)] transition-[transform,opacity] duration-150 ease-out"
+                        style={{
+                          transform: `translateY(${(plusHover?.top ?? 0) + 3}px)`,
+                          height: (plusHover?.height ?? 0) - 6,
+                          opacity: plusHover ? 0.55 : 0,
                         }}
                       />
+
+                      {/* 1. 上传文件：沿用原附件按钮的流程 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSetPlusMenuOpen(false);
+                          handlePickFiles();
+                        }}
+                        onMouseEnter={handlePlusRowEnter}
+                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+                      >
+                        <Paperclip
+                          size={13}
+                          strokeWidth={1.7}
+                          className="shrink-0 text-[var(--muted-foreground)]"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium text-[var(--foreground)]">
+                            {t("Attach files")}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
+                            {t("Add images or documents from this device")}
+                          </span>
+                        </span>
+                      </button>
+
+                      {/* 2. 可开关的工具（只有联网搜索；已开启显示红点） */}
+                      {visibleTools.map((tool) => {
+                        const active = selectedTools.has(tool.name);
+                        const Icon = tool.icon;
+                        return (
+                          <button
+                            key={tool.name}
+                            type="button"
+                            onClick={() => onToggleTool(tool.name)}
+                            onMouseEnter={handlePlusRowEnter}
+                            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+                          >
+                            <Icon
+                              size={13}
+                              strokeWidth={1.7}
+                              className={`shrink-0 ${
+                                active
+                                  ? "text-[var(--primary)]"
+                                  : "text-[var(--muted-foreground)]"
+                              }`}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span
+                                className={`block truncate text-[12px] font-medium ${
+                                  active
+                                    ? "text-[var(--primary)]"
+                                    : "text-[var(--foreground)]"
+                                }`}
+                              >
+                                {t(tool.label)}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
+                                {t("Search the web for up-to-date answers")}
+                              </span>
+                            </span>
+                            {active && (
+                              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary)]" />
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {/* 3. 空间引用（普通用户为空，管理员只有记忆） */}
+                      {spaceRows.map((row) => (
+                        <button
+                          key={row.key}
+                          type="button"
+                          onClick={() => {
+                            onSetPlusMenuOpen(false);
+                            row.run();
+                          }}
+                          onMouseEnter={handlePlusRowEnter}
+                          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+                        >
+                          <row.icon
+                            size={13}
+                            strokeWidth={1.7}
+                            className="shrink-0 text-[var(--muted-foreground)]"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12px] font-medium text-[var(--foreground)]">
+                              {t(row.label)}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
+                              {t(row.description)}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -953,7 +1074,7 @@ export default memo(function ChatComposer({
                   {kbMenuOpen && (
                     <div
                       ref={kbMenuRef}
-                      className="absolute bottom-full right-0 z-50 mb-1.5 min-w-[200px] max-w-[260px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                      className="dt-pop dt-pop-right absolute bottom-full right-0 z-50 mb-1.5 min-w-[200px] max-w-[260px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                     >
                       {knowledgeBases.length === 0 ? (
                         <div className="px-3 py-2 text-[11px] text-[var(--muted-foreground)]">
