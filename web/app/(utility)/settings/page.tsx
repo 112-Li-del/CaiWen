@@ -586,7 +586,7 @@ function SettingsPageContent() {
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<"light" | "dark" | "glass" | "snow" | "goldred" | "brocade">(
-    "light",
+    "snow",
   );
   const [language, setLanguage] = useState<"en" | "zh">("en");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());

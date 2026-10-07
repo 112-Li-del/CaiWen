@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslation } from "react-i18next";
 import { Brain, Database, Search } from "lucide-react";
 import type { ModelAccess, ModelAccessItem } from "../types";
 import { AssignedBadge } from "./AssignedBadge";
@@ -9,20 +12,22 @@ const rows = [
 ] as const;
 
 function itemLabel(item: ModelAccessItem): string {
-  return item.model || item.provider || item.name || "Assigned model";
+  return item.model || item.provider || item.name || "";
 }
-
 export function ModelAccessSummary({ access }: { access: ModelAccess }) {
+  const { t } = useTranslation();
+
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-[15px] font-semibold text-[var(--foreground)]">
-            Model access
+            {t("Model access")}
           </h2>
           <p className="mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-            Your administrator manages these model endpoints. Keys stay on the
-            server and are never shown here.
+            {t(
+              "Your administrator manages these model endpoints. Keys stay on the server and are never shown here.",
+            )}
           </p>
         </div>
         <AssignedBadge />
@@ -37,7 +42,7 @@ export function ModelAccessSummary({ access }: { access: ModelAccess }) {
             >
               <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--muted-foreground)]">
                 <Icon className="h-3.5 w-3.5" />
-                {label}
+                {t(label)}
               </div>
               {items.length ? (
                 <div className="mt-3 space-y-2">
@@ -47,17 +52,19 @@ export function ModelAccessSummary({ access }: { access: ModelAccess }) {
                       className="text-[13px] text-[var(--foreground)]"
                     >
                       <div className="truncate font-medium">
-                        {itemLabel(item)}
+                        {itemLabel(item) || t("Assigned model")}
                       </div>
                       <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
-                        {item.available === false ? "Unavailable" : "Ready"}
+                        {item.available === false
+                          ? t("Unavailable")
+                          : t("Ready")}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="mt-3 text-[12px] text-[var(--muted-foreground)]">
-                  Not assigned yet
+                  {t("Not assigned yet")}
                 </div>
               )}
             </div>

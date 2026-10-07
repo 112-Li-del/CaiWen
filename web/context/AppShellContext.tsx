@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 import {
+  DEFAULT_THEME,
   getStoredTheme,
-  getSystemTheme,
   setTheme as applyThemePreference,
   subscribeToThemeChanges,
   type Theme,
@@ -47,7 +47,7 @@ const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    return getStoredTheme() ?? getSystemTheme();
+    return getStoredTheme() ?? DEFAULT_THEME;
   });
   // Always start with "en" to match SSR; hydrate from localStorage after mount
   const [language, setLanguageState] = useState<AppLanguage>("zh");

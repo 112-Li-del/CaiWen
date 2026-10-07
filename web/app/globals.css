@@ -241,11 +241,14 @@
 
 /*
  * 「南财」主题侧边栏专属覆盖（未分层，优先级高于 tailwind bg 工具类）。
+ * 仅命中 .sb-root（SidebarShell 的根 aside）——不要用裸 `aside` 选择器：
+ * 页面里还有知识库面板、书籍侧栏等 14 处 aside，曾因 `theme-snow aside`
+ * 全部被染成深藏蓝导致浅色文字不可读。
  * 侧边栏用南财深藏蓝；局部重定义 --background 为亮蓝，使栏内选中/hover
  * 表面（bg-[var(--background)]/xx）呈亮蓝、白字清晰。不污染内容区变量，
  * 消息气泡 / 次要按钮仍用浅蓝灰表面。
  */
-.theme-snow aside {
+.theme-snow .sb-root {
   background-color: #14315e;
   --background: #2b4f86;
 }
@@ -254,9 +257,24 @@
  * 「青瓷」主题侧边栏专属覆盖：深松墨绿底，局部 --background 重映射为
  * 亮绿供栏内选中/hover 表面使用，白字清晰；不污染内容区浅色变量。
  */
-.theme-light aside {
+.theme-light .sb-root {
   background-color: #15352c;
   --background: #2c5a4b;
+}
+
+/*
+ * 青瓷 / 南财：用户消息气泡专属加深。两套浅色主题的 --secondary 表面
+ * （青瓷 #e8efea / 南财 #eceff4）过于接近内容区底色，气泡轮廓不清晰，
+ * 故仅对气泡（.chat-user-bubble）覆盖更深的同色系浅灰，其余使用
+ * --secondary 的地方（次要按钮等）保持不变；其它主题仍走 --secondary。
+ * 规则未分层，优先级高于 Tailwind 的 bg-[var(--secondary)] 工具类。
+ */
+.theme-light .chat-user-bubble {
+  background-color: #c3d9d2; /* 青瓷釉绿浅灰 */
+}
+
+.theme-snow .chat-user-bubble {
+  background-color: #c3d0df; /* 南财藏蓝浅灰 */
 }
 
 @layer components {
@@ -487,7 +505,8 @@
 }
 
 .prose li {
-  @apply mb-1;
+  @apply mb-1.5;
+  line-height: 1.75;
 }
 
 .prose li > ul,
@@ -685,11 +704,11 @@
   .chat-preview-shell[data-preview-open="true"] .cw-ball-host > div:first-child {
     width: 120px !important;
   }
-  /* 输入框由 960 居中改为左对齐贴球、860 封顶，复刻窄屏布局 */
+  /* 输入框由 820 居中改为左对齐贴球、720 封顶，复刻窄屏布局 */
   .chat-preview-shell[data-preview-open="true"] .cw-composer-host {
     margin-left: 0 !important;
     margin-right: auto !important;
-    max-width: 860px !important;
+    max-width: 720px !important;
   }
 }
 

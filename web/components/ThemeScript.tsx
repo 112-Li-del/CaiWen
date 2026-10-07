@@ -28,8 +28,9 @@ export default function ThemeScript() {
         } else if (stored === 'light') {
           document.documentElement.classList.add('theme-light');
         } else {
-          document.documentElement.classList.add('theme-goldred');
-          localStorage.setItem('deeptutor-theme', 'goldred');
+          // 新浏览器 / 新账号无存储：默认南财主题（snow），并写回 localStorage
+          document.documentElement.classList.add('theme-snow');
+          localStorage.setItem('deeptutor-theme', 'snow');
         }
       } catch (e) {}
     })();

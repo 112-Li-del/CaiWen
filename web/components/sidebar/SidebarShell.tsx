@@ -3,12 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
   Bot,
-  Github,
   LayoutGrid,
   Library,
   MessageSquare,
@@ -16,12 +15,11 @@ import {
   PanelLeftOpen,
   PenLine,
   Plus,
-  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
-import { VersionBadge } from "@/components/sidebar/VersionBadge";
+import { UserMenu } from "@/components/sidebar/UserMenu";
 import type { SessionSummary } from "@/lib/session-api";
 import { Tooltip } from "@/components/ui/Tooltip";
 import StaggeredMenu, {
@@ -73,11 +71,7 @@ const PRIMARY_NAV: NavEntry[] = [
   },
 ];
 
-const SECONDARY_NAV: NavEntry[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
-];
 const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = "max-h-[112px]";
-const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
 
 interface SidebarShellProps {
   sessions?: SessionSummary[];
@@ -89,7 +83,6 @@ interface SidebarShellProps {
   onSelectSession?: (sessionId: string) => void | Promise<void>;
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
-  footerSlot?: ReactNode;
   /** When false (default), admin-only nav items are hidden (see ADMIN_ONLY_HREFS). */
   isAdmin?: boolean;
 }
@@ -126,7 +119,6 @@ export function SidebarShell({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
-  footerSlot,
   isAdmin = false,
 }: SidebarShellProps) {
   /* 管理员主 nav 只留聊天：知识库移到底部、四项功能收进「功能」菜单（也在底部）。
@@ -268,7 +260,7 @@ export function SidebarShell({
   if (collapsed) {
     return (
       <>
-        <aside className="group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
+        <aside className="sb-root group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
         {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
@@ -326,7 +318,7 @@ export function SidebarShell({
                   className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                     active
                       ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                      : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                      : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
                   }`}
                 >
                   {active && (
@@ -351,7 +343,7 @@ export function SidebarShell({
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                   pathname.startsWith("/knowledge")
                     ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                    : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
                 }`}
               >
                 {pathname.startsWith("/knowledge") && (
@@ -374,7 +366,7 @@ export function SidebarShell({
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
                   featureMenuOpen
                     ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                    : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
                 }`}
               >
                 {featureMenuOpen && (
@@ -389,41 +381,10 @@ export function SidebarShell({
           </div>
         )}
 
-        {/* Secondary nav + footer */}
+        {/* Footer: 用户菜单（对标 WorkBuddy：头像固定最底部；版本/GitHub 已按需求移除） */}
         <div className="flex w-full flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
-          {SECONDARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={t(item.label) as string}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                  active
-                    ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-white hover:bg-[var(--background)]/50 hover:text-white"
-                }`}
-              >
-                {active && (
-                  <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                )}
-                <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-              </Link>
-            );
-          })}
-          {footerSlot}
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
-            className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-white/70 transition-colors hover:bg-[var(--background)]/50 hover:text-white"
-          >
-            <Github size={15} strokeWidth={1.6} />
-          </a>
-          <VersionBadge collapsed />
+          <UserMenu collapsed isAdmin={isAdmin} />
         </div>
       </aside>
       {featureMenuEl}
@@ -434,7 +395,7 @@ export function SidebarShell({
   /* ---- Expanded state ---- */
   return (
     <>
-      <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
+      <aside className="sb-root flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" className="group flex items-center gap-2">
@@ -460,8 +421,8 @@ export function SidebarShell({
       </div>
 
       {/* Primary nav */}
-      <nav className="px-2 pt-1">
-        <div className="space-y-px">
+      <nav className="px-2 pt-1 pb-2">
+        <div className="space-y-1">
           {/* New chat */}
           <button
             onClick={handleNewChat}
@@ -481,7 +442,7 @@ export function SidebarShell({
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                     active
                       ? "bg-[var(--background)]/70 font-semibold text-white"
-                      : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                      : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
                   }`}
                 >
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
@@ -529,7 +490,7 @@ export function SidebarShell({
             className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
               pathname.startsWith("/knowledge")
                 ? "bg-[var(--background)]/70 font-semibold text-white"
-                : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
             }`}
           >
             <BookOpen
@@ -547,7 +508,7 @@ export function SidebarShell({
             className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
               featureMenuOpen
                 ? "bg-[var(--background)]/70 font-semibold text-white"
-                : "text-white hover:bg-[var(--background)]/50 hover:text-white"
+                : "text-white/70 hover:bg-[var(--background)]/50 hover:text-white"
             }`}
           >
             <LayoutGrid
@@ -559,39 +520,10 @@ export function SidebarShell({
         </div>
       )}
 
-      {/* Secondary nav + footer */}
+      {/* Footer: 用户菜单（对标 WorkBuddy：头像固定最底部，设置 / 管理 /
+          退出登录收进 UserMenu 弹出层；版本/GitHub 已按需求移除） */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
-          const active = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-                active
-                  ? "bg-[var(--background)]/70 font-semibold text-white"
-                  : "text-white hover:bg-[var(--background)]/50 hover:text-white"
-              }`}
-            >
-              <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
-              <span>{t(item.label)}</span>
-            </Link>
-          );
-        })}
-        {footerSlot}
-        <div className="mt-0.5 flex items-center gap-0.5">
-          <VersionBadge />
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-[var(--background)]/50 hover:text-white"
-          >
-            <Github size={13} strokeWidth={1.7} />
-          </a>
-        </div>
+        <UserMenu isAdmin={isAdmin} />
       </div>
     </aside>
     {featureMenuEl}

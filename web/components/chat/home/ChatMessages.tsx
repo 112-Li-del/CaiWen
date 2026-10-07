@@ -544,7 +544,7 @@ const UserMessage = memo(function UserMessage({
               })}
           </div>
         )}
-        <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
+        <div className="chat-user-bubble rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
           {(() => {
             const snap = msg.requestSnapshot;
             const hasNotebook = Boolean(snap?.notebookReferences?.length);

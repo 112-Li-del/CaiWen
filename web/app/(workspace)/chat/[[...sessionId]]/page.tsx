@@ -1382,7 +1382,7 @@ export default function ChatPage() {
       data-preview-open={previewSource ? "true" : "false"}
       className="chat-preview-shell relative flex h-full flex-col overflow-hidden bg-[var(--background)]"
     >
-      <div className="mx-auto flex w-full max-w-[960px] items-center justify-between px-6 pt-3 pb-0">
+      <div className="mx-auto flex w-full max-w-[820px] items-center justify-between px-6 pt-4 pb-3">
         <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
           {t(activeCap.label)}
         </span>
@@ -1410,7 +1410,7 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
-      <div className="relative mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+      <div className="relative mx-auto flex w-full max-w-[820px] flex-1 min-h-0 flex-col overflow-hidden px-6">
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="flex w-full justify-center">
@@ -1425,12 +1425,12 @@ export default function ChatPage() {
             ref={messagesContainerRef}
             data-chat-scroll-root="true"
             onScroll={handleMessagesScroll}
-            className={`mx-auto w-full flex-1 min-h-0 space-y-7 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-0" : "pt-2 pb-6"}`}
+            className={`mx-auto w-full flex-1 min-h-0 space-y-7 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-4" : "pt-2 pb-6"}`}
             style={
               hasMessages
                 ? (() => {
                     const maskImage =
-                      "linear-gradient(to bottom, transparent 0px, #000 32px, #000 calc(100% - 40px), transparent 100%)";
+                      "linear-gradient(to bottom, transparent 0px, #000 14px, #000 calc(100% - 40px), transparent 100%)";
                     return {
                       paddingBottom: "4px",
                       WebkitMaskImage: maskImage,
@@ -1469,11 +1469,11 @@ export default function ChatPage() {
           className="cw-ball-host pointer-events-none relative z-30 flex shrink-0 pb-2 max-[1399px]:pb-2 min-[1400px]:absolute min-[1400px]:bottom-6 min-[1400px]:left-3 min-[1400px]:pb-0 min-[1400px]:[&>div:first-child]:!w-24"
         />
         <div className="min-w-0 flex-1">
-          {/* 窄屏下输入框不再伸到贴边：右缘收进来到 860px 封顶（左缘仍贴着球，
-              ml-0 覆盖 mx-auto 的居中）。宽屏维持 960 居中与消息列对齐。
+          {/* 窄屏下输入框不再伸到贴边：右缘收进来到 720px 封顶（左缘仍贴着球，
+              ml-0 覆盖 mx-auto 的居中）。宽屏维持 820 居中与消息列对齐。
               预览抽屉打开时由 globals.css 的 .cw-composer-host 规则强制回到这套
               左对齐布局（内容区被右推 560px，居中会与 absolute 的球重叠）。 */}
-          <div className="cw-composer-host mx-auto w-full max-w-[960px] max-[1399px]:ml-0 max-[1399px]:max-w-[860px]">
+          <div className="cw-composer-host mx-auto w-full max-w-[820px] max-[1399px]:ml-0 max-[1399px]:max-w-[720px]">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}

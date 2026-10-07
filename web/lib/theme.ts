@@ -7,6 +7,13 @@ export type Theme = "light" | "dark" | "glass" | "snow" | "goldred" | "brocade";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
 
+/**
+ * App-wide default theme for new browsers / new accounts: 南财（snow）。
+ * 首屏 ThemeScript 兜底、AppShell 初始 state、initializeTheme 都以此为准，
+ * 保证"实际渲染"与"设置页选中态"在无存储时一致。
+ */
+export const DEFAULT_THEME: Theme = "snow";
+
 type ThemeChangeListener = (theme: Theme) => void;
 const themeListeners = new Set<ThemeChangeListener>();
 
@@ -115,7 +122,7 @@ export function applyThemeToDocument(theme: Theme): void {
 
 /**
  * Initialize theme on app startup
- * Priority: localStorage > system preference > default (light)
+ * Priority: localStorage > app default (snow / 南财)
  */
 export function initializeTheme(): Theme {
   // Check localStorage first
@@ -125,11 +132,11 @@ export function initializeTheme(): Theme {
     return stored;
   }
 
-  // Fall back to system preference
-  const systemTheme = getSystemTheme();
-  applyThemeToDocument(systemTheme);
-  saveThemeToStorage(systemTheme);
-  return systemTheme;
+  // New browser / account: fall back to the app default and persist it so
+  // later reads stay consistent (no longer follows OS light/dark preference).
+  applyThemeToDocument(DEFAULT_THEME);
+  saveThemeToStorage(DEFAULT_THEME);
+  return DEFAULT_THEME;
 }
 
 /**
