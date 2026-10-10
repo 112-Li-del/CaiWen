@@ -298,3 +298,13 @@ celerybeat.pid
 # ============================================
 exclamation-mark.svg
 exclamation-redraw.html
+
+# ============================================
+# Local-only material (must not be published)
+# ============================================
+# DeepSeek Harness desktop installer scratch, including a 171 MB .exe
+_dsh_installer/
+# Local security-review material (confidential)
+_sec_report/
+# Stray npm lockfile at the repo root: makes Next.js infer the wrong workspace root
+/package-lock.json
