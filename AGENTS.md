@@ -1,10 +1,18 @@
-# DeepTutor — Agent-Native Architecture
+# CaiWen（财问） — Agent-Native Architecture
 
 ## Overview
 
-DeepTutor is an **agent-native** intelligent learning companion built around
-a two-layer plugin model (Tools + Capabilities) with three entry points:
-CLI, WebSocket API, and Python SDK.
+CaiWen（财问）is the campus question-answering deployment of DeepTutor for
+南京财经大学 (Nanjing University of Finance and Economics). It keeps
+DeepTutor's **agent-native** two-layer model (Tools + Capabilities) with three
+entry points — CLI, WebSocket API, and Python SDK — and adds the campus
+knowledge bases (学生手册 / 招生政策), the 财问 branding, and a trimmed
+frontend entry surface.
+
+> Frontend entry policy lives in `web/lib/features.ts`: the campus deployment
+> hides the playground capabilities and most tools from the UI ("收入口不删码"),
+> but **the backend code and registrations are all retained**. Do not delete
+> those modules when acting on the hiding list.
 
 ## Architecture
 
@@ -25,7 +33,8 @@ Entry Points:  CLI (Typer)  |  WebSocket /api/v1/ws  |  Python SDK
 
 ### Level 1 — Tools
 
-Lightweight single-function tools the LLM calls on demand:
+Lightweight single-function tools the LLM calls on demand. All of them are
+defined in `deeptutor/tools/builtin/__init__.py` (`BUILTIN_TOOL_TYPES`):
 
 | Tool                | Description                                    |
 | ------------------- | ---------------------------------------------- |
@@ -39,21 +48,20 @@ Lightweight single-function tools the LLM calls on demand:
 
 ### Level 2 — Capabilities
 
-Multi-step agent pipelines that take over the conversation:
+Multi-step agent pipelines that take over the conversation. All of them live in
+`deeptutor/capabilities/` and are registered by class path in
+`deeptutor/runtime/bootstrap/builtin_capabilities.py`
+(`BUILTIN_CAPABILITY_CLASSES`) — there is **no plugin directory and no
+`manifest.yaml` discovery**:
 
-| Capability       | Stages                                         |
-| ---------------- | ---------------------------------------------- |
-| `chat`           | responding (default, tool-augmented)           |
-| `deep_solve`     | planning → reasoning → writing                 |
-| `deep_question`  | ideation → evaluation → generation → validation |
-
-### Playground Plugins
-
-Extended features in `deeptutor/plugins/`:
-
-| Plugin            | Type       | Description                          |
-| ----------------- | ---------- | ------------------------------------ |
-| `deep_research`   | playground | Multi-agent research + reporting     |
+| Capability       | Module                              | Stages                                         |
+| ---------------- | ----------------------------------- | ---------------------------------------------- |
+| `chat`           | `capabilities/chat.py`              | thinking → acting → observing → responding (tool-augmented) |
+| `deep_solve`     | `capabilities/deep_solve.py`        | planning → reasoning → writing                 |
+| `deep_question`  | `capabilities/deep_question.py`     | ideation → evaluation → generation → validation |
+| `deep_research`  | `capabilities/deep_research.py`     | multi-agent research + reporting               |
+| `math_animator`  | `capabilities/math_animator.py`     | Manim animation pipeline                       |
+| `visualize`      | `capabilities/visualize.py`         | visual explanation pipeline                    |
 
 ## CLI Usage
 
@@ -74,13 +82,17 @@ deeptutor chat
 deeptutor kb list
 deeptutor kb create my-kb --doc textbook.pdf
 
-# Plugins & memory
+# Inspect registered tools/capabilities, and memory
 deeptutor plugin list
 deeptutor memory show
 
 # API server (requires .[server])
 deeptutor serve --port 8001
 ```
+
+`deeptutor plugin list` is a **registry inspection command**: it prints the
+tools and capabilities currently registered in `ToolRegistry` /
+`CapabilityRegistry`. It does not read plugins from disk.
 
 ## Key Files
 
@@ -94,42 +106,36 @@ deeptutor serve --port 8001
 | `deeptutor/core/context.py`         | UnifiedContext dataclass             |
 | `deeptutor/runtime/registry/tool_registry.py` | Tool discovery & registration |
 | `deeptutor/runtime/registry/capability_registry.py` | Capability discovery & registration |
+| `deeptutor/runtime/bootstrap/builtin_capabilities.py` | Built-in capability class paths |
 | `deeptutor/runtime/mode.py`         | RunMode (CLI vs SERVER)              |
-| `deeptutor/capabilities/`           | Built-in capability wrappers         |
-| `deeptutor/tools/builtin/`          | Built-in tool wrappers               |
-| `deeptutor/plugins/`                | Playground plugins                   |
-| `deeptutor/plugins/loader.py`       | Plugin discovery from manifest.yaml  |
+| `deeptutor/capabilities/`           | Built-in capability implementations  |
+| `deeptutor/tools/builtin/__init__.py` | Built-in tool implementations      |
 | `deeptutor_cli/main.py`             | Typer CLI entry point                |
 | `deeptutor/api/routers/unified_ws.py` | Unified WebSocket endpoint         |
+| `web/`                              | Next.js 16 frontend                  |
+| `web/lib/features.ts`               | Frontend entry visibility policy     |
 
-## Plugin Development
+## Adding a Capability
 
-Create a directory under `deeptutor/plugins/<name>/` with:
+Capabilities are plain classes, registered by import path — no manifest and no
+discovery step:
 
-```
-manifest.yaml     # name, version, type, description, stages
-capability.py     # class extending BaseCapability
-```
+1. Implement the class under `deeptutor/capabilities/<name>.py`, extending
+   `BaseCapability` from `deeptutor.core.capability_protocol`.
+2. Add its class path to `BUILTIN_CAPABILITY_CLASSES` in
+   `deeptutor/runtime/bootstrap/builtin_capabilities.py`.
+3. If it should be selectable in the frontend, update `web/lib/features.ts`
+   (and the related `ADMIN_ROUTES` / `ADMIN_ONLY_HREFS` lists noted there).
 
-Minimal `manifest.yaml`:
-```yaml
-name: my_plugin
-version: 0.1.0
-type: playground
-description: "My custom plugin"
-stages: [step1, step2]
-```
-
-Minimal `capability.py`:
 ```python
 from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 
-class MyPlugin(BaseCapability):
+class MyCapability(BaseCapability):
     manifest = CapabilityManifest(
-        name="my_plugin",
-        description="My custom plugin",
+        name="my_capability",
+        description="My custom capability",
         stages=["step1", "step2"],
     )
 
@@ -153,3 +159,16 @@ lists in `requirements/*.txt` for Docker/CI installs without source code.
 .[dev]            — .[server] + test/lint tools
 .[all]            — Everything above
 ```
+
+## Repository Notes
+
+- Branch strategy in this fork: `main`, `speed-version`, `ball` (there is **no
+  `dev` branch** here).
+- Python ≥ 3.11. The local venv is `./.venv` (Windows); `start.bat` runs
+  `.venv\Scripts\python.exe scripts\start_web.py`.
+- `scripts/start_web.py` **requires `npm` on PATH** and starts the backend
+  (`deeptutor.api.run_server`, port 8001) plus the frontend (`next dev`, port
+  3782). Ports come from `BACKEND_PORT` / `FRONTEND_PORT` in `.env`.
+- Chinese text files in this repo have **no BOM**: read them as UTF-8
+  explicitly. Windows PowerShell 5.1 `Get-Content` defaults to the ANSI
+  codepage and will produce mojibake.

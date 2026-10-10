@@ -15,6 +15,12 @@ function run(cmd, args) {
     stdio: "inherit",
     env: process.env,
   });
+  // A spawn failure leaves `status` null and puts the reason on `error`;
+  // reporting it here keeps the script from exiting silently.
+  if (result.error) {
+    console.error(`Failed to run ${cmd}: ${result.error.message}`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
@@ -40,7 +46,11 @@ function collectTests(dir) {
 
 rmSync(distRoot, { recursive: true, force: true });
 
-run(path.join(webRoot, "node_modules", ".bin", "tsc"), [
+// Compile through the current Node binary rather than the node_modules/.bin
+// shim: on Windows the extensionless shim is ENOENT and the .cmd shim cannot
+// be spawned without a shell (EINVAL), which made this script exit silently.
+run(process.execPath, [
+  path.join(webRoot, "node_modules", "typescript", "bin", "tsc"),
   "-p",
   "tsconfig.node-tests.json",
 ]);
