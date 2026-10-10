@@ -1344,25 +1344,41 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
         if not is_rendition_pdf:
             raise HTTPException(status_code=404, detail="File not found")
 
-    media_type, _ = mimetypes.guess_type(target.name)
-    resolved_media_type = media_type or "application/octet-stream"
-    inline = (
-        resolved_media_type == "application/pdf"
-        or resolved_media_type in {"text/plain", "text/markdown", "text/csv"}
-        or (
-            resolved_media_type.startswith("image/")
-            and resolved_media_type != "image/svg+xml"
+    # Uploaded files are untrusted data, even when an administrator uploaded them.
+    # Do not let the host's MIME database turn XML/HTML/SVG into active documents.
+    preview_types = {
+        ".pdf": "application/pdf",
+        ".txt": "text/plain",
+        ".md": "text/plain",
+        ".csv": "text/plain",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+        ".avif": "image/avif",
+    }
+    resolved_media_type = preview_types.get(target.suffix.lower(), "application/octet-stream")
+    inline = target.suffix.lower() in preview_types
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
+    # Defense in depth for downloads/plain text. Keep native PDF/image preview
+    # outside this policy, since browser viewers can require their own resources.
+    if not inline or resolved_media_type == "text/plain":
+        headers["Content-Security-Policy"] = (
+            "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'"
         )
-    )
     return FileResponse(
         target,
         media_type=resolved_media_type,
         filename=target.name,
         content_disposition_type="inline" if inline else "attachment",
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, no-store",
-        },
+        headers=headers,
     )
 
 

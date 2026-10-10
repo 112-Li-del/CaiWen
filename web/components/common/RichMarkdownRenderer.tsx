@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
+import { markdownSanitizeSchema } from "@/lib/markdown-security.mjs";
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { processMarkdownContent } from "@/lib/latex";
@@ -630,6 +632,7 @@ export default function RichMarkdownRenderer({
   const rehypePlugins = useMemo(() => {
     const p: Array<any> = [];
     if (allowHtml && plugins.rehypeRaw) p.push(plugins.rehypeRaw as never);
+    p.push([rehypeSanitize, markdownSanitizeSchema]);
     if (enableMath && plugins.rehypeKatex) p.push(plugins.rehypeKatex as never);
     return p;
   }, [allowHtml, enableMath, plugins.rehypeRaw, plugins.rehypeKatex]);

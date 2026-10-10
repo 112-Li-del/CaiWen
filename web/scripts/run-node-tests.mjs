@@ -37,7 +37,7 @@ function collectTests(dir) {
       files.push(...collectTests(entry));
       continue;
     }
-    if (entry.endsWith(".test.js")) {
+    if (entry.endsWith(".test.js") || entry.endsWith(".test.mjs")) {
       files.push(entry);
     }
   }
@@ -56,6 +56,8 @@ run(process.execPath, [
 ]);
 
 const testFiles = collectTests(testRoot);
+// Native ESM tests exercise the same ESM-only Markdown plugins as the browser.
+testFiles.push(...collectTests(path.join(webRoot, "tests")).filter((file) => file.endsWith(".test.mjs")));
 if (testFiles.length === 0) {
   console.error("No compiled node tests found.");
   process.exit(1);

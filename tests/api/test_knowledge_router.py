@@ -460,6 +460,41 @@ def test_file_serving_inlines_pdf_and_downloads_original_docx_and_html(
     assert html_response.headers["x-content-type-options"] == "nosniff"
 
 
+@pytest.mark.parametrize("filename", ["xss.xml", "XSS.XML", "xss.html", "xss.htm", "xss.svg", "notes.txt.html", "xss.xhtml"])
+def test_active_documents_download_as_inert_bytes(monkeypatch, tmp_path: Path, filename: str) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    payload = b'<script>alert(1)</script><svg onload="alert(1)"></svg>'
+    (raw_dir / filename).write_bytes(payload)
+    monkeypatch.setattr(knowledge_router_module, "_resolve_kb_raw_dir", lambda _: raw_dir)
+    # A platform MIME override must not weaken the response policy.
+    monkeypatch.setattr(knowledge_router_module.mimetypes, "guess_type", lambda _: ("text/html", None))
+    with TestClient(_build_app()) as client:
+        response = client.get(f"/api/v1/knowledge/school/files/{filename}")
+    assert response.status_code == 200
+    assert response.content == payload
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["content-disposition"].startswith("attachment")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in response.headers["content-security-policy"]
+    assert "default-src 'none'" in response.headers["content-security-policy"]
+
+
+@pytest.mark.parametrize("filename", ["xss.txt", "xss.md", "xss.csv"])
+def test_markup_in_text_documents_stays_plain_text(monkeypatch, tmp_path: Path, filename: str) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / filename).write_text("<script>alert(1)</script>", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "_resolve_kb_raw_dir", lambda _: raw_dir)
+    with TestClient(_build_app()) as client:
+        response = client.get(f"/api/v1/knowledge/school/files/{filename}")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.headers["content-disposition"].startswith("inline")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in response.headers["content-security-policy"]
+
+
 def test_file_serving_allows_only_content_addressed_rendition_pdf(
     monkeypatch, tmp_path: Path
 ) -> None:
