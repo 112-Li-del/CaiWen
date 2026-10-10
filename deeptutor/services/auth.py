@@ -132,7 +132,7 @@ def is_first_user() -> bool:
     return len(_load_users()) == 0
 
 
-def add_user(username: str, plain_password: str, role: str = "user", status: str = "active") -> None:
+def add_user(username: str, plain_password: str, role: str = "user", status: str = "active", *, create_only: bool = False) -> None:
     """
     Add or update a user in data/user/auth_users.json.
 
@@ -147,7 +147,7 @@ def add_user(username: str, plain_password: str, role: str = "user", status: str
     """
     from deeptutor.multi_user.identity import save_user
 
-    record = save_user(username, hash_password(plain_password), role=role, status=status)  # type: ignore[arg-type]
+    record = save_user(username, hash_password(plain_password), role=role, status=status, create_only=create_only)  # type: ignore[arg-type]
     logger.info("User '%s' saved with role=%r status=%s", username, record.get("role", "user"), status)
 
 
@@ -268,11 +268,19 @@ def decode_token(token: str) -> TokenPayload | None:
         username = payload.get("sub")
         if not username:
             return None
-        user_id = str(payload.get("uid") or "")
-        if not user_id:
-            record = _load_users().get(str(username)) or {}
-            user_id = str(record.get("id") or "")
-        return TokenPayload(username=username, role=payload.get("role", "user"), user_id=user_id)
+        # A valid signature alone must not keep a deleted/disabled account or
+        # an old admin role usable until the token expires.
+        record = _load_users().get(str(username))
+        if not record or record.get("disabled") or record.get("status", "active") != "active":
+            return None
+        user_id = str(record.get("id") or "")
+        token_user_id = str(payload.get("uid") or "")
+        if not user_id or (token_user_id and token_user_id != user_id):
+            return None
+        role = record.get("role", "user")
+        if role not in {"admin", "user"}:
+            return None
+        return TokenPayload(username=username, role=role, user_id=user_id)
     except JWTError:
         return None
 
@@ -343,6 +351,10 @@ def register_pb(username: str, email: str, password: str) -> dict | None:
 # Main auth entry point
 # ---------------------------------------------------------------------------
 
+# A bcrypt work item, never an account credential. Its comparison result must
+# never authorize login. Cost 12 matches hash_password's current default.
+_DUMMY_PASSWORD_HASH = "$2b$12$jTC8lDifNn6HJWsYh/MHA.KYJKG0FArCrO7cz5ORVHbSYqmlWRPee"
+
 
 def authenticate(username: str, password: str) -> TokenPayload | None:
     """
@@ -360,14 +372,15 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
             "No users configured — login will always fail. "
             "Navigate to /register to create your first account."
         )
-        return None
-
     record = users.get(username)
     if not record:
+        verify_password(password, _DUMMY_PASSWORD_HASH)
         return None
 
     hashed = record.get("hash", "") if isinstance(record, dict) else record
     if not verify_password(password, hashed):
+        return None
+    if isinstance(record, dict) and record.get("disabled"):
         return None
 
     # Reject pending users — must be approved by admin first

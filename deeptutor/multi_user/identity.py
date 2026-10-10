@@ -178,12 +178,16 @@ def save_user(
     hashed_password: str,
     role: Role = "user",
     status: str = "active",
+    *,
+    create_only: bool = False,
 ) -> dict[str, Any]:
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
     # Read-modify-write must be atomic so concurrent first-time registrations
     # cannot each see an empty store and each promote themselves to admin.
     with _USERS_WRITE_LOCK:
         users = load_users()
+        if create_only and username in users:
+            raise ValueError("USER_ALREADY_EXISTS")
         effective_role: Role = "admin" if not users else role
         existing = users.get(username) or {}
         record = {

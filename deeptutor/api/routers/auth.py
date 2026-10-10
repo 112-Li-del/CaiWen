@@ -1,9 +1,10 @@
 """Auth router — login, logout, status, registration, and user-management endpoints."""
 
+from functools import lru_cache
 import logging
 import os
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, field_validator
 
 # SameSite=None lets the cookie work when the browser accesses the frontend via
@@ -72,20 +73,20 @@ class RegisterRequest(BaseModel):
 
         v = v.strip()
         if not v:
-            raise ValueError("Email cannot be empty")
+            raise ValueError("账号不能为空。")
         # Accept standard email addresses (used by PocketBase mode) or plain
         # usernames (used by the built-in SQLite/JSON auth mode).
         email_re = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
         plain_re = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
         if not email_re.match(v) and not plain_re.match(v):
-            raise ValueError("Enter a valid email address")
+            raise ValueError("请输入有效邮箱或由字母、数字、下划线、短横线、点组成的 3 至 64 位账号。")
         return v
 
     @field_validator("password")
     @classmethod
     def password_valid(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
+            raise ValueError("密码至少需要 8 个字符。")
         return v
 
 
@@ -185,7 +186,7 @@ async def require_auth(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
+            detail="请先登录。",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -193,12 +194,14 @@ async def require_auth(
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="登录已失效，请重新登录。",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     from deeptutor.multi_user.context import set_current_user, user_from_token_payload
 
+    if payload.role not in {"admin", "user"}:
+        raise HTTPException(status_code=403, detail="账号尚未获得使用权限。")
     set_current_user(user_from_token_payload(payload))
     return payload
 
@@ -220,7 +223,7 @@ def require_admin(
     if payload is None or payload.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="此功能仅限管理员使用。",
         )
     return payload
 
@@ -258,11 +261,49 @@ async def auth_status(
     )
 
 
-@router.post("/login")
+@lru_cache(maxsize=1)
+def _get_login_throttle():
+    from deeptutor.services.login_throttle import build_login_throttle
+
+    return build_login_throttle()
+
+
+def enforce_login_budget(body: LoginRequest, request: Request) -> None:
+    """Run in FastAPI's thread pool before either authentication backend.
+
+    Use ASGI's client address; never trust arbitrary forwarded headers here.
+    Configure the server's trusted proxy list when deploying behind a proxy.
+    """
+    if not AUTH_ENABLED:
+        return
+    client_ip = request.client.host if request.client else "unknown"
+    username = body.username
+    if POCKETBASE_ENABLED:
+        username = username.strip().casefold()
+    try:
+        retry_after = _get_login_throttle().reserve(username, client_ip)
+    except Exception as exc:
+        # Fail closed if the shared store is locked/corrupt; do not silently
+        # allow unlimited password checks or expose database details.
+        logger.error("Login throttle unavailable: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="登录服务暂时不可用，请稍后重试。",
+            headers={"Retry-After": "30"},
+        ) from exc
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"登录尝试次数过多，请在 {retry_after} 秒后重试。",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+@router.post("/login", dependencies=[Depends(enforce_login_budget)])
 async def login(body: LoginRequest, response: Response) -> dict:
     """Validate credentials and set a JWT cookie."""
     if not AUTH_ENABLED:
-        return {"ok": True, "message": "Auth is disabled — no login required."}
+        return {"ok": True, "message": "当前未启用身份认证，无需登录。"}
 
     if POCKETBASE_ENABLED:
         # PocketBase mode: email = username field for backwards-compat with the
@@ -271,7 +312,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
         if not pb_result:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
+                detail="邮箱或密码错误。",
             )
         payload, pb_token = pb_result
         response.set_cookie(
@@ -296,12 +337,12 @@ async def login(body: LoginRequest, response: Response) -> dict:
     if not result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="用户名或密码错误。",
         )
     if result.role == "pending":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is pending approval. Please wait for an administrator to approve it.",
+            detail="你的账号正在等待审核，请等待管理员审核通过后再登录。",
         )
 
     token = create_token(result.username, result.role, result.user_id)
@@ -331,7 +372,37 @@ async def logout(response: Response) -> dict:
     return {"ok": True}
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@lru_cache(maxsize=1)
+def _get_registration_throttle():
+    from deeptutor.services.login_throttle import build_registration_throttle
+
+    return build_registration_throttle()
+
+
+def enforce_registration_budget(body: RegisterRequest, request: Request) -> None:
+    """Limit every valid registration request before checking account existence."""
+    if not AUTH_ENABLED:
+        return
+    client_ip = request.client.host if request.client else "unknown"
+    username = body.username.strip().casefold() if POCKETBASE_ENABLED else body.username
+    try:
+        retry_after = _get_registration_throttle().reserve(username, client_ip)
+    except Exception as exc:
+        logger.error("Registration throttle unavailable: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="注册服务暂时不可用，请稍后重试。",
+            headers={"Retry-After": "30"},
+        ) from exc
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail=f"注册尝试次数过多，请在 {retry_after} 秒后重试。",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED, dependencies=[Depends(enforce_registration_budget)])
 async def register(body: RegisterRequest) -> dict:
     """
     Self-registration with admin approval.
@@ -346,7 +417,7 @@ async def register(body: RegisterRequest) -> dict:
     if not AUTH_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auth is disabled — registration is not available.",
+            detail="当前未启用身份认证，无法注册。",
         )
 
     if POCKETBASE_ENABLED:
@@ -355,13 +426,13 @@ async def register(body: RegisterRequest) -> dict:
         if not is_first_user():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Self-registration is closed. Ask an administrator to create your account.",
+                detail="当前未开放自主注册，请联系管理员创建账号。",
             )
         result = register_pb(username=body.username, email=body.username, password=body.password)
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Registration failed — username or email may already be taken.",
+                detail="注册失败，账号或邮箱可能已被注册。",
             )
         logger.info(f"First user registered via PocketBase: '{body.username}'")
         return {
@@ -379,14 +450,19 @@ async def register(body: RegisterRequest) -> dict:
     if body.username in existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
+            detail="该账号已被注册，请直接登录或使用其他账号。",
         )
 
     # First user → auto active + admin. Subsequent → pending, wait for approval.
     first_user = is_first_user()
     user_status = "active" if first_user else "pending"
 
-    add_user(body.username, body.password, status=user_status)
+    try:
+        add_user(body.username, body.password, status=user_status, create_only=True)
+    except ValueError as exc:
+        if str(exc) != "USER_ALREADY_EXISTS":
+            raise
+        raise HTTPException(409, "该账号已被注册，请直接登录或使用其他账号。") from exc
     user_id = ""
     role = "user"
     for item in list_users():
@@ -471,10 +547,15 @@ async def admin_create_user(
     if body.username in existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
+            detail="该账号已被注册，请使用其他账号。",
         )
 
-    add_user(body.username, body.password)
+    try:
+        add_user(body.username, body.password, create_only=True)
+    except ValueError as exc:
+        if str(exc) != "USER_ALREADY_EXISTS":
+            raise
+        raise HTTPException(409, "该账号已被注册，请使用其他账号。") from exc
     user_id = ""
     role = "user"
     for item in list_users():

@@ -45,9 +45,9 @@ export async function login(
     if (res.ok) return { ok: true };
 
     const data = await res.json().catch(() => ({}));
-    return { ok: false, error: extractDetail(data.detail) ?? "Login failed" };
+    return { ok: false, error: extractDetail(data.detail) ?? "登录失败，请重试。" };
   } catch {
-    return { ok: false, error: "Could not reach the server" };
+    return { ok: false, error: "无法连接服务器，请检查网络后重试。" };
   }
 }
 
@@ -63,7 +63,7 @@ function extractDetail(detail: unknown): string {
     if (typeof first === "object" && first !== null && "msg" in first)
       return String((first as { msg: unknown }).msg);
   }
-  return "Request failed";
+  return "请求失败，请稍后重试。";
 }
 
 /**
@@ -98,7 +98,7 @@ export async function register(
       };
     return { ok: false, error: extractDetail(data.detail) };
   } catch {
-    return { ok: false, error: "Could not reach the server" };
+    return { ok: false, error: "无法连接服务器，请检查网络后重试。" };
   }
 }
 
