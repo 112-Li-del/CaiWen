@@ -26,6 +26,9 @@ from deeptutor.logging import (
 )
 from deeptutor.runtime.registry.capability_registry import get_capability_registry
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.campus_policy import (
+    CAMPUS_CAPABILITIES, CAMPUS_TOOLS, is_campus_request, validate_campus_execution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,10 @@ async def list_plugins():
     ]
 
     capabilities = capability_registry.get_manifests()
+    if is_campus_request():
+        tools = [item for item in tools if item["name"] in CAMPUS_TOOLS]
+        capabilities = [item for item in capabilities if item["name"] in CAMPUS_CAPABILITIES]
+        plugin_manifests = []
 
     plugins = [
         {
@@ -104,6 +111,8 @@ async def list_plugins():
 @router.post("/tools/{tool_name}/execute")
 async def execute_tool(tool_name: str, body: ToolExecuteRequest):
     """Execute a single tool with explicit parameters (for Playground testing)."""
+    if is_campus_request() and tool_name not in CAMPUS_TOOLS:
+        raise HTTPException(403, "校园服务未开放该工具。")
     registry = get_tool_registry()
     tool = registry.get(tool_name)
     if not tool:
@@ -271,6 +280,8 @@ async def _execute_stream(tool_name: str, params: dict[str, Any]) -> AsyncGenera
 @router.post("/tools/{tool_name}/execute-stream")
 async def execute_tool_stream(tool_name: str, body: ToolExecuteRequest):
     """Execute a tool and stream process logs + result as SSE."""
+    if is_campus_request() and tool_name not in CAMPUS_TOOLS:
+        raise HTTPException(403, "校园服务未开放该工具。")
     return StreamingResponse(
         _execute_stream(tool_name, body.params),
         media_type="text/event-stream",
@@ -389,6 +400,11 @@ async def execute_capability_stream(
     body: CapabilityExecuteRequest,
 ):
     """Execute a capability and stream logs + trace + final result as SSE."""
+    if is_campus_request():
+        try:
+            validate_campus_execution(capability_name, body.tools)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from exc
     return StreamingResponse(
         _execute_capability_stream(capability_name, body),
         media_type="text/event-stream",

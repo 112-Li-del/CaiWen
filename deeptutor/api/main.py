@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
+import ipaddress
 import logging
 import os
+import re
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -100,36 +103,89 @@ def _split_origins(value: str | None) -> list[str]:
     origins: list[str] = []
     seen: set[str] = set()
     for raw in value.replace("\n", ",").split(","):
-        origin = raw.strip().rstrip("/")
-        if not origin or origin in seen:
+        raw = raw.strip()
+        if not raw:
+            continue
+        origin = _normalize_cors_origin(raw)
+        if origin in seen:
             continue
         origins.append(origin)
         seen.add(origin)
     return origins
 
 
+def _normalize_cors_origin(value: str) -> str:
+    """Accept an exact HTTP(S) origin, never a URL path or wildcard."""
+    error = (
+        "CORS 来源配置无效：请填写完整的 http:// 或 https:// 前端地址，"
+        "可包含端口；不允许通配符、账号密码、路径、查询参数或片段。"
+    )
+    try:
+        if any(char.isspace() or ord(char) < 32 for char in value) or any(
+            char in value for char in "*\\?#"
+        ):
+            raise ValueError(error)
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.netloc.endswith(":")
+        ):
+            raise ValueError(error)
+        host = parsed.hostname.encode("idna").decode("ascii").lower()
+        if ":" in host:
+            host = f"[{ipaddress.IPv6Address(host).compressed}]"
+        elif not all(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in host.split(".")
+        ):
+            raise ValueError(error)
+        port = parsed.port
+        if port is not None and not 1 <= port <= 65535:
+            raise ValueError(error)
+        default_port = 80 if parsed.scheme == "http" else 443
+        suffix = "" if port in {None, default_port} else f":{port}"
+        return f"{parsed.scheme}://{host}{suffix}"
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError(error) from exc
+
+
 def _build_cors_settings() -> dict[str, object]:
     """Build CORS settings for both localhost and remote Docker deployments."""
     frontend_port = os.getenv("FRONTEND_PORT", "3782").strip() or "3782"
+    if (
+        not frontend_port.isascii()
+        or not frontend_port.isdecimal()
+        or not 1 <= int(frontend_port) <= 65535
+    ):
+        raise ValueError("FRONTEND_PORT 配置无效：请填写 1 到 65535 之间的端口号。")
+    frontend_port = str(int(frontend_port))
     extra_origins = _split_origins(os.getenv("CORS_ORIGIN")) + _split_origins(
         os.getenv("CORS_ORIGINS")
     )
-    origins = [
-        f"http://localhost:{frontend_port}",
-        f"http://127.0.0.1:{frontend_port}",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
+    origins = list(
+        dict.fromkeys([
+            f"http://localhost:{frontend_port}",
+            f"http://127.0.0.1:{frontend_port}",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ])
+    )
     for origin in extra_origins:
         if origin not in origins:
             origins.append(origin)
 
-    # Auth is disabled by default. In that local/single-user mode, mirror the
-    # pre-v1.3.8 behavior and allow remote Docker/LAN origins out of the box.
-    # When auth is enabled, require explicit CORS_ORIGIN(S) for credentialed
-    # cross-origin requests.
-    allow_origin_regex = None if _env_truthy(os.getenv("AUTH_ENABLED")) else r"https?://.*"
-    return {"allow_origins": origins, "allow_origin_regex": allow_origin_regex}
+    # Disabling login must never broaden browser access to private campus data.
+    return {
+        "allow_origins": origins,
+        "allow_origin_regex": None,
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        "allow_headers": ["Authorization", "Content-Type", "Range"],
+    }
 
 
 @asynccontextmanager
@@ -234,13 +290,12 @@ async def selective_access_log(request, call_next):
 
 
 _cors_settings = _build_cors_settings()
+from deeptutor.api.security import CampusAccessMiddleware
+
+app.add_middleware(CampusAccessMiddleware, allowed_origins=_cors_settings["allow_origins"])
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_settings["allow_origins"],
-    allow_origin_regex=_cors_settings["allow_origin_regex"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **_cors_settings,
 )
 
 # Mount a filtered view over user outputs.

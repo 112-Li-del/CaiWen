@@ -10,9 +10,8 @@ URL shape::
 
     GET /api/attachments/{session_id}/{attachment_id}/{filename}
 
-The session id functions as the ACL boundary, mirroring how the rest of
-the app treats sessions today (single-tenant, session ownership is local
-trust). Once multi-user auth lands we should swap this for signed URLs.
+Campus requests must resolve the session in the authenticated user's store
+before any attachment path is opened. Active documents are download-only.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from deeptutor.runtime.campus_policy import is_campus_request
 
 from deeptutor.services.storage import (
     LocalDiskAttachmentStore,
@@ -62,6 +62,11 @@ async def get_attachment(
     the browser still falls back to download, which is fine for the
     drawer's "Download" button path.
     """
+    if is_campus_request():
+        from deeptutor.services.session import get_session_store
+
+        if await get_session_store().get_session(session_id) is None:
+            raise HTTPException(status_code=404, detail="附件不存在或无权访问。")
     store = get_attachment_store()
     if not isinstance(store, LocalDiskAttachmentStore):
         # Future remote backends should issue a redirect to the signed URL
@@ -80,12 +85,20 @@ async def get_attachment(
     media_type, _ = mimetypes.guess_type(target.name)
     if not media_type:
         media_type = "application/octet-stream"
+    active_document = target.suffix.lower() in {".html", ".htm", ".xml", ".svg", ".xhtml"}
+    if active_document:
+        media_type = "application/octet-stream"
 
     # ``inline`` lets the browser preview the file when possible while still
     # honouring the suggested filename for the drawer's download action.
     headers = {
-        "Content-Disposition": _content_disposition(target.name),
+        "Content-Disposition": _content_disposition(
+            target.name, disposition="attachment" if active_document else "inline"
+        ),
         # User-uploaded data; do not let intermediaries cache it.
         "Cache-Control": "private, max-age=0, must-revalidate",
+        "X-Content-Type-Options": "nosniff",
     }
+    if active_document:
+        headers["Content-Security-Policy"] = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'"
     return FileResponse(path=str(target), media_type=media_type, headers=headers)

@@ -52,6 +52,14 @@ class ChatOrchestrator:
         # the registry but the user is mid-``answer_now``, route to ``chat``
         # so they still get *some* response instead of a hard error.
         cap_name = context.active_capability or "chat"
+        # API requests must not regain hidden tools through defaults or stored preferences.
+        # Local CLI/SDK calls retain the original registry and behavior.
+        from deeptutor.runtime.campus_policy import CAMPUS_TOOLS, is_campus_request, validate_campus_execution
+
+        if is_campus_request():
+            validate_campus_execution(cap_name, context.enabled_tools)
+            if context.enabled_tools is None:
+                context.enabled_tools = sorted(CAMPUS_TOOLS)
         capability = self._cap_registry.get(cap_name)
 
         is_answer_now = bool(

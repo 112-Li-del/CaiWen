@@ -27,6 +27,14 @@ def _seed_kbs(root, *names: str) -> None:
 
 
 def test_non_admin_only_sees_own_and_granted_admin_kbs(mu_isolated_root, as_user):
+    from deeptutor.multi_user import identity
+
+    # Grant assignment requires a real user record, not only a request context.
+    identity.USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    identity.USERS_FILE.write_text(
+        json.dumps({"alice": {"id": "u_alice", "hash": "test-hash", "role": "user"}}),
+        encoding="utf-8",
+    )
     _seed_kbs(mu_isolated_root / "data", "allowed", "forbidden")
     _seed_kbs(mu_isolated_root / "multi-user" / "u_alice", "personal")
     save_grant(

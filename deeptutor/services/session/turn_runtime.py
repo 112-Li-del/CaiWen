@@ -369,6 +369,17 @@ class TurnRuntimeManager:
 
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         capability = str(payload.get("capability") or "chat")
+        from deeptutor.runtime.campus_policy import CAMPUS_TOOLS, is_campus_request, validate_campus_execution
+
+        if is_campus_request():
+            try:
+                validate_campus_execution(capability, payload.get("tools"))
+            except PermissionError as exc:
+                raise RuntimeError(str(exc)) from exc
+            payload = {
+                **payload,
+                "tools": list(payload["tools"]) if payload.get("tools") is not None else sorted(CAMPUS_TOOLS),
+            }
         raw_config = dict(payload.get("config", {}) or {})
         runtime_only_keys = (
             "_persist_user_message",
@@ -514,6 +525,20 @@ class TurnRuntimeManager:
         last_user = await self.store.get_last_message(session_id, role="user")
         if last_user is None:
             raise RuntimeError("nothing_to_regenerate")
+
+        # Check stored preferences/overrides before deleting the previous answer.
+        from deeptutor.runtime.campus_policy import is_campus_request, validate_campus_execution
+
+        if is_campus_request():
+            preferences = session.get("preferences") or {}
+            requested = overrides or {}
+            try:
+                validate_campus_execution(
+                    str(requested.get("capability") or last_user.get("capability") or preferences.get("capability") or "chat"),
+                    requested.get("tools") if requested.get("tools") is not None else preferences.get("tools"),
+                )
+            except PermissionError as exc:
+                raise RuntimeError(str(exc)) from exc
 
         last_message = await self.store.get_last_message(session_id)
         previous_turn_id: str | None = None
