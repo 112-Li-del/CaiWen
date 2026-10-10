@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import atexit
+import csv
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -92,6 +93,7 @@ MESSAGES = {
         "port_owner": "owner: {command} (PID {pid})",
         "port_owner_unknown": "owner: unknown process",
         "port_hint": "Stop the existing process or run `python scripts/stop_web.py` if it is a stale CaiWen launch.",
+        "port_kill_hint": "To stop it: taskkill {flags} /T /F",
         "cleanup_previous": "Found a stale CaiWen launch state; cleaning it up first ...",
         "starting_backend": "Starting backend ...",
         "starting_frontend": "Starting frontend ...",
@@ -118,6 +120,7 @@ MESSAGES = {
         "port_owner": "占用进程：{command} (PID {pid})",
         "port_owner_unknown": "占用进程：未知",
         "port_hint": "请先停止已有进程；如果是上次 CaiWen 异常退出残留，可运行 `python scripts/stop_web.py`。",
+        "port_kill_hint": "可运行以下命令停止：taskkill {flags} /T /F",
         "cleanup_previous": "发现上次 CaiWen 启动状态，正在先清理残留进程 ...",
         "starting_backend": "正在启动后端 ...",
         "starting_frontend": "正在启动前端 ...",
@@ -285,10 +288,11 @@ def _write_state(
     backend_port: int,
     frontend_port: int,
     path: Path = STATE_PATH,
+    listeners: dict[str, list[PortOwner]] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    state = {
-        "version": 1,
+    state: dict[str, Any] = {
+        "version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "backend_port": backend_port,
         "frontend_port": frontend_port,
@@ -296,6 +300,15 @@ def _write_state(
             item.name: {"pid": item.process.pid, "pgid": item.pgid} for item in processes
         },
     }
+    # Record the processes that actually bound the ports.  The spawned parents
+    # (npm.cmd, the uvicorn reloader) can die while their children keep the
+    # ports, and without these PIDs a later launch cannot tell the leftovers
+    # are its own.
+    if listeners:
+        state["listeners"] = {
+            name: [{"command": owner.command, "pid": owner.pid} for owner in owners]
+            for name, owners in listeners.items()
+        }
     tmp_path = path.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     tmp_path.replace(path)
@@ -310,17 +323,26 @@ def _remove_state(path: Path = STATE_PATH) -> None:
 
 def _state_process_records(state: dict[str, Any]) -> list[tuple[int | None, int | None]]:
     processes = state.get("processes")
-    if not isinstance(processes, dict):
-        return []
     records: list[tuple[int | None, int | None]] = []
-    for raw in processes.values():
-        if not isinstance(raw, dict):
-            continue
-        pid = raw.get("pid")
-        pgid = raw.get("pgid")
-        records.append(
-            (pid if isinstance(pid, int) else None, pgid if isinstance(pgid, int) else None)
-        )
+    if isinstance(processes, dict):
+        for raw in processes.values():
+            if not isinstance(raw, dict):
+                continue
+            pid = raw.get("pid")
+            pgid = raw.get("pgid")
+            records.append(
+                (pid if isinstance(pid, int) else None, pgid if isinstance(pgid, int) else None)
+            )
+    listeners = state.get("listeners")
+    if isinstance(listeners, dict):
+        for owners in listeners.values():
+            if not isinstance(owners, list):
+                continue
+            for raw in owners:
+                if not isinstance(raw, dict):
+                    continue
+                pid = raw.get("pid")
+                records.append((pid if isinstance(pid, int) else None, None))
     return records
 
 
@@ -370,7 +392,84 @@ def _port_accepts_connection(port: int) -> bool:
         return False
 
 
+def _windows_image_names(pids: list[int]) -> dict[int, str]:
+    """Map PIDs to executable names via ``tasklist``."""
+    if not pids:
+        return {}
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return {}
+    names: dict[int, str] = {}
+    for line in result.stdout.splitlines():
+        try:
+            fields = next(csv.reader([line]))
+        except Exception:
+            continue
+        if len(fields) < 2:
+            continue
+        try:
+            pid = int(fields[1])
+        except ValueError:
+            continue
+        names[pid] = fields[0]
+    return names
+
+
+def _windows_listening_owners(port: int) -> list[PortOwner]:
+    """Resolve listeners on ``port`` via ``netstat -ano`` + ``tasklist``.
+
+    Windows has no ``lsof``, so the POSIX probe below silently yields no owners
+    and every port conflict is reported as an unknown process.  ``netstat``
+    exposes the owning PID, which makes the message actionable.
+    """
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return []
+
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        # TCP  <local>  <remote>  LISTENING  <pid>
+        if len(parts) < 5 or parts[0].upper() != "TCP":
+            continue
+        if parts[3].upper() != "LISTENING":
+            continue
+        if not parts[1].endswith(f":{port}"):
+            continue
+        try:
+            pid = int(parts[4])
+        except ValueError:
+            continue
+        if pid not in pids:
+            pids.append(pid)
+
+    names = _windows_image_names(pids)
+    return [PortOwner(command=names.get(pid, "?"), pid=pid) for pid in pids]
+
+
 def _listening_owners(port: int) -> list[PortOwner]:
+    if os.name == "nt":
+        return _windows_listening_owners(port)
     lsof = shutil.which("lsof")
     if not lsof:
         return []
@@ -398,6 +497,11 @@ def _listening_owners(port: int) -> list[PortOwner]:
             pid = None
         owners.append(PortOwner(command=parts[0], pid=pid))
     return owners
+
+
+def _discover_listeners(ports: dict[str, int]) -> dict[str, list[PortOwner]]:
+    """Snapshot which processes currently hold each service port."""
+    return {name: _listening_owners(port) for name, port in ports.items()}
 
 
 def _collect_port_conflicts(ports: dict[str, int]) -> list[PortConflict]:
@@ -473,6 +577,10 @@ def _ensure_ports_available(backend_port: int, frontend_port: int, language: str
         if conflict.owners:
             for owner in conflict.owners:
                 log_info(_t(language, "port_owner", command=owner.command, pid=owner.pid))
+            if os.name == "nt":
+                flags = " ".join(f"/PID {owner.pid}" for owner in conflict.owners if owner.pid)
+                if flags:
+                    log_info(_t(language, "port_kill_hint", flags=flags))
         else:
             log_info(_t(language, "port_owner_unknown"))
     log_info(_t(language, "port_hint"))
@@ -676,6 +784,13 @@ def main() -> None:
             waiting_key="waiting_frontend",
             ready_key="ready_frontend",
             should_stop=lambda: shutdown_requested,
+        )
+
+        _write_state(
+            processes,
+            backend_port=backend_port,
+            frontend_port=frontend_port,
+            listeners=_discover_listeners({"backend": backend_port, "frontend": frontend_port}),
         )
 
         log_success(_t(language, "open_url", url=bold(f"http://localhost:{frontend_port}")))
