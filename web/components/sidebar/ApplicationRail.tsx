@@ -20,7 +20,8 @@ export default function ApplicationRail({ onToggleSidebar, sidebarOpen }: {
   return (
     <nav aria-label="应用导航" className="campus-rail flex h-dvh w-16 shrink-0 flex-col items-center border-r border-white/10 bg-[#10263f] py-4 text-slate-300">
       <Link href="/chat" aria-label="财问首页" className="mb-7 rounded-xl p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
-        <Image src="/god.png" alt="财问" width={30} height={30} className="rounded-full" />
+        {/* OCR extensions may inject data attributes before hydration; this logo is static. */}
+        <Image src="/god.png" alt="财问" width={30} height={30} className="rounded-full" suppressHydrationWarning />
       </Link>
       <div className="flex w-full flex-col items-center gap-3">
         {CAMPUS_MODULES.map(({ href, label, icon: Icon }) => {
