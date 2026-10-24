@@ -1,18 +1,8 @@
-"""Per-instance default resource grants applied to newly registered users.
+"""Shared model and knowledge-base defaults for all campus members.
 
-Each independently deployed 财问 (CaiWen) instance keeps its own ``default_grants``
-config file under the admin workspace settings directory
-(``data/user/settings/default_grants.json``).  An administrator checks which
-LLM/embedding/search models and which public knowledge bases every newly
-registered non-admin account should receive.  Nothing here is hard-coded —
-all identifiers (model profile ids, model ids, knowledge-base names) are read
-from the admin's model catalog and the admin knowledge-base workspace at the
-time the config is applied, so the same code works on any deployment.
-
-A configured default is only materialised into a user's grant if the
-referenced resource still exists on this instance.  Resources deleted after the
-config was saved are simply skipped, and resources added later only apply to
-users who register after the admin updates the config.
+Runtime access resolves the current config for both new and existing accounts.
+Legacy snapshots may still be materialized at activation for compatibility,
+but do not override the shared model or knowledge-base policy.
 """
 
 from __future__ import annotations
@@ -22,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .grants import empty_grant, load_grant, save_grant
+from .grants import empty_grant, load_legacy_grant as load_grant, save_grant
 from .identity import get_user_by_id
 from .knowledge_access import admin_kb_manager
 from .model_access import admin_catalog

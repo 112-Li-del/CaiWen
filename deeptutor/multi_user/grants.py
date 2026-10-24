@@ -48,6 +48,18 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
 
 
 def load_grant(user_id: str) -> dict[str, Any]:
+    # Campus members share the live instance defaults, including existing accounts.
+    from .default_grants import build_default_grant
+
+    grant = load_legacy_grant(user_id)
+    defaults = build_default_grant(user_id)
+    grant["models"] = defaults["models"]
+    grant["knowledge_bases"] = defaults["knowledge_bases"]
+    return grant
+
+
+def load_legacy_grant(user_id: str) -> dict[str, Any]:
+    """Read the historical assignment file for compatibility/export only."""
     path = grant_path(user_id)
     if not path.exists():
         return empty_grant(user_id)

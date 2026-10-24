@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Canvas charts need resolved colors; semantic surfaces use the existing theme tokens. */
+:root {
+  --chart-1: #2c7a66;
+  --chart-2: #426db2;
+  --chart-3: #966b32;
+  --chart-4: #b35168;
+  --campus-rail: #15352c;
+  --badge-warning: #855d0b;
+}
+.theme-snow { --chart-1: #345d8e; --chart-2: #297b67; --chart-3: #916e39; --chart-4: #bb5363; --campus-rail: #10263f; --badge-warning: #855d0b; }
+.dark { --chart-1: #e0926b; --chart-2: #7fc3aa; --chart-3: #c1a4e8; --chart-4: #e694a5; --campus-rail: #211e1c; --badge-warning: #f0ca70; }
+.theme-glass { --chart-1: #c697ee; --chart-2: #73ccbb; --chart-3: #edbd7a; --chart-4: #f598bc; --campus-rail: #191622; }
+.theme-brocade { --chart-1: #dfb864; --chart-2: #91bcb1; --chart-3: #bea4e0; --chart-4: #e69aa1; --campus-rail: #1f1b2c; --badge-warning: #dfb864; }
+.theme-goldred { --chart-1: #b9253e; --chart-2: #185e9e; --chart-3: #76630c; --chart-4: #694b9e; --campus-rail: #122b4a; --badge-warning: #755306; }
+.campus-rail { background-color: var(--campus-rail); }
+.account-badge-warning { color: var(--badge-warning); background: color-mix(in srgb, var(--badge-warning) 13%, transparent); }
+.account-badge-admin { color: var(--primary); background: color-mix(in srgb, var(--primary) 13%, transparent); }
+
+/* Native option popups paint separately from the select. Use an opaque surface. */
+.theme-glass { --select-menu-background: #181624; }
+select option,
+select optgroup {
+  background-color: var(--select-menu-background, var(--popover));
+  color: var(--popover-foreground);
+}
+select option:checked {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
 @layer base {
   /*
    * 「青瓷」主题（默认 / light，内部 key 为 light）：
@@ -249,8 +279,8 @@
  * 消息气泡 / 次要按钮仍用浅蓝灰表面。
  */
 .theme-snow .sb-root {
-  background-color: #14315e;
-  --background: #2b4f86;
+  background-color: #193552;
+  --background: #345573;
 }
 
 /*
@@ -709,6 +739,50 @@
     margin-left: 0 !important;
     margin-right: auto !important;
     max-width: 720px !important;
+  }
+}
+
+/* The application rail stays stable while the module sidebar can collapse. */
+.sb-root {
+  border-right: 1px solid rgb(255 255 255 / 8%);
+}
+.sb-root button:focus-visible,
+.sb-root a:focus-visible {
+  outline: 2px solid #e9b4b6;
+  outline-offset: 2px;
+}
+.chat-preview-shell .cw-ball-host {
+  display: none;
+}
+@media (min-width: 1700px) {
+  .chat-preview-shell[data-preview-open="false"] .cw-ball-host {
+    display: flex;
+  }
+}
+@media (max-width: 767px) {
+  .sb-root {
+    display: none;
+  }
+  .sb-root.campus-sidebar-open {
+    display: flex;
+    position: fixed;
+    inset: 0 auto 0 64px;
+    z-index: 40;
+    box-shadow: 12px 0 32px rgb(15 23 42 / 15%);
+  }
+  .campus-chat-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  .campus-chat-toolbar > div {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .campus-chat-toolbar button {
+    padding: 6px 8px;
+    font-size: 11px;
   }
 }
 

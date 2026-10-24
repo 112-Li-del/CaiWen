@@ -9,6 +9,8 @@ export interface AuthStatus {
   username?: string;
   role?: string;
   is_admin?: boolean;
+  is_super_admin?: boolean;
+  member_type?: "student" | "teacher" | null;
 }
 
 /**

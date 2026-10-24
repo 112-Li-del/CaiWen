@@ -112,6 +112,8 @@ class AuthStatusResponse(BaseModel):
     username: str | None = None
     role: str | None = None
     is_admin: bool = False
+    is_super_admin: bool = False
+    member_type: str | None = None
 
 
 class UserInfo(BaseModel):
@@ -123,6 +125,37 @@ class UserInfo(BaseModel):
     created_at: str
     disabled: bool = False
     status: str = "active"
+    is_super_admin: bool = False
+    member_type: str | None = None
+
+
+class MemberTypeRequest(BaseModel):
+    member_type: str
+
+    @field_validator("member_type")
+    @classmethod
+    def valid_type(cls, value: str) -> str:
+        if value not in {"student", "teacher"}:
+            raise ValueError("身份必须为学生或教师")
+        return value
+
+
+def is_super_admin(payload: TokenPayload | None) -> bool:
+    if not AUTH_ENABLED:
+        return True
+    if not payload or payload.role != "admin":
+        return False
+    from deeptutor.multi_user.identity import get_user
+    record = get_user(payload.username)
+    return bool(record and record.get("is_super_admin") and record.get("id") == payload.user_id)
+
+
+def check_manage_target(current: TokenPayload | None, username: str) -> None:
+    from deeptutor.multi_user.identity import get_user
+    target = get_user(username)
+    if target and (target.get("is_super_admin") or
+                   (target.get("role") == "admin" and not is_super_admin(current))):
+        raise HTTPException(status_code=403, detail="无权修改该管理员账号")
 
 
 # ---------------------------------------------------------------------------
@@ -247,10 +280,13 @@ async def auth_status(
             username="local",
             role="admin",
             is_admin=True,
+            is_super_admin=True,
         )
 
     token = _extract_token(authorization, dt_token)
     payload = decode_token(token) if token else None
+    from deeptutor.multi_user.identity import get_user
+    record = get_user(payload.username) if payload and not POCKETBASE_ENABLED else None
     return AuthStatusResponse(
         enabled=True,
         authenticated=payload is not None,
@@ -258,6 +294,8 @@ async def auth_status(
         username=payload.username if payload else None,
         role=payload.role if payload else None,
         is_admin=payload.role == "admin" if payload else False,
+        is_super_admin=is_super_admin(payload) if payload else False,
+        member_type=record.get("member_type") if record else None,
     )
 
 
@@ -597,6 +635,7 @@ async def remove_user(
             detail="You cannot delete your own account",
         )
 
+    check_manage_target(current, username)
     removed = delete_user(username)
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -611,6 +650,7 @@ async def admin_approve_user(
     current: TokenPayload = Depends(require_admin),
 ) -> dict:
     """Approve a pending user — activates their account so they can log in."""
+    check_manage_target(current, username)
     if current and username == current.username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -647,6 +687,7 @@ async def admin_reject_user(
     current: TokenPayload = Depends(require_admin),
 ) -> dict:
     """Reject a pending user — permanently deletes their account."""
+    check_manage_target(current, username)
     if current and username == current.username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -672,6 +713,9 @@ async def update_user_role(
     current: TokenPayload = Depends(require_admin),
 ) -> dict:
     """Change a user's role. Admins cannot change their own role."""
+    if not is_super_admin(current):
+        raise HTTPException(status_code=403, detail="只有最高管理员可以任命或撤销管理员")
+    check_manage_target(current, username)
     if current and username == current.username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -686,3 +730,22 @@ async def update_user_role(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
     )
     return {"ok": True, "username": username, "role": body.role}
+
+
+@router.put("/users/{username}/member-type")
+async def update_member_type(
+    username: str,
+    body: MemberTypeRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    check_manage_target(current, username)
+    from deeptutor.multi_user.identity import get_user
+    target = get_user(username)
+    if target and target.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="管理员拥有全部权限，无需分配学生或教师身份")
+    from deeptutor.multi_user.identity import set_member_type
+    if not set_member_type(username, body.member_type):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    from deeptutor.multi_user.audit import log_admin_action
+    log_admin_action("member_type_set", summary={"username": username, "member_type": body.member_type})
+    return {"ok": True, "member_type": body.member_type}

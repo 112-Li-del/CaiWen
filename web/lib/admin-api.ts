@@ -6,7 +6,17 @@ export interface UserRecord {
   role: "admin" | "user";
   created_at: string;
   disabled?: boolean;
+  is_super_admin?: boolean;
+  member_type?: "student" | "teacher" | null;
   status?: string;
+}
+
+export interface AccountProfile { name: string; code: string; class_name: string | null; kind: "student" | "teacher" }
+
+export async function listAccountProfiles(): Promise<Record<string, AccountProfile>> {
+  const res = await fetch(apiUrl("/api/v1/portrait/account-links"), { credentials: "include" });
+  if (!res.ok) throw new Error("档案关联加载失败");
+  return res.json();
 }
 
 export async function listUsers(): Promise<UserRecord[]> {
@@ -106,5 +116,15 @@ export async function rejectUser(username: string): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail ?? "Failed to reject user");
+  }
+}
+
+export async function setMemberType(username: string, member_type: "student" | "teacher"): Promise<void> {
+  const response = await fetch(apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/member-type`), {
+    method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ member_type }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail ?? "身份修改失败");
   }
 }

@@ -50,11 +50,11 @@ export default function AdminDefaultsPage() {
           </Link>
           <div className="flex-1">
             <h1 className="text-xl font-semibold text-[var(--foreground)]">
-              {t("New User Default Permissions")}
+              {t("默认权限")}
             </h1>
             <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
               {t(
-                "Choose which models and public knowledge bases every new account receives automatically.",
+                "统一设置所有普通成员可使用的模型与公共知识库。",
               )}
             </p>
           </div>
@@ -66,7 +66,7 @@ export default function AdminDefaultsPage() {
 
         <div className="mt-8 flex items-center justify-center gap-2 text-center text-xs text-[var(--muted-foreground)]">
           <RefreshCw size={11} strokeWidth={1.6} />
-          {t("Changes only affect accounts registered after saving.")}
+          {t("保存后对所有普通成员生效，已打开的页面请刷新。")}
         </div>
       </div>
     </div>

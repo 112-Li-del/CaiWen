@@ -1,19 +1,21 @@
 "use client";
 
-import { Fragment, useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { fetchAuthStatus } from "@/lib/auth";
 import {
   listUsers,
+  listAccountProfiles,
+  type AccountProfile,
   deleteUser,
   setUserRole,
+  setMemberType,
   createUser,
   approveUser,
   rejectUser,
   type UserRecord,
 } from "@/lib/admin-api";
-import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { AdminTabs } from "@/components/auth/AdminTabs";
 import {
   Shield,
@@ -21,11 +23,16 @@ import {
   Trash2,
   RefreshCw,
   ArrowLeft,
-  SlidersHorizontal,
   UserPlus,
   X,
   Check,
   Clock,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  GraduationCap,
+  BriefcaseBusiness,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -42,6 +49,16 @@ function formatDate(iso: string): string {
   }
 }
 
+type RoleFilter = "all" | "admin" | "teacher" | "student" | "unassigned";
+
+const ROLE_FILTERS: ReadonlyArray<{ key: RoleFilter; label: string }> = [
+  { key: "all", label: "全部" },
+  { key: "admin", label: "管理员" },
+  { key: "teacher", label: "教师" },
+  { key: "student", label: "学生" },
+  { key: "unassigned", label: "待分配" },
+];
+
 export default function AdminUsersPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -50,12 +67,21 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [identitySaving, setIdentitySaving] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [query, setQuery] = useState("");
+  const [profiles, setProfiles] = useState<Record<string, AccountProfile>>({});
+  const [profileError, setProfileError] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const tableScroll = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,12 +89,14 @@ export default function AdminUsersPage() {
     try {
       const data = await listUsers();
       setUsers(data);
+      try { setProfiles(await listAccountProfiles()); setProfileError(false); }
+      catch { setProfileError(true); }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("Failed to load users"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchAuthStatus().then((status) => {
@@ -81,6 +109,7 @@ export default function AdminUsersPage() {
         return;
       }
       setCurrentUser(status.username ?? null);
+      setIsSuperAdmin(Boolean(status.is_super_admin));
       void load();
     });
   }, [router, load]);
@@ -153,14 +182,8 @@ export default function AdminUsersPage() {
     setActionError("");
     try {
       await setUserRole(user.username, newRole);
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.username === user.username ? { ...u, role: newRole } : u,
-        ),
-      );
-      if (newRole === "admin") {
-        setExpandedUserId((current) => (current === user.id ? null : current));
-      }
+      await load();
+
     } catch (e) {
       setActionError(e instanceof Error ? e.message : t("Failed to update role"));
     }
@@ -199,19 +222,50 @@ export default function AdminUsersPage() {
     }
   }
 
-  useEffect(() => {
-    if (!expandedUserId) return;
-    const expanded = users.find((user) => user.id === expandedUserId);
-    if (!expanded || expanded.role === "admin") {
-      setExpandedUserId(null);
-    }
-  }, [expandedUserId, users]);
+  async function handleMemberType(user: UserRecord, memberType: "student" | "teacher") {
+    setActionError(""); setIdentitySaving(user.id);
+    try {
+      await setMemberType(user.username, memberType);
+      setUsers((previous) => previous.map((item) => item.id === user.id ? { ...item, member_type: memberType } : item));
+    } catch (error) { setActionError(error instanceof Error ? error.message : "身份修改失败"); }
+    finally { setIdentitySaving(null); }
+  }
+
+  const roleCounts = useMemo<Record<RoleFilter, number>>(() => ({
+    all: users.length,
+    admin: users.filter((u) => u.role === "admin").length,
+    teacher: users.filter((u) => u.role === "user" && u.member_type === "teacher").length,
+    student: users.filter((u) => u.role === "user" && u.member_type === "student").length,
+    unassigned: users.filter((u) => u.role === "user" && !u.member_type).length,
+  }), [users]);
+
+  const filteredUsers = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return users.filter((u) => {
+      const roleMatch =
+        roleFilter === "all"
+          ? true
+          : roleFilter === "admin"
+            ? u.role === "admin"
+            : roleFilter === "unassigned" ? u.role === "user" && !u.member_type
+            : u.role === "user" && u.member_type === roleFilter;
+      const profile = profiles[u.id];
+      const keywordMatch = !keyword || [u.username, profile?.name, profile?.code, profile?.class_name].some(value => value?.toLowerCase().includes(keyword));
+      const state = u.disabled ? "disabled" : u.status === "pending" ? "pending" : "active";
+      return roleMatch && keywordMatch && (statusFilter === "all" || statusFilter === state);
+    });
+  }, [users, roleFilter, query, profiles, statusFilter]);
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageUsers = filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => setPage(1), [roleFilter, query, statusFilter, pageSize]);
+  useEffect(() => { tableScroll.current?.scrollTo({ top: 0 }); }, [currentPage, roleFilter, query, pageSize, statusFilter]);
 
   return (
-    <div className="h-screen overflow-y-auto bg-[var(--background)] px-4 py-10 [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-3xl">
+    <div className="h-screen overflow-y-auto bg-[var(--background)] px-4 py-6 sm:px-8 sm:py-10 [scrollbar-gutter:stable]">
+      <div className="mx-auto max-w-6xl">
         {/* Header */}
-        <div className="mb-8 flex items-center gap-4">
+        <div className="mb-7 flex flex-wrap items-center gap-3 sm:gap-4">
           <Link
             href="/"
             className="flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
@@ -219,19 +273,19 @@ export default function AdminUsersPage() {
             <ArrowLeft size={15} />
             {t("Back")}
           </Link>
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-[var(--foreground)]">
+          <div className="min-w-0 flex-1 basis-[calc(100%-64px)] sm:basis-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
               {t("User Management")}
             </h1>
             <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
-              {t("Manage registered accounts")}
+              统一管理账号、校园身份与画像档案
             </p>
           </div>
           <button
             onClick={openCreateDialog}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
-                       border border-[var(--border)] text-[var(--foreground)]
-                       hover:bg-[var(--card)] transition-colors"
+                       bg-[var(--primary)] text-[var(--primary-foreground)]
+                       hover:opacity-90 transition-colors"
           >
             <UserPlus size={14} />
             {t("Add user")}
@@ -251,13 +305,92 @@ export default function AdminUsersPage() {
 
         <AdminTabs className="mb-5" />
 
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {([
+            {key:"all", label:"全部账号", icon:Users},
+            {key:"admin", label:"管理团队", icon:Shield},
+            {key:"student", label:"学生账号", icon:GraduationCap},
+            {key:"teacher", label:"教师账号", icon:BriefcaseBusiness},
+          ] as const).map(({key,label,icon:Icon})=><button key={key} onClick={()=>setRoleFilter(key)} aria-pressed={roleFilter===key}
+            className={`flex items-center justify-between rounded-xl border bg-[var(--card)] p-4 text-left transition-colors ${roleFilter===key?"border-[var(--primary)]":"border-[var(--border)] hover:border-[var(--ring)]"}`}>
+            <span><span className="text-xs text-[var(--muted-foreground)]">{label}</span><span className="mt-2 block text-2xl font-semibold tabular-nums text-[var(--foreground)]">{loading?"—":roleCounts[key]}</span></span>
+            <Icon size={23} strokeWidth={1.5} className="text-[var(--primary)]"/>
+          </button>)}
+        </div>
+        {profileError&&<p role="status" className="mb-4 text-sm text-[var(--muted-foreground)]">画像档案暂未加载，可点击刷新重试；账号管理仍可使用。</p>}
+
         {actionError && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
             {actionError}
           </div>
         )}
 
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
+        {/* 角色导航 + 用户名搜索 */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {ROLE_FILTERS.map((f) => {
+              const active = roleFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setRoleFilter(f.key)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                    active
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {f.label}
+                  <span
+                    className={`inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] leading-none ${
+                      active
+                        ? "bg-black/15 dark:bg-white/25"
+                        : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {roleCounts[f.key]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <select aria-label="账号状态筛选" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="h-9 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-xs text-[var(--foreground)]">
+            <option value="all">全部状态</option><option value="active">已启用</option><option value="pending">待审核</option><option value="disabled">已停用</option>
+          </select>
+          <div className="relative min-w-0 flex-1">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+            />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="用户名、姓名、学号或班级"
+              aria-label="搜索用户或档案"
+              autoComplete="off"
+              className="h-9 w-full min-w-48 rounded-lg border border-[var(--border)] bg-[var(--card)] py-1.5 pl-9 pr-8 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)] sm:w-64"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="清除搜索"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          </div>
+        </div>
+
+        <p className="mb-3 text-xs text-[var(--muted-foreground)]">{isSuperAdmin?"你是最高管理员，可任命管理员并管理全部账号。":"管理员可管理普通成员，管理员任命由最高管理员负责。"} <span className="sm:hidden">表格可左右滑动。</span></p>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
               {t("Loading…")}
@@ -270,55 +403,78 @@ export default function AdminUsersPage() {
             <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
               {t("No users found.")}
             </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
+              没有符合条件的用户
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
+            <div ref={tableScroll} className="max-h-[min(62vh,680px)] overflow-auto"><table className="w-full min-w-[780px] text-sm">
+              <thead className="sticky top-0 z-10 bg-[var(--background)]">
                 <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
                   <th className="px-5 py-3 font-medium">{t("Username")}</th>
                   <th className="px-5 py-3 font-medium">{t("Role")}</th>
+                  <th className="px-5 py-3 font-medium">身份</th>
+                  <th className="px-5 py-3 font-medium">状态</th>
                   <th className="px-5 py-3 font-medium">{t("Joined")}</th>
                   <th className="px-5 py-3 font-medium text-right">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {users.map((user) => {
+                {pageUsers.map((user) => {
                   const isSelf = user.username === currentUser;
                   const isAdmin = user.role === "admin";
                   const isPending = user.status === "pending";
-                  const canManageAssignments = !isAdmin && !isPending && Boolean(user.id);
+                  const canManage = !user.is_super_admin && (!isAdmin || isSuperAdmin);
+                  const linked = profiles[user.id];
+                  const profile = !isAdmin && linked?.kind === user.member_type ? linked : null;
                   return (
                     <Fragment key={user.username}>
-                      <tr className={`group hover:bg-[var(--background)]/50 transition-colors ${isPending ? "bg-yellow-500/5" : ""}`}>
-                        <td className="px-5 py-3.5 font-medium text-[var(--foreground)]">
-                          {user.username}
+                      <tr className={`group hover:bg-[var(--muted)] transition-colors ${isPending ? "bg-yellow-500/5" : ""}`}>
+                        <td className="px-5 py-4 font-medium text-[var(--foreground)]">
+                          <div className="flex items-center gap-3"><span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)] text-xs font-semibold uppercase text-[var(--primary)]">{user.username.slice(0,2)}</span><div>
+                          <div className="whitespace-nowrap">{user.username}
                           {isSelf && (
                             <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                               ({t("you")})
                             </span>
                           )}
+                          </div><div className="mt-1 text-xs font-normal text-[var(--muted-foreground)]">{isAdmin?"全校范围 · 无需校园身份":profile?`${profile.name} · ${profile.code}`:linked?"身份已变更，需重新关联档案":"暂未关联画像档案"}</div>
+                          {profile?.class_name&&<div className="mt-1 text-xs font-normal text-[var(--muted-foreground)]">{profile.class_name}</div>}
+                          </div></div>
                         </td>
                         <td className="px-5 py-3.5">
                           {isPending ? (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-500/15 text-yellow-600 dark:text-yellow-400">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-500/15 text-yellow-600 dark:text-yellow-400">
                               <Clock size={11} />
                               {t("Pending")}
                             </span>
                           ) : (
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+                              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium
                               ${
-                                user.role === "admin"
-                                  ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
-                                  : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
+                                user.is_super_admin ? "account-badge-warning" : user.role === "admin"
+                                  ? "account-badge-admin"
+                                  : "bg-[var(--muted)] text-[var(--muted-foreground)]"
                               }`}
                             >
                               {user.role === "admin" ? (
                                 <Shield size={11} />
                               ) : null}
-                              {t(user.role)}
+                              {user.is_super_admin ? "最高管理员" : t(user.role)}
                             </span>
                           )}
                         </td>
+                        <td className="px-5 py-3.5">
+                          {isAdmin ? <span className="text-xs text-[var(--muted-foreground)]">全部权限</span> : (
+                          <select aria-label={user.username + "的身份"} value={user.member_type ?? ""}
+                            disabled={(!canManage && !isSelf) || identitySaving === user.id}
+                            onChange={(event) => void handleMemberType(user, event.target.value as "student" | "teacher")}
+                            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs text-[var(--foreground)] disabled:opacity-60">
+                            <option value="" disabled>待分配</option><option value="student">学生</option><option value="teacher">教师</option>
+                          </select>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${isPending?"text-[var(--badge-warning)]":"text-[var(--muted-foreground)]"}`}><span className={`h-1.5 w-1.5 rounded-full ${user.disabled?"bg-[var(--destructive)]":isPending?"bg-[var(--badge-warning)]":"bg-[var(--chart-2)]"}`}/>{user.disabled?"已停用":isPending?"待审核":"已启用"}</span></td>
                         <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
                           {formatDate(user.created_at)}
                         </td>
@@ -349,26 +505,15 @@ export default function AdminUsersPage() {
                               </>
                             ) : (
                               <>
-                                {canManageAssignments && (
-                                  <button
-                                    onClick={() =>
-                                      setExpandedUserId((current) =>
-                                        current === user.id ? null : user.id,
-                                      )
-                                    }
-                                    title={t("Manage assignments")}
-                                    className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                             hover:bg-[var(--background)] hover:text-[var(--foreground)]
-                                             transition-colors"
-                                  >
-                                    <SlidersHorizontal size={15} />
-                                  </button>
-                                )}
                                 <button
                                   onClick={() => handleToggleRole(user)}
-                                  disabled={isSelf}
+                                  disabled={isSelf || !isSuperAdmin || !!user.is_super_admin}
                                   title={
-                                    isSelf
+                                    !isSuperAdmin
+                                      ? "仅最高管理员可以任命或撤销管理员"
+                                      : user.is_super_admin
+                                      ? "不能修改最高管理员"
+                                      : isSelf
                                       ? t("Cannot change your own role")
                                       : user.role === "admin"
                                         ? t("Demote to user")
@@ -386,9 +531,11 @@ export default function AdminUsersPage() {
                                 </button>
                                 <button
                                   onClick={() => handleDelete(user.username)}
-                                  disabled={isSelf}
+                                  disabled={isSelf || !canManage}
                                   title={
-                                    isSelf
+                                    !canManage && !isSelf
+                                      ? "无权删除该管理员账号"
+                                      : isSelf
                                       ? t("Cannot delete your own account")
                                       : t("Delete {{name}}", { name: user.username })
                                   }
@@ -403,20 +550,21 @@ export default function AdminUsersPage() {
                           </div>
                         </td>
                       </tr>
-                      {canManageAssignments && expandedUserId === user.id && (
-                        <tr>
-                          <td colSpan={4} className="p-0">
-                            <GrantEditor userId={user.id} />
-                          </td>
-                        </tr>
-                      )}
+
                     </Fragment>
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
+
+        {!loading&&!error&&<div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--muted-foreground)]">
+          <span role="status">共 {filteredUsers.length} 个账号{filteredUsers.length>0?`，显示 ${(currentPage-1)*pageSize+1}–${Math.min(currentPage*pageSize,filteredUsers.length)}`:""}</span>
+          <div className="flex items-center gap-3"><label className="flex items-center gap-2">每页<select aria-label="每页账号数" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))} className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[var(--foreground)]">{[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}</select></label>
+            <button aria-label="上一页" disabled={currentPage===1} onClick={()=>setPage(currentPage-1)} className="rounded-md border border-[var(--border)] p-1.5 disabled:opacity-30"><ChevronLeft size={14}/></button><span>{currentPage} / {pageCount}</span><button aria-label="下一页" disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)} className="rounded-md border border-[var(--border)] p-1.5 disabled:opacity-30"><ChevronRight size={14}/></button>
+          </div>
+        </div>}
 
         <p className="mt-8 text-center text-xs text-[var(--muted-foreground)]">
           {t("DeepTutor Admin · User Management")}
@@ -491,7 +639,7 @@ export default function AdminUsersPage() {
               <button
                 type="submit"
                 disabled={createSubmitting}
-                className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-40"
+                className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-40"
               >
                 {createSubmitting ? t("Creating…") : t("Create")}
               </button>

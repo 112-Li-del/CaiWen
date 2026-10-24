@@ -37,8 +37,8 @@ def test_non_admin_only_sees_own_and_granted_admin_kbs(mu_isolated_root, as_user
     )
     _seed_kbs(mu_isolated_root / "data", "allowed", "forbidden")
     _seed_kbs(mu_isolated_root / "multi-user" / "u_alice", "personal")
-    save_grant(
-        "u_alice",
+    from deeptutor.multi_user.default_grants import save_default_config
+    save_default_config(
         {"knowledge_bases": [{"resource_id": "admin:kb:allowed", "name": "allowed"}]},
     )
     _manager_for.cache_clear()

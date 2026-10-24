@@ -8,8 +8,12 @@ import logging
 from pathlib import Path
 import secrets
 import threading
+import os
+import tempfile
+import shutil
 from typing import Any
 from uuid import uuid4
+from functools import wraps
 
 from .models import Role
 
@@ -20,7 +24,7 @@ logger = logging.getLogger(__name__)
 # process FastAPI deployments (the start_web.py launcher) are fully covered;
 # multi-worker deployments still race and must rely on an external user store
 # (e.g. PocketBase), which is documented in the multi-user README.
-_USERS_WRITE_LOCK = threading.Lock()
+_USERS_WRITE_LOCK = threading.RLock()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MULTI_USER_ROOT = PROJECT_ROOT / "multi-user"
@@ -30,6 +34,14 @@ USERS_FILE = AUTH_DIR / "users.json"
 SECRET_FILE = AUTH_DIR / "auth_secret"
 LEGACY_USERS_FILE = PROJECT_ROOT / "data" / "user" / "auth_users.json"
 LEGACY_SECRET_FILE = PROJECT_ROOT / "data" / "user" / "auth_secret"
+
+
+def _locked(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _USERS_WRITE_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def new_user_id() -> str:
@@ -73,6 +85,8 @@ def _canonical_record(
         "created_at": str(value.get("created_at") or utc_now()),
         "disabled": bool(value.get("disabled", False)),
         "status": status,
+        "is_super_admin": bool(value.get("is_super_admin", False)) if role == "admin" else False,
+        "member_type": value.get("member_type") if role == "user" and value.get("member_type") in {"student", "teacher"} else None,
     }
 
 
@@ -87,7 +101,14 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_users(users: dict[str, dict[str, Any]]) -> None:
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USERS_FILE.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+    fd, temporary = tempfile.mkstemp(dir=USERS_FILE.parent, prefix=".users-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(users, handle, indent=2, ensure_ascii=False)
+        os.replace(temporary, USERS_FILE)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
@@ -103,6 +124,10 @@ def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
         if record is not None:
             users[str(username)] = record
     if users:
+        candidates = [(name, item) for name, item in users.items() if item["role"] == "admin"]
+        if candidates:
+            owner, _ = min(candidates, key=lambda pair: (pair[1].get("created_at") or "9999", pair[0]))
+            users[owner]["is_super_admin"] = True
         _write_users(users)
         logger.info("Migrated auth users from %s to %s", LEGACY_USERS_FILE, USERS_FILE)
         return users
@@ -126,6 +151,7 @@ def _migrate_secret() -> None:
         logger.warning("Failed to migrate legacy auth secret: %s", exc)
 
 
+@_locked
 def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     env_username: str = "",
     env_password_hash: str = "",
@@ -153,6 +179,18 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
         canonical[str(username)] = record
         changed = changed or record != value
 
+    if USERS_FILE.exists() and canonical and not any(
+        isinstance(item, dict) and "is_super_admin" in item for item in users.values()
+    ):
+        candidates = [(name, item) for name, item in canonical.items()
+                      if item["role"] == "admin" and not item["disabled"] and item["status"] == "active"]
+        if candidates:
+            owner, _ = min(candidates, key=lambda pair: (pair[1].get("created_at") or "9999", pair[0]))
+            backup = USERS_FILE.with_name("users.pre-hierarchy.json")
+            if not backup.exists():
+                shutil.copy2(USERS_FILE, backup)
+            canonical[owner]["is_super_admin"] = True
+            changed = True
     if USERS_FILE.exists() and changed:
         _write_users(canonical)
 
@@ -188,8 +226,8 @@ def save_user(
         users = load_users()
         if create_only and username in users:
             raise ValueError("USER_ALREADY_EXISTS")
-        effective_role: Role = "admin" if not users else role
         existing = users.get(username) or {}
+        effective_role: Role = "admin" if not users or existing.get("is_super_admin") else role
         record = {
             "id": str(existing.get("id") or new_user_id()),
             "hash": hashed_password,
@@ -197,6 +235,8 @@ def save_user(
             "created_at": str(existing.get("created_at") or utc_now()),
             "disabled": bool(existing.get("disabled", False)),
             "status": status,
+            "is_super_admin": bool(existing.get("is_super_admin", False)) if users else True,
+            "member_type": existing.get("member_type") if effective_role == "user" else None,
         }
         users[username] = record
         _write_users(users)
@@ -215,6 +255,8 @@ def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplie
             "created_at": record.get("created_at", ""),
             "disabled": bool(record.get("disabled", False)),
             "status": str(record.get("status") or "active"),
+            "is_super_admin": bool(record.get("is_super_admin", False)),
+            "member_type": record.get("member_type"),
         }
         for username, record in load_users(env_username, env_password_hash).items()
     ]
@@ -231,17 +273,21 @@ def get_user_by_id(user_id: str) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
+@_locked
 def delete_user(username: str) -> bool:
     if not USERS_FILE.exists():
         return False
     users = load_users()
     if username not in users:
         return False
+    if users[username].get("is_super_admin"):
+        raise ValueError("最高管理员不能删除")
     users.pop(username, None)
     _write_users(users)
     return True
 
 
+@_locked
 def set_role(username: str, role: Role) -> bool:
     if role not in {"admin", "user"}:
         raise ValueError("role must be 'admin' or 'user'")
@@ -250,11 +296,16 @@ def set_role(username: str, role: Role) -> bool:
     users = load_users()
     if username not in users:
         return False
+    if users[username].get("is_super_admin"):
+        raise ValueError("最高管理员不能降级")
     users[username]["role"] = role
+    if role == "admin":
+        users[username]["member_type"] = None
     _write_users(users)
     return True
 
 
+@_locked
 def approve_user(username: str) -> bool:
     """Approve a pending user — set their status to 'active'."""
     if not USERS_FILE.exists():
@@ -270,6 +321,7 @@ def approve_user(username: str) -> bool:
     return True
 
 
+@_locked
 def reject_user(username: str) -> bool:
     """Reject a pending user — delete their record entirely."""
     if not USERS_FILE.exists():
@@ -307,3 +359,17 @@ def load_or_create_auth_secret() -> str:
     except Exception as exc:
         logger.warning("Failed to load/create auth secret at %s: %s", SECRET_FILE, exc)
         return secrets.token_hex(32)
+
+
+def set_member_type(username: str, member_type: str) -> bool:
+    if member_type not in {"student", "teacher"}:
+        raise ValueError("身份必须为学生或教师")
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        if username not in users:
+            return False
+        if users[username].get("role") == "admin":
+            raise ValueError("管理员拥有全部权限，无需分配学生或教师身份")
+        users[username]["member_type"] = member_type
+        _write_users(users)
+    return True

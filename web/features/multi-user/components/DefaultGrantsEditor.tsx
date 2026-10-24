@@ -209,11 +209,11 @@ export function DefaultGrantsEditor() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-[var(--foreground)]">
-                {t("Default permissions for new users")}
+                {t("所有普通成员的默认权限")}
               </h2>
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                 {t(
-                  "Applied automatically when a new account registers on this deployment.",
+                  "统一应用于已有和新增的普通成员，学生与教师使用相同的默认资源权限。",
                 )}
               </p>
             </div>
@@ -307,7 +307,7 @@ export function DefaultGrantsEditor() {
               <p className="mb-2 flex items-center gap-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                 <Database size={12} strokeWidth={1.6} />
                 {t(
-                  "Public knowledge bases granted read-only to every new user.",
+                  "勾选的公共知识库向所有普通成员开放只读访问。",
                 )}
               </p>
               <div className="space-y-1.5 text-xs">
@@ -345,7 +345,7 @@ export function DefaultGrantsEditor() {
                   />
                   <span>
                     {t(
-                      "When a new account registers, this deployment grants it the checked models and public knowledge bases automatically.",
+                      "保存后，已有和新增的普通成员统一使用勾选的模型与公共知识库；取消勾选也会统一生效。",
                     )}
                   </span>
                 </p>

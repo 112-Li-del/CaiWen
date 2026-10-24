@@ -1382,7 +1382,7 @@ export default function ChatPage() {
       data-preview-open={previewSource ? "true" : "false"}
       className="chat-preview-shell relative flex h-full flex-col overflow-hidden bg-[var(--background)]"
     >
-      <div className="mx-auto flex w-full max-w-[820px] items-center justify-between px-6 pt-4 pb-3">
+      <div className="campus-chat-toolbar flex w-full shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)]/60 px-5 py-4 sm:px-8">
         <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
           {t(activeCap.label)}
         </span>
@@ -1410,7 +1410,7 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
-      <div className="relative mx-auto flex w-full max-w-[820px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+      <div className="relative mx-auto flex w-full max-w-[900px] flex-1 min-h-0 flex-col overflow-hidden px-4 sm:px-8">
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="flex w-full justify-center">
@@ -1462,18 +1462,18 @@ export default function ChatPage() {
           窗格宽，left-3 就是窗格坐标），size 收回 96；输入框不受影响，靠内层
           max-w-960 居中，和上方消息列对齐。球 svg pointer-events:none、
           只有球面（.cw-hit）能点。 */}
-      <div className="relative mx-auto flex w-full shrink-0 items-end px-6">
+      <div className="relative mx-auto flex w-full max-w-[900px] shrink-0 items-end px-4 sm:px-8">
         <EmotionBall
           emotion={ballEmotion}
           size={120}
-          className="cw-ball-host pointer-events-none relative z-30 flex shrink-0 pb-2 max-[1399px]:pb-2 min-[1400px]:absolute min-[1400px]:bottom-6 min-[1400px]:left-3 min-[1400px]:pb-0 min-[1400px]:[&>div:first-child]:!w-24"
+          className="cw-ball-host pointer-events-none absolute bottom-6 -left-24 z-30 hidden min-[1700px]:flex [&>div:first-child]:!w-20"
         />
         <div className="min-w-0 flex-1">
           {/* 窄屏下输入框不再伸到贴边：右缘收进来到 720px 封顶（左缘仍贴着球，
               ml-0 覆盖 mx-auto 的居中）。宽屏维持 820 居中与消息列对齐。
               预览抽屉打开时由 globals.css 的 .cw-composer-host 规则强制回到这套
               左对齐布局（内容区被右推 560px，居中会与 absolute 的球重叠）。 */}
-          <div className="cw-composer-host mx-auto w-full max-w-[820px] max-[1399px]:ml-0 max-[1399px]:max-w-[720px]">
+          <div className="cw-composer-host mx-auto w-full">
         <ChatComposer
           composerRef={composerRef}
           capMenuRef={capMenuRef}

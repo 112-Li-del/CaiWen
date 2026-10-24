@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { UserMenu } from "@/components/sidebar/UserMenu";
 import type { SessionSummary } from "@/lib/session-api";
+import ApplicationRail from "@/components/sidebar/ApplicationRail";
 import { Tooltip } from "@/components/ui/Tooltip";
 import StaggeredMenu, {
   type StaggeredMenuItem,
@@ -138,6 +139,8 @@ export function SidebarShell({
 
   /* 「功能」全屏菜单（StaggeredMenu）受控状态，仅管理员使用 */
   const [featureMenuOpen, setFeatureMenuOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const applicationRail = <ApplicationRail sidebarOpen={mobileSidebarOpen} onToggleSidebar={() => { setMobileSidebarOpen((open) => !open); setCollapsed(false); }} />;
   const featureMenuItems: StaggeredMenuItem[] = [
     {
       label: "辅导机器人",
@@ -174,6 +177,7 @@ export function SidebarShell({
   ];
 
   const handleNewChat = () => {
+    setMobileSidebarOpen(false);
     if (onNewChat) {
       onNewChat();
       return;
@@ -260,6 +264,7 @@ export function SidebarShell({
   if (collapsed) {
     return (
       <>
+        {applicationRail}
         <aside className="sb-root group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
         {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
@@ -395,7 +400,9 @@ export function SidebarShell({
   /* ---- Expanded state ---- */
   return (
     <>
-      <aside className="sb-root flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
+      {applicationRail}
+      {mobileSidebarOpen && <button type="button" aria-label="关闭聊天侧栏" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 left-16 z-30 bg-slate-950/30 md:hidden" />}
+      <aside className={`sb-root campus-session-sidebar flex w-[232px] h-dvh shrink-0 flex-col bg-[var(--secondary)] ${mobileSidebarOpen ? "campus-sidebar-open" : ""}`}>
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" className="group flex items-center gap-2">
@@ -412,7 +419,7 @@ export function SidebarShell({
           </span>
         </Link>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => { setCollapsed(true); setMobileSidebarOpen(false); }}
           className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           aria-label={t("Collapse sidebar")}
         >
@@ -462,7 +469,7 @@ export function SidebarShell({
             items={sessionMenuItems}
             active={activeSessionId ?? undefined}
             defaultOpen={[0]}
-            onSelect={(value) => onSelectSession?.(value)}
+            onSelect={(value) => { setMobileSidebarOpen(false); onSelectSession?.(value); }}
             editingValue={renamingSessionId}
             onRenameSubmit={(value, title) => {
               onRenameSession?.(value, title);

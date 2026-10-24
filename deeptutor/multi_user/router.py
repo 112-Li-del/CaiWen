@@ -189,23 +189,8 @@ async def put_user_grants(
     payload: GrantPayload,
     _: object = Depends(require_admin),
 ) -> dict[str, Any]:
-    _require_assignable_user(user_id)
-    try:
-        grant = save_grant(user_id, payload.grant)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    log_admin_action(
-        "grant_set",
-        target_user_id=user_id,
-        summary={
-            "model_count": sum(
-                len(grant.get("models", {}).get(s, [])) for s in ("llm", "embedding", "search")
-            ),
-            "kb_count": len(grant.get("knowledge_bases", []) or []),
-            "skill_count": len(grant.get("skills", []) or []),
-        },
-    )
-    return {"grant": grant}
+    raise HTTPException(status_code=410, detail="已停用逐人授权，请修改统一默认权限。")
+
 
 
 @router.get("/users")

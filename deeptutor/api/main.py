@@ -345,6 +345,7 @@ from deeptutor.api.routers import (
     vision_solver,
 )
 from deeptutor.multi_user.router import router as multi_user_router  # noqa: E402
+from deeptutor.api.routers.portrait import router as portrait_router  # noqa: E402
 
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
@@ -354,6 +355,8 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 from deeptutor.api.routers.auth import require_auth  # noqa: E402
 
 _auth = [Depends(require_auth)]
+
+app.include_router(portrait_router, prefix="/api/v1/portrait", tags=["portrait"], dependencies=_auth)
 
 app.include_router(
     multi_user_router,
