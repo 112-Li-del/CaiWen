@@ -16,6 +16,7 @@ import ChatSpaceMenu, {
   type SelectableSpaceKey,
 } from "@/components/chat/space/ChatSpaceMenu";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
+import SplitText from "@/components/ui/SplitText";
 
 interface ComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -77,6 +78,11 @@ export const ComposerInput = memo(
     ref,
   ) {
     const { t } = useTranslation();
+    const prompt=isMathAnimatorMode
+      ? t("Describe the math animation or storyboard you want...")
+      : isVisualizeMode
+        ? t("Describe the chart or diagram you want to visualize...")
+        : t("How can I help you today?");
     const [input, setInput] = useState("");
     const [showAtPopup, setShowAtPopup] = useState(false);
 
@@ -232,6 +238,7 @@ export const ComposerInput = memo(
             />
           </div>
         )}
+        <div className="relative">
         <textarea
           ref={textareaRef}
           value={input}
@@ -243,16 +250,15 @@ export const ComposerInput = memo(
           onPaste={onPaste}
           rows={1}
           suppressHydrationWarning
-          placeholder={
-            isMathAnimatorMode
-              ? t("Describe the math animation or storyboard you want...")
-              : isVisualizeMode
-                ? t("Describe the chart or diagram you want to visualize...")
-                : t("How can I help you today?")
-          }
-          className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+          placeholder={prompt}
+          aria-label={prompt}
+          className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-transparent"
           style={{ minHeight: 28 }}
         />
+        {!input&&<span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 text-[15px] leading-relaxed text-[var(--muted-foreground)]">
+          <SplitText text={prompt} effect="blur" delay={35} startDelay={.12} hoverEffect="none"/>
+        </span>}
+        </div>
       </div>
     );
   }),

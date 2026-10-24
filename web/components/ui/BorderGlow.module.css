@@ -1,0 +1,134 @@
+.card {
+  /* 青瓷: jade glaze with a soft champagne accent on white. */
+  --glow-a: #2c7a66;
+  --glow-b: #82b8a0;
+  --glow-c: #bfa77b;
+  --glow-fill: 5%;
+  --glow-halo: 18%;
+  --glow-blur: 14px;
+  --glow-active: 0;
+  --glow-edge: .5;
+  --glow-angle: 45deg;
+  --glow-x: 75%;
+  --glow-y: 20%;
+  position: relative;
+  isolation: isolate;
+}
+
+/* 南财: a blue porcelain edge, with a restrained campus-red accent. */
+:global(.theme-snow) .card {
+  --glow-a: #456e9d;
+  --glow-b: #a0b9d4;
+  --glow-c: #c8757e;
+  --glow-fill: 4%;
+  --glow-halo: 16%;
+}
+
+/* 暗色: warm copper and peach, rather than a cold neon edge. */
+:global(.dark) .card {
+  --glow-a: #efa77c;
+  --glow-b: #d5b8a0;
+  --glow-c: #b79cd8;
+  --glow-fill: 2%;
+  --glow-halo: 8%;
+  --glow-blur: 20px;
+}
+
+/* 琉璃: violet / cyan / rose; keep the original translucent card surface. */
+:global(.theme-glass) .card {
+  --glow-a: #c59af2;
+  --glow-b: #79d2ca;
+  --glow-c: #ed93bd;
+  --glow-fill: 2.5%;
+  --glow-halo: 9%;
+  --glow-blur: 22px;
+}
+
+/* 云锦: gold thread, jade and muted violet on the existing dark fabric. */
+:global(.theme-brocade) .card {
+  --glow-a: #dfb864;
+  --glow-b: #a6c5b8;
+  --glow-c: #ad91cf;
+  --glow-fill: 2%;
+  --glow-halo: 8%;
+  --glow-blur: 18px;
+}
+
+/* 红金: ruby and champagne with a small blue accent; no bright-red wash. */
+:global(.theme-goldred) .card {
+  --glow-a: #c74756;
+  --glow-b: #dcba75;
+  --glow-c: #668cb4;
+  --glow-fill: 4%;
+  --glow-halo: 15%;
+  --glow-blur: 14px;
+}
+
+.card[data-glow-hovered="true"],
+.card:focus-within {
+  --glow-active: 1;
+}
+
+.wash,
+.direction,
+.halo {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: var(--glow-active);
+  transition: opacity .4s ease;
+}
+
+.wash {
+  inset: 0;
+  background: radial-gradient(420px circle at var(--glow-x) var(--glow-y),
+    color-mix(in srgb, var(--glow-a) var(--glow-fill), transparent), transparent 72%);
+}
+
+.direction {
+  mask-image: conic-gradient(from calc(var(--glow-angle) - 75deg) at center,
+    transparent 0deg, black 40deg, black 110deg, transparent 150deg);
+  opacity: calc(var(--glow-active) * (.25 + var(--glow-edge) * .75));
+}
+
+.edge {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(115deg, var(--glow-a), var(--glow-b) 45%, var(--glow-c) 80%, var(--glow-a));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.halo {
+  inset: -24px;
+  opacity: calc(var(--glow-active) * (.15 + var(--glow-edge) * .85));
+  mask-image: conic-gradient(from calc(var(--glow-angle) - 65deg) at center,
+    transparent 0deg, black 45deg, black 85deg, transparent 130deg);
+}
+
+.halo::before {
+  content: "";
+  position: absolute;
+  inset: 24px;
+  border-radius: inherit;
+  box-shadow:
+    0 0 var(--glow-blur) 2px color-mix(in srgb, var(--glow-a) var(--glow-halo), transparent),
+    inset 0 0 14px color-mix(in srgb, var(--glow-b) var(--glow-fill), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wash { display: none; }
+  .direction, .halo {
+    mask-image: none;
+    transition: none;
+    opacity: calc(var(--glow-active) * .55);
+  }
+}
+
+@media (hover: none) {
+  .wash, .direction, .halo { display: none; }
+}

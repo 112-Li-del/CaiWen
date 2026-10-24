@@ -24,6 +24,7 @@ import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
+import SplitText from "@/components/ui/SplitText";
 import GlitchPromptTitle from "@/components/chat/home/GlitchPromptTitle";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import EmotionBall, { resolveEmotion } from "@/components/chat/EmotionBall";
@@ -1384,7 +1385,7 @@ export default function ChatPage() {
     >
       <div className="campus-chat-toolbar flex w-full shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)]/60 px-5 py-4 sm:px-8">
         <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
-          {t(activeCap.label)}
+          <SplitText text={t(activeCap.label)} delay={65}/>
         </span>
         <div className="flex items-center gap-2">
           <button

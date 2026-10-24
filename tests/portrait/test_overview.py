@@ -113,6 +113,22 @@ def test_daily_constraints_and_v1_upgrade(tmp_path):
         assert c.execute("SELECT name FROM sqlite_master WHERE name='daily_behavior'").fetchone()
 
 
+@pytest.mark.parametrize('study,sleep,expected', [(3, 5, 50), (6, 10, 100), (8, 12, 100)])
+def test_radar_time_limits_preserve_raw_values(db, study, sleep, expected):
+    with db.connect() as c:
+        c.execute(
+            'UPDATE behavior_records SET study_hours_daily=?,sleep_hours_daily=? WHERE student_id=1 AND semester_id=2',
+            (study, sleep),
+        )
+    data = service.overview(db, None, 2, student_id=1)
+    radar = {item['key']: item for item in data['radar']}
+    for key, raw, maximum in [('study', study, 6), ('sleep', sleep, 10)]:
+        assert radar[key]['maximum'] == maximum
+        assert radar[key]['raw'] == raw
+        assert radar[key]['value'] == expected
+        assert data['metrics'][key] == raw
+
+
 def test_missing_behavior_is_not_zero(db):
     with db.connect() as c:
         c.execute('DELETE FROM behavior_records WHERE student_id=1 AND semester_id=2')

@@ -1,12 +1,28 @@
+export interface TeacherContext {
+  id:number; name:string; teacher_no:string; college_name:string;
+  classes:{id:number;name:string;student_count:number}[];
+  class_count:number; student_count:number;
+}
+export interface Person {
+  id:number; name:string; code:string; username:string|null; college_name:string;
+  class_id?:number; class_name?:string;
+  classes?:TeacherContext["classes"]; class_count?:number; student_count?:number;
+}
+export interface PeoplePage {items:Person[];total:number;page:number;page_size:number}
 export interface Catalog {
   semesters: {id:number;name:string;start_date:string;end_date:string}[];
   semester_id:number|null;
   students:{id:number;name:string;student_no:string;class_id:number;class_name:string}[];
-  classes:{id:number;name:string}[];
+  classes:{id:number;name:string;college_id:number}[];
+  directory_classes:Catalog["classes"];
+  colleges:{id:number;name:string}[];
+  first_student:Catalog["students"][number]|null;
+  student_count:number; teacher:TeacherContext|null; can_select_teacher:boolean;
   can_compare:boolean; demo:boolean;
 }
 export interface Overview {
-  dimension:"student"|"class"; title:string; student_id:number|null; class_id:number|null;
+  dimension:"student"|"class"|"scope"; title:string; student_id:number|null; class_id:number|null;
+  teacher:TeacherContext|null;
   semester:{id:number;name:string};
   profile:null|{student_no:string;college_name:string;major_name:string;class_name:string;enrollment_date:string|null;graduation_date:string|null;dormitory:string|null};
   summary:{average:number|null;gpa:number|null;passed_credits:number|null;total_credits:number;course_count:number;student_count:number;behavior_coverage:number};

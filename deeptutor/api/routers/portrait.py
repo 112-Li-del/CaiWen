@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from deeptutor.api.routers.auth import require_auth, require_admin
 from deeptutor.services.auth import TokenPayload
 from deeptutor.portrait.database import PortraitDatabase
-from deeptutor.portrait import service
+from deeptutor.portrait import service, directory
 
 router = APIRouter()
 
@@ -28,12 +28,24 @@ def account_links(_: TokenPayload | None = Depends(require_admin), db: PortraitD
 
 
 @router.get('/catalog')
-def catalog(semester_id: int | None = Query(None, ge=1), actor: TokenPayload | None = Depends(require_auth), db: PortraitDatabase = Depends(get_database)):
-    return service.catalog(db, actor, semester_id)
+def catalog(semester_id: int | None = Query(None, ge=1), teacher_id: int | None = Query(None, ge=1),
+            actor: TokenPayload | None = Depends(require_auth), db: PortraitDatabase = Depends(get_database)):
+    return service.catalog(db, actor, semester_id, teacher_id, include_students=False)
+
+
+@router.get('/people')
+def people(semester_id: int = Query(..., ge=1), kind: Literal['student','teacher']='student',
+           q: str = Query('', max_length=100), college_id: int | None = Query(None, ge=1),
+           class_id: int | None = Query(None, ge=1), teacher_id: int | None = Query(None, ge=1),
+           page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
+           actor: TokenPayload | None = Depends(require_auth), db: PortraitDatabase = Depends(get_database)):
+    return directory.people(db, actor, semester_id, kind=kind, q=q, college_id=college_id,
+                            class_id=class_id, teacher_id=teacher_id, page=page, page_size=page_size)
 
 
 @router.get('/overview')
 def overview(semester_id: int = Query(...,ge=1), student_id: int | None = Query(None,ge=1), class_id: int | None = Query(None,ge=1),
-             dimension: Literal['student','class']='student', board_mode: Literal['date','semester']='date', days: int=Query(30,ge=7,le=90),
+             dimension: Literal['student','class','scope']='student', board_mode: Literal['date','semester']='date', days: int=Query(30,ge=7,le=90),
+             teacher_id: int | None = Query(None,ge=1),
              actor: TokenPayload | None = Depends(require_auth), db: PortraitDatabase = Depends(get_database)):
-    return service.overview(db,actor,semester_id,student_id,class_id,dimension,board_mode,days)
+    return service.overview(db,actor,semester_id,student_id,class_id,dimension,board_mode,days,teacher_id)

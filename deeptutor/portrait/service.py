@@ -1,10 +1,12 @@
 """Authorized portrait projections and deterministic descriptive statistics."""
 import statistics
+import json
 from collections import defaultdict
 
 from fastapi import HTTPException
 
 from .database import PortraitDatabase
+from . import directory
 
 
 def mean(values):
@@ -26,21 +28,9 @@ def earned_credits(grade):
     return grade['credits'] if 100 * grade['score'] / grade['full_score'] >= 60 else 0
 
 
-def allowed_students(c, actor, semester_id):
-    if actor is None or actor.role=='admin':
-        return {r[0] for r in c.execute('SELECT student_id FROM student_class_enrollments WHERE semester_id=?',(semester_id,))}
-    from deeptutor.multi_user.identity import get_user_by_id
-    record=get_user_by_id(actor.user_id)
-    if not record or record[1].get('role')!='user':
-        return set()
-    binding=c.execute('SELECT * FROM account_bindings WHERE account_user_id=?',(actor.user_id,)).fetchone()
-    if binding is None:
-        return set()
-    if record[1].get('member_type')=='student' and binding['student_id']:
-        return {r[0] for r in c.execute('SELECT student_id FROM student_class_enrollments WHERE semester_id=? AND student_id=?',(semester_id,binding['student_id']))}
-    if record[1].get('member_type')=='teacher' and binding['teacher_id']:
-        return {r[0] for r in c.execute('SELECT e.student_id FROM student_class_enrollments e JOIN teacher_classes t ON t.class_id=e.class_id AND t.semester_id=e.semester_id WHERE t.teacher_id=? AND e.semester_id=?',(binding['teacher_id'],semester_id))}
-    return set()
+def allowed_students(c, actor, semester_id, teacher_id=None):
+    source, params, _ = directory.student_source(c, actor, semester_id, teacher_id)
+    return {r[0] for r in c.execute('SELECT s.id ' + source, params)}
 
 
 def can_compare(c,actor):
@@ -52,19 +42,35 @@ def can_compare(c,actor):
 
 
 def student_rows(c,semester_id,ids):
-    rows=c.execute('SELECT s.id,s.name,s.student_no,e.class_id,cl.name class_name FROM students s JOIN student_class_enrollments e ON e.student_id=s.id JOIN classes cl ON cl.id=e.class_id WHERE e.semester_id=? ORDER BY s.student_no',(semester_id,)).fetchall()
-    return [dict(r) for r in rows if r['id'] in ids]
+    rows=c.execute('SELECT s.id,s.name,s.student_no,e.class_id,cl.name class_name FROM students s JOIN student_class_enrollments e ON e.student_id=s.id JOIN classes cl ON cl.id=e.class_id WHERE e.semester_id=? AND s.id IN (SELECT value FROM json_each(?)) ORDER BY s.student_no',(semester_id,json.dumps(sorted(ids)))).fetchall()
+    return [dict(r) for r in rows]
 
 
-def catalog(db,actor,semester_id=None):
+def catalog(db, actor, semester_id=None, teacher_id=None, include_students=True):
     with db.connect() as c:
         c.execute('BEGIN')
-        semesters=[dict(r) for r in c.execute('SELECT * FROM semesters ORDER BY start_date DESC')]
-        selected=semester_id or (semesters[0]['id'] if semesters else None)
-        ids=allowed_students(c,actor,selected) if selected else set()
-        students=student_rows(c,selected,ids) if selected else []
-        classes={s['class_id']:s['class_name'] for s in students}
-        return dict(semesters=semesters,semester_id=selected,students=students,classes=[dict(id=k,name=v) for k,v in classes.items()],can_compare=can_compare(c,actor),demo=bool(c.execute('SELECT 1 FROM demo_datasets LIMIT 1').fetchone()))
+        semesters = [dict(r) for r in c.execute('SELECT * FROM semesters ORDER BY start_date DESC')]
+        selected = semester_id or (semesters[0]['id'] if semesters else None)
+        if selected and not any(s['id'] == selected for s in semesters):
+            raise HTTPException(404, '学期不存在')
+        source, params, teacher = directory.student_source(c, actor, selected, teacher_id)
+        fields = 's.id,s.name,s.student_no,e.class_id,cl.name class_name'
+        first = c.execute('SELECT ' + fields + ' ' + source + ' ORDER BY s.student_no LIMIT 1', params).fetchone()
+        students = [dict(r) for r in c.execute('SELECT ' + fields + ' ' + source + ' ORDER BY s.student_no', params)] if include_students else []
+        # Include assigned classes even when no student has enrolled yet.
+        if teacher:
+            classes = [dict(r) for r in c.execute('SELECT cl.id,cl.name,m.college_id FROM teacher_classes tc JOIN classes cl ON cl.id=tc.class_id JOIN majors m ON m.id=cl.major_id WHERE tc.teacher_id=? AND tc.semester_id=? ORDER BY cl.name', (teacher['id'], selected))]
+        else:
+            classes = [dict(r) for r in c.execute('SELECT DISTINCT cl.id,cl.name,m.college_id ' + source + ' ORDER BY cl.name', params)]
+        colleges = [dict(r) for r in c.execute('SELECT DISTINCT co.id,co.name ' + source + ' ORDER BY co.name', params)]
+        if directory.is_admin(actor):
+            colleges = [dict(r) for r in c.execute('SELECT id,name FROM colleges ORDER BY name')]
+        directory_classes = [dict(r) for r in c.execute('SELECT cl.id,cl.name,m.college_id FROM classes cl JOIN majors m ON m.id=cl.major_id ORDER BY cl.name')] if directory.is_admin(actor) else classes
+        return dict(semesters=semesters, semester_id=selected, students=students, directory_classes=directory_classes,
+                    first_student=dict(first) if first else None, classes=classes, colleges=colleges,
+                    student_count=c.execute('SELECT COUNT(*) ' + source, params).fetchone()[0],
+                    teacher=teacher, can_select_teacher=directory.is_admin(actor),
+                    can_compare=can_compare(c, actor), demo=bool(c.execute('SELECT 1 FROM demo_datasets LIMIT 1').fetchone()))
 
 
 def _scoped_rows(c, query, semester_id, ids):
@@ -119,21 +125,26 @@ def _tags(m):
     return tags
 
 
-def overview(db: PortraitDatabase,actor,semester_id,student_id=None,class_id=None,dimension='student',board_mode='date',days=30):
+def overview(db: PortraitDatabase,actor,semester_id,student_id=None,class_id=None,dimension='student',board_mode='date',days=30,teacher_id=None):
     with db.connect() as c:
         c.execute('BEGIN')
         semester=c.execute('SELECT * FROM semesters WHERE id=?',(semester_id,)).fetchone()
         if not semester: raise HTTPException(404,'学期不存在')
-        allowed=allowed_students(c,actor,semester_id)
+        allowed=allowed_students(c,actor,semester_id,teacher_id)
+        teacher=directory.teacher_context(c,actor,semester_id,teacher_id)
         candidates=student_rows(c,semester_id,allowed)
-        if dimension=='class':
+        if dimension=='scope':
+            if not can_compare(c,actor): raise HTTPException(403,'学生只能查看自己的画像')
+            ids={s['id'] for s in candidates if class_id is None or s['class_id']==class_id}
+            if class_id is not None and not ids: raise HTTPException(404,'没有可查看的班级画像')
+        elif dimension=='class':
             if not can_compare(c,actor): raise HTTPException(403,'学生只能查看自己的画像')
             class_id=class_id or (candidates[0]['class_id'] if candidates else None)
             ids={s['id'] for s in candidates if s['class_id']==class_id}
         else:
             student_id=student_id or (candidates[0]['id'] if candidates else None)
             ids={student_id} if student_id in allowed else set()
-        if not ids: raise HTTPException(404,'没有可查看的画像，请联系管理员绑定档案和班级')
+        if not ids and dimension!='scope': raise HTTPException(404,'没有可查看的画像，请联系管理员绑定档案和班级')
         selected=[s for s in candidates if s['id'] in ids]
         grades=_grades(c,semester_id,ids); behaviors=_behavior(c,semester_id,ids); m=_metrics(grades,behaviors)
         grouped=defaultdict(list)
@@ -143,8 +154,11 @@ def overview(db: PortraitDatabase,actor,semester_id,student_id=None,class_id=Non
             g=group[0]; valid=[v for v in group if v['status']=='recorded']
             courses.append(dict(id=g['course_id'],name=g['name'],code=g['code'],credits=g['credits'],earned_credits=mean([earned_credits(v) for v in valid]),kind=g['course_type'],score=mean([v['score'] for v in valid]),full_score=g['full_score'],status=g['status'] if len(group)==1 else 'recorded',sample_count=len(valid)))
         person_gpa=[]; passed=[]
+        student_grades=defaultdict(list)
+        for g in grades:
+            if g['status']=='recorded': student_grades[g['student_id']].append(g)
         for sid in ids:
-            gs=[g for g in grades if g['student_id']==sid and g['status']=='recorded']
+            gs=student_grades[sid]
             if gs: person_gpa.append(mean([gpa_point(100*g['score']/g['full_score']) for g in gs]))
             if gs: passed.append(sum(earned_credits(g) for g in gs))
         profile=None
@@ -152,7 +166,7 @@ def overview(db: PortraitDatabase,actor,semester_id,student_id=None,class_id=Non
             r=c.execute('SELECT s.*,m.name major_name,co.name college_name FROM students s JOIN student_class_enrollments e ON e.student_id=s.id JOIN classes cl ON cl.id=e.class_id JOIN majors m ON m.id=cl.major_id JOIN colleges co ON co.id=m.college_id WHERE s.id=? AND e.semester_id=?',(student_id,semester_id)).fetchone()
             profile=dict(r);profile['class_name']=selected[0]['class_name']
         radar=[]
-        for key,label,maximum,unit in [('average','学业均分',100,'分'),('attendance','出勤率',100,'%'),('study','学习时长',24,'小时/日'),('sleep','睡眠时长',24,'小时/日'),('participation','课堂参与',100,'/100'),('social','社会活动',30,'次/月')]:
+        for key,label,maximum,unit in [('average','学业均分',100,'分'),('attendance','出勤率',100,'%'),('study','学习时长',6,'小时/日'),('sleep','睡眠时长',10,'小时/日'),('participation','课堂参与',100,'/100'),('social','社会活动',30,'次/月')]:
             value=m[key]
             radar.append(dict(key=key,label=label,raw=value,unit=unit,maximum=maximum,value=round(min(100,value/maximum*100),2) if value is not None else None))
         points=[]
@@ -166,14 +180,15 @@ def overview(db: PortraitDatabase,actor,semester_id,student_id=None,class_id=Non
                 points.append(dict(label=d,attendance=round(attended/sessions*100,2) if sessions else None,study=mean([r['study_hours'] for r in values]),sleep=mean([r['sleep_hours'] for r in values]),internet=mean([r['internet_hours'] for r in values])))
         else:
             for sem in c.execute('SELECT * FROM semesters ORDER BY start_date').fetchall():
-                historical=allowed_students(c,actor,sem['id'])
+                historical=allowed_students(c,actor,sem['id'],teacher_id)
                 if dimension=='student': historical &= ids
-                if dimension=='class':
+                if dimension=='class' or (dimension=='scope' and class_id is not None):
                     historical &= {r[0] for r in c.execute('SELECT student_id FROM student_class_enrollments WHERE semester_id=? AND class_id=?',(sem['id'],class_id))}
                 if not historical: continue
                 bm=_metrics([], _behavior(c,sem['id'],historical))
                 points.append(dict(label=sem['name'],attendance=bm['attendance'],study=bm['study'],sleep=bm['sleep'],internet=bm['internet']))
-        return dict(dimension=dimension,title=selected[0]['name'] if dimension=='student' else selected[0]['class_name'],student_id=student_id,class_id=class_id,semester=dict(semester),profile=profile,
+        title = selected[0]['name'] if dimension=='student' else selected[0]['class_name'] if dimension=='class' else '所管学生汇总' if teacher else '全部学生汇总'
+        return dict(dimension=dimension,title=title,teacher=teacher,student_id=student_id,class_id=class_id,semester=dict(semester),profile=profile,
                     summary=dict(average=m['average'],gpa=mean(person_gpa),passed_credits=mean(passed) if grades else None,total_credits=sum(g['credits'] for g in courses),course_count=len(courses),student_count=len(ids),behavior_coverage=len(behaviors)),
                     courses=courses,metrics=m,radar=radar,tags=_tags(m),board=dict(mode=board_mode,points=points),
                     demo=bool(c.execute('SELECT 1 FROM demo_datasets LIMIT 1').fetchone()),
