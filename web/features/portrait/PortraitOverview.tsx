@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { BookOpen, RefreshCw, ScanFace, CalendarDays } from 'lucide-react'
 import { apiUrl, apiFetch } from '@/lib/api'
 import type { Catalog, Overview } from './types'
@@ -33,6 +34,7 @@ async function read<T>(url: string, signal: AbortSignal): Promise<T> {
 }
 
 export default function PortraitOverview() {
+  const router = useRouter()
   const [semester, setSemester] = useState<number | null>(null)
   const [teacherId, setTeacherId] = useState<number | null>(null)
   const [selectedDimension, setDimension] = useState<'student' | 'class'>('student')
@@ -159,13 +161,14 @@ export default function PortraitOverview() {
               catalog={catalog}
               teacherId={teacherId}
               label={
-                dimension === 'student'
+                catalog.can_select_teacher ? '全校搜索 · 学生 / 教师' : dimension === 'student'
                   ? studentLabel || data?.title || catalog.first_student?.name || '搜索学生或教师'
                   : catalog.teacher
                     ? `${catalog.teacher.name} · 查找学生`
                     : '搜索学生或教师'
               }
               onStudent={person => {
+                if (catalog.can_select_teacher) setTeacherId(null)
                 setStudent(person.id)
                 setStudentLabel(`${person.name} · ${person.class_name}`)
                 setClassId(null)
@@ -180,7 +183,7 @@ export default function PortraitOverview() {
               }}
             />
           )}
-          {catalog?.can_compare && dimension !== 'student' && (
+          {catalog?.can_compare && dimension !== 'student' && !(catalog.can_select_teacher && catalog.teacher) && (
             <select
               aria-label="选择班级"
               className={selectStyle}
@@ -188,9 +191,12 @@ export default function PortraitOverview() {
                 classId ??
                 (dimension === 'class' ? (data?.class_id ?? catalog.classes[0]?.id ?? '') : '')
               }
-              onChange={e => setClassId(e.target.value ? Number(e.target.value) : null)}
+              onChange={e => {
+                if (catalog.can_select_teacher) setTeacherId(null)
+                setClassId(e.target.value ? Number(e.target.value) : null)
+              }}
             >
-              {catalog.classes.map(c => (
+              {(catalog.can_select_teacher ? catalog.directory_classes : catalog.classes).map(c => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -239,8 +245,9 @@ export default function PortraitOverview() {
           )}
         </div>
         {catalog?.teacher && (
-          <div className={`${card} flex flex-wrap items-center justify-between gap-3 px-5 py-4`}>
-            <div>
+          <div className={`${card} flex flex-wrap items-center justify-between gap-4 px-5 py-4 ${catalog.can_select_teacher ? 'border-l-4 border-l-[var(--primary)]' : ''}`}>
+            <div className="min-w-0">
+              {catalog.can_select_teacher && <p className="mb-2 text-[10px] font-medium tracking-wider text-[var(--primary)]">教师所管范围</p>}
               <p className="text-sm font-medium">
                 正在查看：{catalog.teacher.name}
                 <span className="ml-3 text-xs font-normal text-[var(--muted-foreground)]">
@@ -252,8 +259,43 @@ export default function PortraitOverview() {
                 按当前学期分配范围查看
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               {catalog.can_select_teacher && (
+                <>
+                <PeoplePicker
+                  key={`teacher-scope:${activeSemester}:${teacherId}:${refresh}`}
+                  catalog={catalog}
+                  teacherId={teacherId}
+                  scope="teacher"
+                  triggerLabel="查找该教师的学生"
+                  label={dimension === 'student'
+                    ? data?.dimension === 'student'
+                      ? `${data.title}${data.profile?.class_name ? ` · ${data.profile.class_name}` : ''}`
+                      : '正在读取学生…'
+                    : '查找该教师的学生'}
+                  onStudent={person => {
+                    setStudent(person.id)
+                    setStudentLabel(`${person.name} · ${person.class_name}`)
+                    setClassId(null)
+                    setDimension('student')
+                  }}
+                  onTeacher={() => {}}
+                />
+                <select
+                  aria-label="查看该教师的班级"
+                  className={selectStyle}
+                  value={dimension === 'class' ? classId ?? data?.class_id ?? '' : ''}
+                  onChange={e => {
+                    if (!e.target.value) return
+                    setClassId(Number(e.target.value))
+                    setStudent(null)
+                    setStudentLabel('')
+                    setDimension('class')
+                  }}
+                >
+                  <option value="">查看所管班级</option>
+                  {catalog.classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
                 <button
                   type="button"
                   onClick={() => {
@@ -265,8 +307,9 @@ export default function PortraitOverview() {
                   }}
                   className="text-xs text-[var(--muted-foreground)]"
                 >
-                  返回全部
+                  退出教师范围
                 </button>
+                </>
               )}
             </div>
           </div>
@@ -454,7 +497,9 @@ export default function PortraitOverview() {
                           query.set('teacher_id', String(teacherId))
                         }
 
-                        window.location.href = `/portrait/wordcloud/${dimension}/${targetId}?${query.toString()}`
+                        // Keep the overview in the same Next.js navigation history so
+                        // router.back() restores its state instead of a document snapshot.
+                        router.push(`/portrait/wordcloud/${dimension}/${targetId}?${query.toString()}`)
                       }}
                     >
                       <WordCloudChart

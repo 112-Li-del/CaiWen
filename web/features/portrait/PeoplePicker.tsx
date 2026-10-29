@@ -7,10 +7,14 @@ import type { Catalog, PeoplePage, Person } from "./types";
 
 interface Props {
   catalog:Catalog; teacherId:number|null; label:string;
+  scope?:"school"|"teacher";
+  triggerLabel?:string;
   onStudent:(person:Person)=>void; onTeacher:(person:Person)=>void;
 }
 
-export default function PeoplePicker({catalog,teacherId,label,onStudent,onTeacher}:Props) {
+export default function PeoplePicker({catalog,teacherId,label,onStudent,onTeacher,scope="school",triggerLabel}:Props) {
+  const schoolSearch=catalog.can_select_teacher&&scope==="school";
+  const scopedTeacherId=schoolSearch?null:teacherId;
   const [open,setOpen]=useState(false);
   const [kind,setKind]=useState<"student"|"teacher">("student");
   const [query,setQuery]=useState("");
@@ -23,10 +27,10 @@ export default function PeoplePicker({catalog,teacherId,label,onStudent,onTeache
   const root=useRef<HTMLDivElement>(null);
   const trigger=useRef<HTMLButtonElement>(null);
   const input=useRef<HTMLInputElement>(null);
-  const key=JSON.stringify([catalog.semester_id,teacherId,kind,query,college,classId,page,retry]);
+  const key=JSON.stringify([catalog.semester_id,scopedTeacherId,kind,query,college,classId,page,retry]);
   const data=result?.key===key?result.data:null;
   const error=failure?.key===key?failure.message:null;
-  const classes=(kind==="teacher"?catalog.directory_classes:catalog.classes).filter(c=>!college||c.college_id===Number(college));
+  const classes=(schoolSearch?catalog.directory_classes:catalog.classes).filter(c=>!college||c.college_id===Number(college));
 
   useEffect(()=>{
     if(!open) return;
@@ -45,7 +49,7 @@ export default function PeoplePicker({catalog,teacherId,label,onStudent,onTeache
       const params=new URLSearchParams({semester_id:String(catalog.semester_id),kind,q:query,page:String(page),page_size:"20"});
       if(college) params.set("college_id",college);
       if(classId) params.set("class_id",classId);
-      if(kind==="student"&&teacherId) params.set("teacher_id",String(teacherId));
+      if(kind==="student"&&scopedTeacherId) params.set("teacher_id",String(scopedTeacherId));
       try {
         const response=await apiFetch(apiUrl(`/api/v1/portrait/people?${params}`),{signal:controller.signal});
         const body=await response.json();
@@ -56,19 +60,19 @@ export default function PeoplePicker({catalog,teacherId,label,onStudent,onTeache
       }
     },250);
     return ()=>{clearTimeout(timer);controller.abort();};
-  },[open,catalog.semester_id,teacherId,kind,query,college,classId,page,key]);
+  },[open,catalog.semester_id,scopedTeacherId,kind,query,college,classId,page,key]);
 
   const filterStyle="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs";
   return <div ref={root} className="relative" onKeyDown={e=>{
     if(e.key==="Escape"){setOpen(false);trigger.current?.focus();}
   }}>
-    <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)} className="flex h-9 max-w-[280px] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-xs">
+    <button ref={trigger} type="button" aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)} className="flex h-9 max-w-[280px] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-xs">
       <span className="truncate">{label}</span><ChevronDown size={14} className="shrink-0"/>
     </button>
-    {open&&<div role="dialog" aria-label="选择查看人员" className="fixed right-4 top-28 z-50 flex max-h-[calc(100dvh-8rem)] w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden md:absolute md:right-0 md:top-11 rounded-xl border border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-xl">
+    {open&&<div role="dialog" aria-label={schoolSearch?"全校人员搜索":"所管学生搜索"} className="fixed right-4 top-28 z-50 flex max-h-[calc(100dvh-8rem)] w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden md:absolute md:right-0 md:top-11 rounded-xl border border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-xl">
       <div className="shrink-0 space-y-3 border-b border-[var(--border)] p-4">
         <div className="flex items-center justify-between gap-3">
-          {catalog.can_select_teacher?<div className="flex gap-1 rounded-lg bg-[var(--muted)] p-1" aria-label="人员类型">{([['student','学生'],['teacher','教师']] as const).map(([value,text])=><button type="button" key={value} aria-pressed={kind===value} onClick={()=>{setKind(value);setPage(1);setQuery("");setCollege("");setClassId("");}} className={`rounded-md px-5 py-1.5 text-xs ${kind===value?"bg-[var(--card)] text-[var(--primary)] shadow-sm":"text-[var(--muted-foreground)]"}`}>{text}</button>)}</div>:<span className="text-sm font-medium">查找所管学生</span>}
+          {schoolSearch?<div className="flex gap-1 rounded-lg bg-[var(--muted)] p-1" aria-label="人员类型">{([['student','学生'],['teacher','教师']] as const).map(([value,text])=><button type="button" key={value} aria-pressed={kind===value} onClick={()=>{setKind(value);setPage(1);setQuery("");setCollege("");setClassId("");}} className={`rounded-md px-5 py-1.5 text-xs ${kind===value?"bg-[var(--card)] text-[var(--primary)] shadow-sm":"text-[var(--muted-foreground)]"}`}>{text}</button>)}</div>:<span className="text-sm font-medium">查找所管学生</span>}
           <button type="button" aria-label="关闭人员选择" onClick={()=>{setOpen(false);trigger.current?.focus();}} className="rounded p-1 hover:bg-[var(--muted)]"><X size={16}/></button>
         </div>
         <label className="flex h-10 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3">
