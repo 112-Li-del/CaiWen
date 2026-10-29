@@ -1456,24 +1456,16 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-      {/* 表情球 + 输入框：窄屏（<1400）真并排——flex 行里球占固定宽、输入框 flex-1。
-          不设 gap：球在宿主里自带 ~13px 内边留白（0.11×size），视觉间隙正好，
-          再加 gap 就会像之前那样中间空一截。压缩需求 = 球缩小、输入框变短，天然成立。
-          宽屏（≥1400）时球切 absolute 脱离文档流，贴窗格左边挨导航栏（wrapper 占满
-          窗格宽，left-3 就是窗格坐标），size 收回 96；输入框不受影响，靠内层
-          max-w-960 居中，和上方消息列对齐。球 svg pointer-events:none、
-          只有球面（.cw-hit）能点。 */}
-      <div className="relative mx-auto flex w-full max-w-[900px] shrink-0 items-end px-4 sm:px-8">
+      {/* Container queries use the space left after the sidebar and preview drawer.
+          The compact status row keeps the composer full-width; wide panes use the left gutter. */}
+      <div className="cw-composer-region">
+      <div className="cw-composer-dock">
         <EmotionBall
           emotion={ballEmotion}
-          size={120}
-          className="cw-ball-host pointer-events-none absolute bottom-6 -left-24 z-30 hidden min-[1700px]:flex [&>div:first-child]:!w-20"
+          size={80}
+          className="cw-ball-host pointer-events-none z-30"
         />
-        <div className="min-w-0 flex-1">
-          {/* 窄屏下输入框不再伸到贴边：右缘收进来到 720px 封顶（左缘仍贴着球，
-              ml-0 覆盖 mx-auto 的居中）。宽屏维持 820 居中与消息列对齐。
-              预览抽屉打开时由 globals.css 的 .cw-composer-host 规则强制回到这套
-              左对齐布局（内容区被右推 560px，居中会与 absolute 的球重叠）。 */}
+        <div className="min-w-0 w-full">
           <div className="cw-composer-host mx-auto w-full">
         <ChatComposer
           composerRef={composerRef}
@@ -1576,6 +1568,7 @@ export default function ChatPage() {
         />
           </div>
         </div>
+      </div>
       </div>
       <NotebookRecordPicker
         open={showNotebookPicker}

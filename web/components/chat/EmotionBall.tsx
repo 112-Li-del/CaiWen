@@ -13,7 +13,7 @@
  * 不用 React 再渲染一遍文字——两套渲染源会打架。
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 // 引擎是原生 JS，没有类型声明；allowJs 下 webpack 能直接打包，这里只压制 TS 报错。
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -74,8 +74,7 @@ export default function EmotionBall({
 }: {
   emotion?: EmotionId;
   className?: string;
-  /** 球直径（px）。改大时注意父容器是 overflow-hidden，丝带会甩出球外约 0.6×直径，
-   *  右上角留的偏移量要跟着加，否则丝带会被容器边缘切掉 */
+  /** 默认画布尺寸（px）。聊天页可用 CSS 变量缩放画布，不改变提示文字的固定占位。 */
   size?: number;
   onPoke?: (dir: number) => void;
 }) {
@@ -106,19 +105,22 @@ export default function EmotionBall({
   }, [emotion]);
 
   return (
-    <div className={`flex flex-col items-center select-none ${className}`}>
+    <div
+      className={`flex flex-col items-center select-none ${className}`}
+      style={{ "--cw-ball-size": `${size}px`, width: "var(--cw-ball-host-width, calc(var(--cw-ball-size) + 40px))" } as CSSProperties}
+    >
       {/* 引擎会把 <svg> 插到容器最前，所以这个 div 只当宿主用。
           svg 整体不吃指针事件，只有球面（.cw-hit）重新开启——球叠在
           输入框上时，被盖住的按钮依然可以点。 */}
       <div
         ref={hostRef}
-        style={{ width: size }}
-        className="[&>svg]:pointer-events-none [&>svg]:w-full [&>svg]:h-auto [&>svg]:overflow-visible [&_.cw-hit]:pointer-events-auto"
+        style={{ width: "var(--cw-ball-render-size, var(--cw-ball-size))", height: "var(--cw-ball-render-size, var(--cw-ball-size))" }}
+        className="cw-ball-visual shrink-0 [&>svg]:block [&>svg]:pointer-events-none [&>svg]:w-full [&>svg]:h-full [&>svg]:overflow-visible [&_.cw-hit]:pointer-events-auto"
       />
       <div
         ref={tipRef}
-        style={{ maxWidth: size + 40 }}
-        className="mt-1 text-center text-[12px] leading-tight text-[var(--muted-foreground)]"
+        style={{ width: "var(--cw-tip-width, calc(var(--cw-ball-size) + 40px))", height: 36 }}
+        className="cw-ball-tip mt-1 overflow-hidden break-words text-center text-[12px] leading-[18px] text-[var(--muted-foreground)]"
       />
     </div>
   );

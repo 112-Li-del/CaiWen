@@ -714,32 +714,55 @@ select option:checked {
   }
 }
 
-/*
- * 预览抽屉打开时内容区被右推 560px，但表情球仍按「视口」断点 min-[1400px]
- * 做 absolute 贴左、输入框仍按 960 居中——视口够宽（100%/110% 缩放）时二者
- * 会重叠；只有视口跌破 1400（如 125% 缩放）走窄屏并排才正常。
- * 这里在「抽屉真正挤压内容区」（≥1024 且 data-preview-open=true）时，强制
- * 恢复窄屏那套「球 + 输入框」并排文档流，与视口宽度/缩放比例无关。
- * 抽屉关闭（data-preview-open=false）时这些规则全部不生效，宽屏仍是球贴左、
- * 输入框居中的原设计。
- */
-@media (min-width: 1024px) {
-  .chat-preview-shell[data-preview-open="true"] .cw-ball-host {
-    position: relative !important;
-    bottom: auto !important;
-    left: auto !important;
-    padding-bottom: 0.5rem !important;
+/* Keep layout independent of viewport zoom and the typewriter's current text. */
+.cw-composer-region {
+  container: chat-pane / inline-size;
+  width: 100%;
+  flex-shrink: 0;
+}
+.cw-composer-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 900px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+.chat-preview-shell .cw-ball-host {
+  --cw-ball-host-width: 100%;
+  --cw-ball-render-size: 56px;
+  --cw-tip-width: min(240px, calc(100% - 66px));
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  height: 80px;
+  flex-shrink: 0;
+}
+.cw-ball-host .cw-ball-tip {
+  margin-top: 0;
+  text-align: left;
+  flex-shrink: 0;
+}
+@media (min-width: 640px) {
+  .cw-composer-dock { padding-inline: 32px; }
+}
+@container chat-pane (min-width: 1200px) {
+  .chat-preview-shell .cw-ball-host {
+    --cw-ball-host-width: 120px;
+    --cw-ball-render-size: 80px;
+    --cw-tip-width: 120px;
+    position: absolute;
+    left: -120px;
+    bottom: 24px;
+    height: 120px;
+    flex-direction: column;
+    gap: 4px;
   }
-  /* 宽屏把球收成 96px（!w-24），并排时恢复 size=120 的自然直径 */
-  .chat-preview-shell[data-preview-open="true"] .cw-ball-host > div:first-child {
-    width: 120px !important;
-  }
-  /* 输入框由 820 居中改为左对齐贴球、720 封顶，复刻窄屏布局 */
-  .chat-preview-shell[data-preview-open="true"] .cw-composer-host {
-    margin-left: 0 !important;
-    margin-right: auto !important;
-    max-width: 720px !important;
-  }
+  .cw-ball-host .cw-ball-tip { text-align: center; }
 }
 
 /* The application rail stays stable while the module sidebar can collapse. */
@@ -750,14 +773,6 @@ select option:checked {
 .sb-root a:focus-visible {
   outline: 2px solid #e9b4b6;
   outline-offset: 2px;
-}
-.chat-preview-shell .cw-ball-host {
-  display: none;
-}
-@media (min-width: 1700px) {
-  .chat-preview-shell[data-preview-open="false"] .cw-ball-host {
-    display: flex;
-  }
 }
 @media (max-width: 767px) {
   .sb-root {
