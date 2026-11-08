@@ -1,13 +1,16 @@
 'use client'
 
+import PortraitAssistant from './PortraitAssistant'
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { BookOpen, RefreshCw, ScanFace, CalendarDays } from 'lucide-react'
+import { BookOpen, RefreshCw, CalendarDays } from 'lucide-react'
 import { apiUrl, apiFetch } from '@/lib/api'
 import type { Catalog, Overview } from './types'
 import PeoplePicker from './PeoplePicker'
+import PortraitHeading from './PortraitHeading'
 import SplitText from '@/components/ui/SplitText'
+import { usePortraitSelection } from './PortraitSelection'
 import BorderGlow from '@/components/ui/BorderGlow'
 import WordCloudChart from '@/components/ui/WordCloudChart'
 
@@ -35,12 +38,20 @@ async function read<T>(url: string, signal: AbortSignal): Promise<T> {
 
 export default function PortraitOverview() {
   const router = useRouter()
-  const [semester, setSemester] = useState<number | null>(null)
-  const [teacherId, setTeacherId] = useState<number | null>(null)
-  const [selectedDimension, setDimension] = useState<'student' | 'class'>('student')
-  const [student, setStudent] = useState<number | null>(null)
-  const [studentLabel, setStudentLabel] = useState('')
-  const [classId, setClassId] = useState<number | null>(null)
+  const {
+    semester,
+    setSemester,
+    teacherId,
+    setTeacherId,
+    selectedDimension,
+    setDimension,
+    student,
+    setStudent,
+    studentLabel,
+    setStudentLabel,
+    classId,
+    setClassId,
+  } = usePortraitSelection()
   const [mode, setMode] = useState<'date' | 'semester'>('date')
   const [days, setDays] = useState(30)
   const [refresh, setRefresh] = useState(0)
@@ -126,16 +137,10 @@ export default function PortraitOverview() {
   const card = 'rounded-2xl border border-[var(--border)] bg-[var(--card)]'
   return (
     <div className="min-h-full bg-[var(--background)] text-[var(--foreground)]">
+      <PortraitAssistant data={data} days={days} />
+
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--card)] px-5 py-4 lg:px-9">
-        <div>
-          <div className="mb-1 text-[10px] font-medium tracking-[.2em] text-[var(--muted-foreground)]">
-            CAIWEN / STUDENT PORTRAIT
-          </div>
-          <h1 className="flex items-center gap-2 text-lg font-semibold">
-            <ScanFace size={20} strokeWidth={1.6} />
-            <SplitText text="学业画像" delay={50} />
-          </h1>
-        </div>
+        <PortraitHeading />
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="选择学期"
@@ -161,11 +166,13 @@ export default function PortraitOverview() {
               catalog={catalog}
               teacherId={teacherId}
               label={
-                catalog.can_select_teacher ? '全校搜索 · 学生 / 教师' : dimension === 'student'
-                  ? studentLabel || data?.title || catalog.first_student?.name || '搜索学生或教师'
-                  : catalog.teacher
-                    ? `${catalog.teacher.name} · 查找学生`
-                    : '搜索学生或教师'
+                catalog.can_select_teacher
+                  ? '全校搜索 · 学生 / 教师'
+                  : dimension === 'student'
+                    ? studentLabel || data?.title || catalog.first_student?.name || '搜索学生或教师'
+                    : catalog.teacher
+                      ? `${catalog.teacher.name} · 查找学生`
+                      : '搜索学生或教师'
               }
               onStudent={person => {
                 if (catalog.can_select_teacher) setTeacherId(null)
@@ -183,26 +190,30 @@ export default function PortraitOverview() {
               }}
             />
           )}
-          {catalog?.can_compare && dimension !== 'student' && !(catalog.can_select_teacher && catalog.teacher) && (
-            <select
-              aria-label="选择班级"
-              className={selectStyle}
-              value={
-                classId ??
-                (dimension === 'class' ? (data?.class_id ?? catalog.classes[0]?.id ?? '') : '')
-              }
-              onChange={e => {
-                if (catalog.can_select_teacher) setTeacherId(null)
-                setClassId(e.target.value ? Number(e.target.value) : null)
-              }}
-            >
-              {(catalog.can_select_teacher ? catalog.directory_classes : catalog.classes).map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          )}
+          {catalog?.can_compare &&
+            dimension !== 'student' &&
+            !(catalog.can_select_teacher && catalog.teacher) && (
+              <select
+                aria-label="选择班级"
+                className={selectStyle}
+                value={
+                  classId ??
+                  (dimension === 'class' ? (data?.class_id ?? catalog.classes[0]?.id ?? '') : '')
+                }
+                onChange={e => {
+                  if (catalog.can_select_teacher) setTeacherId(null)
+                  setClassId(e.target.value ? Number(e.target.value) : null)
+                }}
+              >
+                {(catalog.can_select_teacher ? catalog.directory_classes : catalog.classes).map(
+                  c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  )
+                )}
+              </select>
+            )}
           <button
             aria-label="刷新画像数据"
             onClick={() => setRefresh(x => x + 1)}
@@ -245,9 +256,15 @@ export default function PortraitOverview() {
           )}
         </div>
         {catalog?.teacher && (
-          <div className={`${card} flex flex-wrap items-center justify-between gap-4 px-5 py-4 ${catalog.can_select_teacher ? 'border-l-4 border-l-[var(--primary)]' : ''}`}>
+          <div
+            className={`${card} flex flex-wrap items-center justify-between gap-4 px-5 py-4 ${catalog.can_select_teacher ? 'border-l-4 border-l-[var(--primary)]' : ''}`}
+          >
             <div className="min-w-0">
-              {catalog.can_select_teacher && <p className="mb-2 text-[10px] font-medium tracking-wider text-[var(--primary)]">教师所管范围</p>}
+              {catalog.can_select_teacher && (
+                <p className="mb-2 text-[10px] font-medium tracking-wider text-[var(--primary)]">
+                  教师所管范围
+                </p>
+              )}
               <p className="text-sm font-medium">
                 正在查看：{catalog.teacher.name}
                 <span className="ml-3 text-xs font-normal text-[var(--muted-foreground)]">
@@ -262,53 +279,59 @@ export default function PortraitOverview() {
             <div className="flex flex-wrap items-center gap-3">
               {catalog.can_select_teacher && (
                 <>
-                <PeoplePicker
-                  key={`teacher-scope:${activeSemester}:${teacherId}:${refresh}`}
-                  catalog={catalog}
-                  teacherId={teacherId}
-                  scope="teacher"
-                  triggerLabel="查找该教师的学生"
-                  label={dimension === 'student'
-                    ? data?.dimension === 'student'
-                      ? `${data.title}${data.profile?.class_name ? ` · ${data.profile.class_name}` : ''}`
-                      : '正在读取学生…'
-                    : '查找该教师的学生'}
-                  onStudent={person => {
-                    setStudent(person.id)
-                    setStudentLabel(`${person.name} · ${person.class_name}`)
-                    setClassId(null)
-                    setDimension('student')
-                  }}
-                  onTeacher={() => {}}
-                />
-                <select
-                  aria-label="查看该教师的班级"
-                  className={selectStyle}
-                  value={dimension === 'class' ? classId ?? data?.class_id ?? '' : ''}
-                  onChange={e => {
-                    if (!e.target.value) return
-                    setClassId(Number(e.target.value))
-                    setStudent(null)
-                    setStudentLabel('')
-                    setDimension('class')
-                  }}
-                >
-                  <option value="">查看所管班级</option>
-                  {catalog.classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTeacherId(null)
-                    setStudent(null)
-                    setStudentLabel('')
-                    setClassId(null)
-                    setDimension('student')
-                  }}
-                  className="text-xs text-[var(--muted-foreground)]"
-                >
-                  退出教师范围
-                </button>
+                  <PeoplePicker
+                    key={`teacher-scope:${activeSemester}:${teacherId}:${refresh}`}
+                    catalog={catalog}
+                    teacherId={teacherId}
+                    scope="teacher"
+                    triggerLabel="查找该教师的学生"
+                    label={
+                      dimension === 'student'
+                        ? data?.dimension === 'student'
+                          ? `${data.title}${data.profile?.class_name ? ` · ${data.profile.class_name}` : ''}`
+                          : '正在读取学生…'
+                        : '查找该教师的学生'
+                    }
+                    onStudent={person => {
+                      setStudent(person.id)
+                      setStudentLabel(`${person.name} · ${person.class_name}`)
+                      setClassId(null)
+                      setDimension('student')
+                    }}
+                    onTeacher={() => {}}
+                  />
+                  <select
+                    aria-label="查看该教师的班级"
+                    className={selectStyle}
+                    value={dimension === 'class' ? (classId ?? data?.class_id ?? '') : ''}
+                    onChange={e => {
+                      if (!e.target.value) return
+                      setClassId(Number(e.target.value))
+                      setStudent(null)
+                      setStudentLabel('')
+                      setDimension('class')
+                    }}
+                  >
+                    <option value="">查看所管班级</option>
+                    {catalog.classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeacherId(null)
+                      setStudent(null)
+                      setStudentLabel('')
+                      setClassId(null)
+                      setDimension('student')
+                    }}
+                    className="text-xs text-[var(--muted-foreground)]"
+                  >
+                    退出教师范围
+                  </button>
                 </>
               )}
             </div>
@@ -499,7 +522,9 @@ export default function PortraitOverview() {
 
                         // Keep the overview in the same Next.js navigation history so
                         // router.back() restores its state instead of a document snapshot.
-                        router.push(`/portrait/wordcloud/${dimension}/${targetId}?${query.toString()}`)
+                        router.push(
+                          `/portrait/wordcloud/${dimension}/${targetId}?${query.toString()}`
+                        )
                       }}
                     >
                       <WordCloudChart

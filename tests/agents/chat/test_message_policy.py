@@ -34,6 +34,14 @@ def test_secret_requests_are_blocked_locally() -> None:
         assert pipeline._matches_hard_sensitive_rule(message)
 
 
+def test_meal_suggestions_skip_retrieval_but_campus_facts_do_not() -> None:
+    pipeline = _pipeline()
+    for message in ('晚上吃什么？', '今天吃什么', '午饭吃什么'):
+        assert asyncio.run(pipeline._classify_rag_turn(message)) == 'casual'
+    for message in ('学校食堂今晚几点关门？', '今天食堂菜单价格是多少？'):
+        assert not pipeline._is_obvious_casual_message(message)
+
+
 def test_semantic_router_accepts_supported_labels() -> None:
     pipeline = _pipeline()
     with patch("deeptutor.services.llm.complete", new=AsyncMock(return_value="sensitive")):

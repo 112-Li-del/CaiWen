@@ -55,8 +55,10 @@ _CASUAL_EXACT_MESSAGES = {
     "早上好", "上午好", "中午好", "下午好", "晚上好", "晚安",
     "谢谢", "感谢", "多谢", "再见", "拜拜", "你好吗", "最近怎么样",
     "你是谁", "你叫什么", "你能做什么",
+    "晚上吃什么", "晚饭吃什么", "今天吃什么", "中午吃什么", "午饭吃什么",
 }
 _SENSITIVE_REQUEST_PATTERNS = (
+    r"(?i)\b(show|give|tell|reveal|provide|export)\s+(?:me\s+)?(?:the\s+|your\s+|an?\s+)?(?:api[ _-]?key|access[ _-]?token|secret[ _-]?key|password|passwd)\b",
     r"(?i)(api[ _-]?key|access[ _-]?token|secret[ _-]?key|password|passwd|密码|密钥|令牌).{0,24}(是什么|多少|给我|告诉|显示|查看|泄露|发给|提供|导出)",
     r"(?i)(是什么|多少|给我|告诉|显示|查看|泄露|发给|提供|导出).{0,24}(api[ _-]?key|access[ _-]?token|secret[ _-]?key|password|passwd|密码|密钥|令牌)",
     r"(?i)\b(sk-[a-z0-9_-]{12,}|bearer\s+[a-z0-9._-]{12,})\b",

@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 /**
  * EmotionBall —— 「财问表情球」的 React 包装层
@@ -13,21 +13,18 @@
  * 不用 React 再渲染一遍文字——两套渲染源会打架。
  */
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from 'react'
 // 引擎是原生 JS，没有类型声明；allowJs 下 webpack 能直接打包，这里只压制 TS 报错。
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { create as createBall } from "@/lib/emotion-ball/engine";
+import { create as createBall } from '@/lib/emotion-ball/engine'
 
-export type EmotionId =
-  | "00" | "01" | "02" | "03"
-  | "10" | "11" | "12" | "13"
-  | "20";
+export type EmotionId = '00' | '01' | '02' | '03' | '10' | '11' | '12' | '13' | '20'
 
 /** 引擎实例句柄（只用到这俩方法，多余的不暴露） */
 interface BallHandle {
-  setEmotion: (id: string) => void;
-  destroy: () => void;
+  setEmotion: (id: string) => void
+  poke: () => void
+  destroy: () => void
 }
 
 /**
@@ -46,82 +43,102 @@ interface BallHandle {
  * 的提示条；所以这里没有 failed 分支，出错时球落回待机。
  */
 export function resolveEmotion(args: {
-  isStreaming: boolean;
-  stage?: string;
+  isStreaming: boolean
+  stage?: string
   /** 用户输入框里有字（trim 后非空）——不是聚焦就触发 */
-  typing?: boolean;
+  typing?: boolean
   /** 助手这条消息已经吐出内容（第一个字到了） */
-  answering?: boolean;
+  answering?: boolean
 }): EmotionId {
-  const { isStreaming, stage, typing, answering } = args;
+  const { isStreaming, stage, typing, answering } = args
   if (!isStreaming) {
-    if (typing) return "03";                   // 倾听：用户在打字
-    return "01";                               // 待机
+    if (typing) return '03' // 倾听：用户在打字
+    return '01' // 待机
   }
   /* 13 = 书写（钢笔落笔），引擎 2.4s 后自动接 12，所以不用在这里计时 */
-  if (answering) return "13";
-  const s = (stage || "").toLowerCase();
-  if (/retriev|search|知识|rag|embed|index/.test(s)) return "11";  // 检索中
-  if (/answer|生成|写|draft|stream/.test(s)) return "12";          // 回答中
-  return "10";                                    // 思考中
+  if (answering) return '13'
+  const s = (stage || '').toLowerCase()
+  if (/retriev|search|知识|rag|embed|index/.test(s)) return '11' // 检索中
+  if (/answer|生成|写|draft|stream/.test(s)) return '12' // 回答中
+  return '10' // 思考中
 }
 
 export default function EmotionBall({
-  emotion = "01",
-  className = "",
+  emotion = '01',
+  className = '',
   size = 120,
   onPoke,
+  pokeOnClick = true,
+  pokeSignal = 0,
 }: {
-  emotion?: EmotionId;
-  className?: string;
+  emotion?: EmotionId
+  className?: string
   /** 默认画布尺寸（px）。聊天页可用 CSS 变量缩放画布，不改变提示文字的固定占位。 */
-  size?: number;
-  onPoke?: (dir: number) => void;
+  size?: number
+  onPoke?: (dir: number) => void
+  /** Floating/draggable hosts own gesture classification and trigger pokes explicitly. */
+  pokeOnClick?: boolean
+  pokeSignal?: number
 }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const tipRef = useRef<HTMLDivElement | null>(null);
-  const ballRef = useRef<BallHandle | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const tipRef = useRef<HTMLDivElement | null>(null)
+  const ballRef = useRef<BallHandle | null>(null)
   /* onPoke 走 ref：避免回调变化导致引擎重建（重建会丢入场动画） */
-  const pokeRef = useRef(onPoke);
-  pokeRef.current = onPoke;
+  const pokeRef = useRef(onPoke)
+  useEffect(() => {
+    pokeRef.current = onPoke
+  }, [onPoke])
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+    const host = hostRef.current
+    if (!host) return
     const ball = createBall(host, {
       tip: tipRef.current,
       glow: true,
+      poke: pokeOnClick,
       onPoke: (dir: number) => pokeRef.current?.(dir),
-    }) as BallHandle;
-    ballRef.current = ball;
+    }) as BallHandle
+    ballRef.current = ball
     return () => {
-      ball.destroy();
-      ballRef.current = null;
-    };
-  }, []);
+      ball.destroy()
+      ballRef.current = null
+    }
+  }, [pokeOnClick])
 
   useEffect(() => {
-    ballRef.current?.setEmotion(emotion);
-  }, [emotion]);
+    if (pokeSignal > 0) ballRef.current?.poke()
+  }, [pokeSignal])
+
+  useEffect(() => {
+    ballRef.current?.setEmotion(emotion)
+  }, [emotion])
 
   return (
     <div
       className={`flex flex-col items-center select-none ${className}`}
-      style={{ "--cw-ball-size": `${size}px`, width: "var(--cw-ball-host-width, calc(var(--cw-ball-size) + 40px))" } as CSSProperties}
+      style={
+        {
+          '--cw-ball-size': `${size}px`,
+          width: 'var(--cw-ball-host-width, calc(var(--cw-ball-size) + 40px))',
+        } as CSSProperties
+      }
     >
       {/* 引擎会把 <svg> 插到容器最前，所以这个 div 只当宿主用。
           svg 整体不吃指针事件，只有球面（.cw-hit）重新开启——球叠在
           输入框上时，被盖住的按钮依然可以点。 */}
       <div
         ref={hostRef}
-        style={{ width: "var(--cw-ball-render-size, var(--cw-ball-size))", height: "var(--cw-ball-render-size, var(--cw-ball-size))" }}
+        style={{
+          width: 'var(--cw-ball-render-size, var(--cw-ball-size))',
+          height: 'var(--cw-ball-render-size, var(--cw-ball-size))',
+        }}
         className="cw-ball-visual shrink-0 [&>svg]:block [&>svg]:pointer-events-none [&>svg]:w-full [&>svg]:h-full [&>svg]:overflow-visible [&_.cw-hit]:pointer-events-auto"
       />
       <div
         ref={tipRef}
-        style={{ width: "var(--cw-tip-width, calc(var(--cw-ball-size) + 40px))", height: 36 }}
+        style={{ width: 'var(--cw-tip-width, calc(var(--cw-ball-size) + 40px))', height: 36 }}
         className="cw-ball-tip mt-1 overflow-hidden break-words text-center text-[12px] leading-[18px] text-[var(--muted-foreground)]"
       />
     </div>
-  );
+  )
 }

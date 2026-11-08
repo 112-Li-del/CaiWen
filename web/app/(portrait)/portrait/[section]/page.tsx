@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, ScanFace } from "lucide-react";
 import PortraitOverview from "@/features/portrait/PortraitOverview";
+import StudentProfile from "@/features/portrait/StudentProfile";
 
 const sections: Record<string, { title: string; subtitle: string; description: string; items: string[] }> = {
   overview: { title: "查看画像", subtitle: "学生画像", description: "在这里了解学习表现、能力特征与成长变化。", items: ["学生与班级画像", "学习表现与能力分析", "个性化学业建议"] },
@@ -12,6 +13,7 @@ const sections: Record<string, { title: string; subtitle: string; description: s
 export default async function PortraitSection({ params }: { params: Promise<{ section: string }> }) {
   const { section } = await params;
   if (section === "overview") return <PortraitOverview />;
+  if (section === "profile") return <StudentProfile />;
   const content = Object.hasOwn(sections, section) ? sections[section] : undefined;
   if (!content) notFound();
   return (
