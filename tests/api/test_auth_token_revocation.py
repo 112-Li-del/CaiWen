@@ -5,7 +5,10 @@ from deeptutor.services import auth
 
 
 @pytest.fixture
-def account(monkeypatch):
+def account(monkeypatch, tmp_path):
+    from deeptutor.multi_user import paths
+
+    monkeypatch.setattr(paths, "SYSTEM_ROOT", tmp_path)
     record = {"id": "u_alice", "role": "admin", "status": "active", "disabled": False}
     users = {"alice": record}
     monkeypatch.setattr(auth, "POCKETBASE_ENABLED", False)

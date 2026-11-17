@@ -99,7 +99,7 @@ def test_primary_websocket_rejects_anonymous(client):
 
 def test_websocket_rejects_foreign_browser_origin_even_with_token(client):
     with pytest.raises(WebSocketDisconnect) as rejected:
-        with client.websocket_connect("/api/v1/ws?token=student", headers={"Origin": "https://untrusted.example"}):
+        with client.websocket_connect("/api/v1/ws", headers={"Origin": "https://untrusted.example", "Cookie": "dt_token=student"}):
             pass
     assert rejected.value.code == 4003
 
@@ -109,7 +109,7 @@ def test_websocket_rejects_foreign_browser_origin_even_with_token(client):
     {"type": "message", "content": "测试", "tools": ["code_execution"]},
 ])
 def test_primary_websocket_rejects_hidden_execution(client, body):
-    with client.websocket_connect("/api/v1/ws?token=student", headers={"Origin": "http://localhost:3782"}) as ws:
+    with client.websocket_connect("/api/v1/ws", headers={"Origin": "http://localhost:3782", "Cookie": "dt_token=student"}) as ws:
         ws.send_json(body)
         response = ws.receive_json()
     assert response["type"] == "error"

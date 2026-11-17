@@ -7,7 +7,6 @@ import { useMemo, useState } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
-  Bot,
   LayoutGrid,
   Library,
   MessageSquare,
@@ -18,7 +17,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { UserMenu } from "@/components/sidebar/UserMenu";
 import type { SessionSummary } from "@/lib/session-api";
 import ApplicationRail from "@/components/sidebar/ApplicationRail";
@@ -44,12 +42,6 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Chat",
     icon: MessageSquare,
     tooltipKey: "Chat tooltip",
-  },
-  {
-    href: "/agents",
-    label: "TutorBot",
-    icon: Bot,
-    tooltipKey: "TutorBot tooltip",
   },
   {
     href: "/co-writer",
@@ -89,22 +81,20 @@ interface SidebarShellProps {
 }
 
 /** Nav entries that are only visible to admin users.
- *  「收入口不删码」：辅导机器人/智能写作/书籍对普通用户隐藏（管理员演示用），
+ *  「收入口不删码」：智能写作/书籍对普通用户隐藏（管理员演示用），
  *  路由级兜底见 middleware.ts 的 ADMIN_ROUTES。 */
 const ADMIN_ONLY_HREFS = new Set([
   "/knowledge",
   "/space",
-  "/agents",
   "/co-writer",
   "/book",
 ]);
 
 /** 管理员侧收进「功能」全屏菜单的 nav 项（2026-10 与用户定）。
- *  知识库保留在侧边栏（财问核心，管理员需管理）；这四项管理员也不常
+ *  知识库保留在侧边栏（财问核心，管理员需管理）；这三项管理员也不常
  *  用，统一收进 StaggeredMenu，点击后从右侧滑出。代码零删除，恢复
  *  只需把对应 href 从本 Set 移除并放回 visibleNav。 */
 const FEATURE_MENU_HREFS = new Set([
-  "/agents",
   "/co-writer",
   "/book",
   "/space",
@@ -122,7 +112,7 @@ export function SidebarShell({
   onDeleteSession,
   isAdmin = false,
 }: SidebarShellProps) {
-  /* 管理员主 nav 只留聊天：知识库移到底部、四项功能收进「功能」菜单（也在底部）。
+  /* 管理员主 nav 只留聊天：知识库移到底部、三项功能收进「功能」菜单（也在底部）。
    * 普通用户：过滤 ADMIN_ONLY_HREFS，只剩聊天。 */
   const ADMIN_TOP_HIDDEN = new Set([
     "/knowledge",
@@ -142,14 +132,6 @@ export function SidebarShell({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const applicationRail = <ApplicationRail sidebarOpen={mobileSidebarOpen} onToggleSidebar={() => { setMobileSidebarOpen((open) => !open); setCollapsed(false); }} />;
   const featureMenuItems: StaggeredMenuItem[] = [
-    {
-      label: "辅导机器人",
-      ariaLabel: "辅导机器人",
-      onClick: () => {
-        router.push("/agents");
-        setFeatureMenuOpen(false);
-      },
-    },
     {
       label: "智能写作",
       ariaLabel: "智能写作",
@@ -441,7 +423,6 @@ export function SidebarShell({
 
           {visibleNav.map((item) => {
             const active = pathname.startsWith(item.href);
-            const hasBots = item.href === "/agents";
             return (
               <div key={item.href}>
                 <Link
@@ -455,7 +436,6 @@ export function SidebarShell({
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
                   <span>{t(item.label)}</span>
                 </Link>
-                {hasBots && <TutorBotRecent />}
               </div>
             );
           })}

@@ -63,6 +63,18 @@ class CampusAccessMiddleware:
             return
         path = scope["path"].rstrip("/") or "/"
         method = scope.get("method", "GET")
+        connection = HTTPConnection(scope)
+        origin = connection.headers.get("origin")
+        if (
+            scope["type"] == "http"
+            and method not in {"GET", "HEAD", "OPTIONS"}
+            and origin is not None
+            and origin not in self.allowed_origins
+        ):
+            await JSONResponse({"detail": "该网页来源无权修改校园数据。"}, status_code=403)(
+                scope, receive, send
+            )
+            return
         public = {
             ("GET", "/"),
             ("GET", "/api/v1/auth/status"),
@@ -77,18 +89,16 @@ class CampusAccessMiddleware:
         from deeptutor.api.routers import auth
         from deeptutor.multi_user.context import get_current_user, reset_current_user, set_current_user
 
-        connection = HTTPConnection(scope)
         context_token = set_current_user(get_current_user())
         policy_token = campus_request.set(True)
         try:
             # CORS middleware only covers HTTP. Browser WebSocket handshakes
             # need their own Origin check before cookies can authorize a connection.
-            origin = connection.headers.get("origin")
             if scope["type"] == "websocket" and origin is not None and origin not in self.allowed_origins:
                 raise HTTPException(403, "该网页来源无权连接校园服务。")
             authorization = connection.headers.get("authorization")
             cookie = connection.cookies.get("dt_token")
-            if scope["type"] == "websocket" and connection.query_params.get("token"):
+            if scope["type"] == "websocket" and path != "/api/v1/ws" and connection.query_params.get("token"):
                 authorization = f"Bearer {connection.query_params['token']}"
             payload = await auth.require_auth(authorization=authorization, dt_token=cookie)
             if payload is not None and payload.role not in {"admin", "user"}:
