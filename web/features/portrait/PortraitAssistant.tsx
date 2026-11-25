@@ -21,7 +21,7 @@ export default function PortraitAssistant({
     [answer, setAnswer] = useState(''),
     [error, setError] = useState(''),
     [question, setQuestion] = useState('')
-  const [pokeSignal, setPokeSignal] = useState(0)
+  const [pokeSignal, setPokeSignal] = useState<{ dx: number; dy: number }>()
   const pointerStart = useRef({ x: 0, y: 0 })
   const bounds = useRef<HTMLDivElement>(null),
     trigger = useRef<HTMLButtonElement>(null),
@@ -142,7 +142,11 @@ export default function PortraitAssistant({
           }}
           onClick={event => {
             if (dragged.current && event.detail !== 0) return
-            setPokeSignal(value => value + 1)
+            const bounds = event.currentTarget.getBoundingClientRect()
+            setPokeSignal(event.detail === 0 ? { dx: 0, dy: 0 } : {
+              dx: 2 * (event.clientX - bounds.left) / bounds.width - 1,
+              dy: 2 * (event.clientY - bounds.top) / bounds.height - 1,
+            })
             setOpen(v => !v)
           }}
           className="pointer-events-auto absolute right-2 top-2 touch-none rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]"

@@ -13,11 +13,11 @@
 
 import {
   TAU, clamp, rand, lerp, approach, smoothClosedPath,
-  easings, loopNoise, blinkOpenMul, pulseAmount, pickWeighted
+  easings, loopNoise, blinkOpenMul, pulseAmount, pickWeighted, spring, springStep
 } from './math.js';
 import { sphereSilhouette, shapeRadiusTable, tableRadiusAt, MORPH_KINDS } from './shape.js';
 import { createTypeLine } from './typeline.js';
-import { pickLine } from './lines.js';
+import { pickLine, SCENE_LINES } from './lines.js';
 import { projectEye, clampToHull } from './face.js';
 import { STATES, FALLBACK, NUM_KEYS, SHAPES, normalize, morphTimeline } from './states.js';
 
@@ -37,8 +37,9 @@ const RIBBON_PAIRS = [
 const RIBBON_SEGS = 8;                 /* 每条丝带分 8 段：尾细淡、头粗亮 = 流星拖尾 */
 const ZZZ_COLOR = '#F4C34E';           /* 南财黄 */
 const ZZZ_INTERVAL = 0.3;              /* 三节 Z 的发车间隔（秒） */
-const SPIN_DUR = 1.05;                 /* 点球后自转一圈的时长（秒） */
-const RIBBON_LIFE = 1.8;               /* 彩带寿命：比转体长半拍，转完了丝带再飘一会淡出 */
+const RIBBON_LIFE = 1.8;               /* 彩带独立淡出，连点不重开 */
+const TRIPLE_POKE_MS = 700;
+const POKE_SPIN_MS = 1050;
 const RIBBON_TILTS = [-0.95, -0.12, 0.72];   /* 三条轨道的基础倾角（弧度），错开才有环绕感 */
 /* 经线可见度：底数 + 随宽度变化的增量。早期是 0.08/0.20，实测在红底上几乎看不见 */
 const MERIDIAN_BASE = 0.20;
@@ -428,8 +429,10 @@ export function create(container, opts = {}) {
   NUM_KEYS.forEach((k) => { cur[k] = target[k]; });
 
   let now = 0;
+  let firstFrame = null;
   let entryT = 0;
   let meridianPhase = 0;
+  let breathePhase = 0;
   /* 打盹：待机在形变轮播的静止期中间往睡眠姿态插值。napSleep 只取一次，
    * 每帧复用 napVals 存混合结果，避免每帧新建对象。 */
   const napSleep = normalize(STATES['00']);
@@ -466,6 +469,8 @@ export function create(container, opts = {}) {
     if (kind !== 'ball') morphTables[kind] = shapeRadiusTable(kind, R, MORPH_SAMPLES);
   }
   let morphAnchor = 0;
+  let lastMorph = null;
+  let morphWeight = 0;
   let blinkNext = 1600, blinkT = -1, blinkCount = 1;
   let glanceNext = 2400, glanceTarget = 0, glanceCur = 0;
   let gazeTX = 0, gazeTY = 0, gazeX = 0, gazeY = 0;
@@ -474,8 +479,12 @@ export function create(container, opts = {}) {
   let bookK = 0;             /* 道具书的显示浓度（approach 渐显渐隐） */
   let penK = 0;              /* 钢笔（书写）的显示浓度——approach 让外部切走时渐隐收场 */
   let particles = [];
-  /* 点球转体：twirl = { t0, dir }，dir ∈ {+1,-1} 随机（顺/逆时针） */
-  let twirl = null;
+  const pokeX = spring(0), pokeY = spring(0), pokeSquash = spring(0);
+  let pokeCount = 0;
+  let firstPokeAt = 0;
+  let pokeSpin = null;
+  const sceneLast = {};
+  let pokeTipUntil = 0;
   let ribbons = [];
   let ringVis = 0;              /* 轨道环整组可见度：进入 0.8s 渐显，离开淡出 */
   let ringT = 0;                /* 环相位用的状态年龄：离开状态时冻结，环原地淡出 */
@@ -651,31 +660,60 @@ export function create(container, opts = {}) {
     }
   }
 
-  /** 点一下球：随机方向转身一圈（像地球自转，展示脸和背）+ 流星彩带。连点则直接重开一轮。 */
-  function poke() {
+  function poke(dx = 0, dy = 0) {
     if (destroyed) return;
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    twirl = { t0: now, dir, phase0: meridianPhase };
-    for (const rb of ribbons) {
-      for (const p of rb.back) p.remove();
-      for (const p of rb.front) p.remove();
-      rb.hb.remove(); rb.hf.remove(); rb.grad.remove();
+    const dir = dx < 0 ? 1 : -1;
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      pokeX.v = clamp(pokeX.v - dx * 180, -240, 240);
+      pokeY.v = clamp(pokeY.v - dy * 180, -240, 240);
+      pokeSquash.v = Math.min(4, pokeSquash.v + 2.8);
+      if (!ribbons.length) spawnRibbons(dir);
+      if (!pokeSpin) {
+        if (!pokeCount || now - firstPokeAt > TRIPLE_POKE_MS) {
+          firstPokeAt = now;
+          pokeCount = 0;
+        }
+        if (++pokeCount === 3) {
+          pokeSpin = { start: now, dir };
+          pokeCount = 0;
+        }
+      }
     }
-    ribbons = [];
-    spawnRibbons(dir);
+    if (tipLine && now >= pokeTipUntil && (emotionId === '01' || emotionId === '03')) {
+      sceneLast.poke = pickLine(SCENE_LINES.poke, sceneLast.poke);
+      tipLine.set(sceneLast.poke);
+      pokeTipUntil = now + 2000;
+    }
     if (typeof opts.onPoke === 'function') opts.onPoke(dir);
+  }
+
+  let pointerStart = null;
+  function onPointerDown(e) {
+    pointerStart = { x: e.clientX, y: e.clientY, moved: false };
+  }
+  function onPointerMove(e) {
+    if (pointerStart && Math.hypot(e.clientX - pointerStart.x, e.clientY - pointerStart.y) > 6) {
+      pointerStart.moved = true;
+    }
   }
 
   /** 点击命中：SVG 客户端坐标 → 200×200 viewBox，落点距球心 < 1.22R 才算点到球上 */
   function onClick(e) {
+    onPointerMove(e);
+    const dragged = pointerStart?.moved;
+    pointerStart = null;
+    if (dragged) return;
     if (!svg.getBoundingClientRect) return;
     const r = svg.getBoundingClientRect();
     if (!r || !r.width) return;
     const x = (e.clientX - r.left) * (200 / r.width);
     const y = (e.clientY - r.top) * (200 / r.height);
-    if (Math.hypot(x - CX, y - CY) <= R * 1.22) poke();
+    const dx = (x - CX) / R, dy = (y - CY) / R;
+    if (Math.hypot(dx, dy) <= 1.22) poke(dx, dy);
   }
   if (opts.poke !== false && svg.addEventListener) {
+    svg.addEventListener('pointerdown', onPointerDown);
+    svg.addEventListener('pointermove', onPointerMove);
     svg.addEventListener('click', onClick);
   }
 
@@ -709,7 +747,10 @@ export function create(container, opts = {}) {
       : Infinity;
     if (target.confetti) burstConfetti(26);
     /* 台词：切进来先说表情自己的 tip，轮换从第 tipRounds 轮才开始（rotateTip） */
-    curTip = target.tip || '';
+    const sceneLines = SCENE_LINES[id];
+    curTip = sceneLines ? pickLine(sceneLines, sceneLast[id]) : target.tip || '';
+    if (sceneLines) sceneLast[id] = curTip;
+    pokeTipUntil = 0;
     tipRound = -1;
     tipLineLast = '';
     if (tipLine) tipLine.set(curTip);
@@ -782,7 +823,7 @@ export function create(container, opts = {}) {
   function restoreTip() {
     if (!microTipOn) return;
     microTipOn = false;
-    if (tipLine) tipLine.set(curTip);
+    if (tipLine && !pokeTipUntil) tipLine.set(curTip);
   }
 
   /** 没有 morph 的状态也要能轮换台词，这时一轮按待机的周期（12.6s）算 */
@@ -804,13 +845,14 @@ export function create(container, opts = {}) {
     if (idx === tipRound) return;
     tipRound = idx;
     const warmup = target.tipRounds != null ? target.tipRounds : 2;
+    const previousTip = curTip;
     if (idx < warmup) {
       curTip = target.tip || '';
     } else {
       curTip = pickLine(pool, tipLineLast);
       tipLineLast = curTip;
     }
-    if (!microTipOn) tipLine.set(curTip);
+    if (!microTipOn && !pokeTipUntil && curTip !== previousTip) tipLine.set(curTip);
   }
 
   /**
@@ -837,22 +879,23 @@ export function create(container, opts = {}) {
   /* ---------------- 每帧 ---------------- */
   function tick(ts, dt) {
     if (destroyed) return;
-    now = ts;
+    firstFrame ??= ts;
+    now = ts - firstFrame;
     const age = (now - entryT) / 1000;
 
-    /* 0) 点球转身调度：必须在经线渲染**之前**算好——转身期间 meridianPhase
-     *    被精确覆写为 phase0+spinYaw（第 3 步跳过自然自转），否则渲染值会
-     *    混入一帧自然自转，转完一圈收尾画面无法与起点重合。 */
-    let spinYaw = 0, twirlPop = 1;
-    if (twirl) {
-      const a = (now - twirl.t0) / 1000;
-      if (a >= SPIN_DUR) twirl = null;
-      else {
-        const t = easings.inOutCubic(a / SPIN_DUR);
-        spinYaw = twirl.dir * TAU * t;
-        meridianPhase = twirl.phase0 + spinYaw;
-        twirlPop = 1 + 0.1 * Math.sin(Math.PI * Math.min(1, a / 0.35));
-      }
+    const reboundX = springStep(pokeX, 19, 0.55, dt);
+    const reboundY = springStep(pokeY, 19, 0.55, dt);
+    const reboundSquash = springStep(pokeSquash, 19, 0.55, dt);
+    let spinYaw = 0;
+    if (pokeSpin) {
+      const progress = (now - pokeSpin.start) / POKE_SPIN_MS;
+      if (progress >= 1) pokeSpin = null;
+      else spinYaw = pokeSpin.dir * TAU * easings.inOutCubic(progress);
+    }
+    if (pokeTipUntil && now >= pokeTipUntil) {
+      pokeTipUntil = 0;
+      microTipOn = false;
+      tipLine.set(curTip);
     }
 
     /* 0) 打盹调度：静止期中间开一个时间窗，窗内把姿态整体往睡眠插值。
@@ -954,7 +997,7 @@ export function create(container, opts = {}) {
         /* 台词：做表情的同时换一句话（typeline 会先删后打，不会两段文字叠在一起），
          * 微表情结束由 restoreTip() 换回表情自己的 tip。 */
         const lines = micro && micro.lines;
-        if (lines && lines.length && tipLine) {
+        if (lines && lines.length && tipLine && !pokeTipUntil) {
           let line = lines[Math.floor(Math.random() * lines.length)];
           /* 只有一句时没法躲；两句以上撞了上一句就顺移一位，别连着说同一句 */
           if (lines.length > 1 && line === microLineLast) {
@@ -1016,12 +1059,20 @@ export function create(container, opts = {}) {
      *    sphereSilhouette 以原点为球心，画前平移到画布坐标 (CX,CY)。
      *    形变轮播：每个取样点沿自己的方向角，在球半径与目标形状半径之间
      *    用弹性 t 插值——目标半径同样乘 breathe，呼吸在形变期间不停。 */
-    const breathe = 1 + cur.breatheAmp * Math.sin((now / 1000) * cur.breatheHz * TAU);
+    breathePhase = (breathePhase + dt * cur.breatheHz * TAU) % TAU;
+    const breathe = 1 + cur.breatheAmp * Math.sin(breathePhase);
     const hull = sphereSilhouette(R, {
       squash: cur.squash, taper: cur.taper, lean: cur.lean, breathe
     }).map(([x, y]) => [x + CX, y + CY]);
-    const mi = morphInfo();
-    if (mi && mi.t !== 0) {
+    const nextMorph = morphInfo();
+    if (nextMorph && (nextMorph.from !== 'ball' || nextMorph.kind !== 'ball')) {
+      lastMorph = nextMorph;
+      morphWeight = 1;
+    } else {
+      morphWeight = approach(morphWeight, 0, 12, dt);
+    }
+    const mi = lastMorph;
+    if (mi && (mi.from !== 'ball' || mi.kind !== 'ball') && morphWeight > 0.001) {
       const toTable = mi.kind === 'ball' ? null : morphTables[mi.kind];
       const fromTable = mi.from === 'ball' ? null : morphTables[mi.from];
       for (let i = 0; i < hull.length; i++) {
@@ -1031,7 +1082,7 @@ export function create(container, opts = {}) {
         const th = Math.atan2(y, x);
         const rFrom = fromTable ? tableRadiusAt(fromTable, th) * breathe : r0;
         const rTo = toTable ? tableRadiusAt(toTable, th) * breathe : r0;
-        const r = rFrom + (rTo - rFrom) * mi.t;   /* t 可 >1（outBack 外插 = 回弹） */
+        const r = lerp(r0, lerp(rFrom, rTo, mi.t), morphWeight);
         hull[i][0] = CX + (x / r0) * r;
         hull[i][1] = CY + (y / r0) * r;
       }
@@ -1049,23 +1100,18 @@ export function create(container, opts = {}) {
      *    我们的四条经线等距 45°，全速自转时图案每 45° 自重合，只会看到各条线
      *    轮流宽窄的"脉动"而不是连贯自转（旧版 1.25 圈/秒接管即此问题）。
      *    故 orbit 期间球面维持平时的慢速漂移，旋转交给环和眼睛。 */
-    if (!twirl) {
-      meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
-    }
+    meridianPhase += dt * 0.55 * Math.max(0.001, cur.meridian || 1);
     /* 省略号/书写/感叹阶段整组经线淡出：发光线缩在让位的球上是噪点 */
     meridianLayer.setAttribute('opacity', faceK.toFixed(3));
     meridians.forEach((m, i) => {
-      const ph = meridianPhase + (i * Math.PI) / 4;
+      const ph = meridianPhase + spinYaw + (i * Math.PI) / 4;
       const rx = Math.abs(Math.cos(ph)) * R * 1.2;
       const front = Math.sin(ph) > 0 ? 1 : 0.42;
       m.setAttribute('rx', Math.max(1.5, rx).toFixed(2));
       m.setAttribute('opacity', ((MERIDIAN_BASE + MERIDIAN_GAIN * (rx / (R * 1.2))) * front).toFixed(3));
     });
 
-    /* 4) 头部朝向 = 基础姿态 + 点球转身 + 鼠标注视 + 随机瞟一眼 + 扫视 + 飘移
-     *    转身（spinYaw）在 0) 已算好：headYaw 绕竖直轴转过 2π，眼睛沿球面横移、
-     *    靠边缘时被透视压缩、过背面被剔除消失、再从另一侧绕回来——projectEye
-     *    的球面投影天然支持，所以"展示脸和背"不用额外建模，一个 yaw 偏移就够了。 */
+    /* 4) 头部朝向 = 基础姿态 + 鼠标注视 + 随机瞟一眼 + 扫视 + 飘移 */
     gazeX = approach(gazeX, gazeTX, 6, dt);
     gazeY = approach(gazeY, gazeTY, 6, dt);
     if (target.glanceMs && now > glanceNext) {
@@ -1257,10 +1303,11 @@ export function create(container, opts = {}) {
       }
     }
 
-    const popAll = pop * twirlPop;
+    const scaleX = pop * hopSX * (1 + reboundSquash * 0.75);
+    const scaleY = pop * hopSY * (1 - reboundSquash);
     /* scale 的锚点放在球底（相对球心再往下 R）而不是球心：挤压时是"压在地上"，
      * 而不是两头一起缩、看着像悬空。rotate 仍以球心为轴。 */
-    const rigT = `translate(${shakeX.toFixed(2)} ${(bounceY + hopY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${(popAll * hopSX).toFixed(3)} ${(popAll * hopSY).toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
+    const rigT = `translate(${(shakeX + reboundX).toFixed(2)} ${(bounceY + hopY + reboundY).toFixed(2)}) translate(${CX} ${CY}) rotate(${confettiSpin.toFixed(2)}) translate(0 ${R}) scale(${scaleX.toFixed(3)} ${scaleY.toFixed(3)}) translate(0 ${-R}) translate(${-CX} ${-CY})`;
     /* 收身的两种过门共用一个前置变换：省略号缩到 20%（中间那颗点就是球自己）、
      * 书写直接缩没——钢笔是道具层画的，球得整颗让位。 */
     let preT = '';
@@ -1331,7 +1378,11 @@ export function create(container, opts = {}) {
     destroyed = true;
     removeTicker(tick);
     document.removeEventListener('mousemove', onPointer);
-    if (svg.removeEventListener) svg.removeEventListener('click', onClick);
+    if (svg.removeEventListener) {
+      svg.removeEventListener('pointerdown', onPointerDown);
+      svg.removeEventListener('pointermove', onPointerMove);
+      svg.removeEventListener('click', onClick);
+    }
     if (tipLine) tipLine.destroy();
     svg.remove();
   }

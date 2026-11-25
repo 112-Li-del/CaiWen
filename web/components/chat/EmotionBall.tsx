@@ -20,10 +20,10 @@ import { create as createBall } from '@/lib/emotion-ball/engine'
 
 export type EmotionId = '00' | '01' | '02' | '03' | '10' | '11' | '12' | '13' | '20'
 
-/** 引擎实例句柄（只用到这俩方法，多余的不暴露） */
+/** React 包装层使用的引擎实例句柄 */
 interface BallHandle {
   setEmotion: (id: string) => void
-  poke: () => void
+  poke: (dx?: number, dy?: number) => void
   destroy: () => void
 }
 
@@ -69,7 +69,7 @@ export default function EmotionBall({
   size = 120,
   onPoke,
   pokeOnClick = true,
-  pokeSignal = 0,
+  pokeSignal,
 }: {
   emotion?: EmotionId
   className?: string
@@ -78,7 +78,7 @@ export default function EmotionBall({
   onPoke?: (dir: number) => void
   /** Floating/draggable hosts own gesture classification and trigger pokes explicitly. */
   pokeOnClick?: boolean
-  pokeSignal?: number
+  pokeSignal?: { dx: number; dy: number }
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const tipRef = useRef<HTMLDivElement | null>(null)
@@ -106,7 +106,7 @@ export default function EmotionBall({
   }, [pokeOnClick])
 
   useEffect(() => {
-    if (pokeSignal > 0) ballRef.current?.poke()
+    if (pokeSignal) ballRef.current?.poke(pokeSignal.dx, pokeSignal.dy)
   }, [pokeSignal])
 
   useEffect(() => {

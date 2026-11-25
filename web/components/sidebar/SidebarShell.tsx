@@ -99,16 +99,23 @@ const ADMIN_ONLY_HREFS = new Set([
   "/book",
 ]);
 
+/**
+ * TEMP（2026-11-09，咏欣）：老师先看效果，把「智能写作」临时提到左侧一级导航，
+ * 与「聊天」平级；演示结束把此常量改回 false，右侧「功能」菜单即恢复原样。
+ * 只动前端入口可见性，代码零删除（沿用「收入口不删码」）。
+ */
+const TEMP_CO_WRITER_IN_SIDEBAR = true;
+
 /** 管理员侧收进「功能」全屏菜单的 nav 项（2026-10 与用户定）。
  *  知识库保留在侧边栏（财问核心，管理员需管理）；这四项管理员也不常
  *  用，统一收进 StaggeredMenu，点击后从右侧滑出。代码零删除，恢复
- *  只需把对应 href 从本 Set 移除并放回 visibleNav。 */
-const FEATURE_MENU_HREFS = new Set([
-  "/agents",
-  "/co-writer",
-  "/book",
-  "/space",
-]);
+ *  只需把对应 href 从本 Set 移除并放回 visibleNav。
+ *  TEMP：TEMP_CO_WRITER_IN_SIDEBAR 为 true 时，/co-writer 不进本 Set。 */
+const FEATURE_MENU_HREFS = new Set(
+  ["/agents", "/co-writer", "/book", "/space"].filter(
+    (href) => !(TEMP_CO_WRITER_IN_SIDEBAR && href === "/co-writer"),
+  ),
+);
 
 export function SidebarShell({
   sessions = [],
@@ -123,7 +130,8 @@ export function SidebarShell({
   isAdmin = false,
 }: SidebarShellProps) {
   /* 管理员主 nav 只留聊天：知识库移到底部、四项功能收进「功能」菜单（也在底部）。
-   * 普通用户：过滤 ADMIN_ONLY_HREFS，只剩聊天。 */
+   * 普通用户：过滤 ADMIN_ONLY_HREFS，只剩聊天。
+   * TEMP：TEMP_CO_WRITER_IN_SIDEBAR=true 时「智能写作」也进主 nav，与「聊天」平级。 */
   const ADMIN_TOP_HIDDEN = new Set([
     "/knowledge",
     ...FEATURE_MENU_HREFS,
@@ -174,7 +182,10 @@ export function SidebarShell({
         setFeatureMenuOpen(false);
       },
     },
-  ];
+  ].filter(
+    /* TEMP：左侧已有一级入口时，右侧「功能」菜单不再重复放「智能写作」 */
+    (item) => !(TEMP_CO_WRITER_IN_SIDEBAR && item.label === "智能写作"),
+  );
 
   const handleNewChat = () => {
     setMobileSidebarOpen(false);
