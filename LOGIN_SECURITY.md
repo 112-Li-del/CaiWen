@@ -52,7 +52,8 @@ PocketBase 的邮箱标识会去除首尾空格并统一大小写。
 
 ## 部署前检查
 
-1. 开启 AUTH_ENABLED，使用稳定的 AUTH_SECRET。
+1. 校园部署开启 `AUTH_ENABLED=true`，通过 HTTPS 提供服务并开启
+   `AUTH_COOKIE_SECURE=true`。稳定的 `AUTH_SECRET` 用于登录和注册限流键。
 2. 反向代理部署时配置 uvicorn 信任的代理地址。限流读取 ASGI client 地址，
    不自行读取 X-Forwarded-For；不能让任意客户端伪造来源，也不能误把全部学生
    计为同一代理地址。信任列表以实际部署拓扑为准。
@@ -61,6 +62,14 @@ PocketBase 的邮箱标识会去除首尾空格并统一大小写。
 4. 多服务器/多副本部署需要共享限流服务，例如 Redis；不要把此实现的本地
    SQLite 放到网络共享盘来代替分布式限流。
 5. 按校园实际登录量调整 IP 上限，监控限流与正常登录成功率。
+
+校园版会话保存在 `multi-user/_system/auth/sessions.sqlite3`，跟随现有
+`multi-user` 数据卷持久化。切换时旧 JWT 会失效，用户用原账号重新登录。
+同一台主机上的后端进程需要使用同一个本地数据目录。跨主机部署需要另行
+提供共享的会话存储。前后端分开部署时，在 Next.js 运行环境中设置
+`AUTH_INTERNAL_API_BASE`，供管理页面读取后端当前的会话和角色。
+
+校园版后端不挂载 TutorBot API，也不启动 TutorBot 后台任务。
 
 ## 验证与复测
 

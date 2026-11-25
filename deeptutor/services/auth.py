@@ -2,7 +2,7 @@
 Authentication service for DeepTutor.
 
 Disabled by default (AUTH_ENABLED=false) so localhost users are unaffected.
-When enabled, guards all API routes with JWT bearer tokens.
+When enabled, guards all API routes with server-side sessions.
 
 Quick setup (single user via env vars):
     1. Set AUTH_ENABLED=true in .env
@@ -10,7 +10,6 @@ Quick setup (single user via env vars):
     3. Generate a password hash:
            python -c "from deeptutor.services.auth import hash_password; print(hash_password('yourpassword'))"
        Paste the output into AUTH_PASSWORD_HASH=<hash>
-    4. Set AUTH_SECRET to a long random string
 
 Multi-user setup (recommended):
     Enable AUTH_ENABLED=true and leave AUTH_USERNAME/AUTH_PASSWORD_HASH empty.
@@ -25,7 +24,7 @@ Multi-user setup (recommended):
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 import os
 from typing import Any
@@ -43,27 +42,14 @@ AUTH_SECRET: str = os.getenv("AUTH_SECRET", "")
 TOKEN_EXPIRE_HOURS: int = int(os.getenv("AUTH_TOKEN_EXPIRE_HOURS", "24"))
 
 # PocketBase auth mode — active when POCKETBASE_URL is set AND AUTH_ENABLED=true.
-# When enabled, login/register proxy to PocketBase and token validation uses
-# PocketBase's auth-refresh endpoint (cached in memory — no static secret needed).
+# Login/register proxy to PocketBase. Its credential is kept on the server and
+# validated through PocketBase's cached auth-refresh endpoint.
 POCKETBASE_URL: str = os.getenv("POCKETBASE_URL", "").rstrip("/")
 POCKETBASE_ENABLED: bool = bool(POCKETBASE_URL) and AUTH_ENABLED
 
-_ALGORITHM = "HS256"
-
-if AUTH_ENABLED and not POCKETBASE_ENABLED and not AUTH_SECRET:
-    from deeptutor.multi_user.identity import load_or_create_auth_secret
-
-    AUTH_SECRET = load_or_create_auth_secret()
-
-
-# ---------------------------------------------------------------------------
-# Token payload
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class TokenPayload:
-    """Decoded JWT payload."""
+    """Authenticated account identity."""
 
     username: str
     role: str
@@ -210,79 +196,52 @@ def reject_user(username: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# JWT
+# Server-side login sessions
 # ---------------------------------------------------------------------------
 
 
-def create_token(username: str, role: str = "user", user_id: str | None = None) -> str:
-    """Create a signed JWT for the given username and role."""
-    from jose import jwt
+def create_token(
+    username: str, role: str = "user", user_id: str | None = None,
+    *, upstream_token: str | None = None,
+) -> str:
+    """Issue an opaque session ID. Permissions are resolved on each request."""
+    from deeptutor.services.auth_sessions import issue
 
     if not user_id:
-        record = _load_users().get(username) or {}
-        user_id = str(record.get("id") or "")
-
-    payload = {
-        "sub": username,
-        "role": role,
-        "uid": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
-        "iat": datetime.now(timezone.utc),
-    }
-    return jwt.encode(payload, AUTH_SECRET, algorithm=_ALGORITHM)
+        user_id = str((_load_users().get(username) or {}).get("id") or "")
+    if not user_id:
+        raise ValueError("Cannot create a login session without a user ID")
+    return issue(username, user_id, TOKEN_EXPIRE_HOURS * 3600, upstream_token)
 
 
 def decode_token(token: str) -> TokenPayload | None:
-    """
-    Validate a token and return a TokenPayload, or None if invalid.
+    """Resolve an active session against current account permissions."""
+    from deeptutor.services.auth_sessions import lookup
 
-    - PocketBase mode: calls PocketBase's auth-refresh endpoint (cached in
-      memory for 60 s, so only the first request per token per minute makes
-      a network call). No static JWT secret required.
-    - Standard mode: local in-memory jwt.decode() using AUTH_SECRET — zero
-      network calls, same as before.
-    """
-    if not token:
+    session = lookup(token)
+    if session is None:
         return None
-
+    username, user_id, upstream_token = session
     if POCKETBASE_ENABLED:
         from deeptutor.services.pocketbase_client import validate_pb_token
 
-        payload = validate_pb_token(token)
-        if payload is None:
+        payload = validate_pb_token(upstream_token) if upstream_token else None
+        if not payload:
             return None
-        return TokenPayload(
-            username=payload["username"],
-            role=payload.get("role", "user"),
-            user_id=str(payload.get("id") or payload.get("uid") or payload.get("user_id") or ""),
-        )
+        current_id = str(payload.get("id") or payload.get("uid") or payload.get("user_id") or "")
+        role = payload.get("role", "user")
+        if current_id != user_id or role not in {"admin", "user"}:
+            return None
+        return TokenPayload(payload["username"], role, user_id)
 
-    # Standard JWT + bcrypt mode
-    from jose import JWTError, jwt
-
-    if not AUTH_SECRET:
+    if upstream_token:
         return None
-
-    try:
-        payload = jwt.decode(token, AUTH_SECRET, algorithms=[_ALGORITHM])
-        username = payload.get("sub")
-        if not username:
-            return None
-        # A valid signature alone must not keep a deleted/disabled account or
-        # an old admin role usable until the token expires.
-        record = _load_users().get(str(username))
-        if not record or record.get("disabled") or record.get("status", "active") != "active":
-            return None
-        user_id = str(record.get("id") or "")
-        token_user_id = str(payload.get("uid") or "")
-        if not user_id or (token_user_id and token_user_id != user_id):
-            return None
-        role = record.get("role", "user")
-        if role not in {"admin", "user"}:
-            return None
-        return TokenPayload(username=username, role=role, user_id=user_id)
-    except JWTError:
+    record = _load_users().get(username)
+    if not record or record.get("disabled") or record.get("status", "active") != "active":
         return None
+    if record.get("id") != user_id or record.get("role") not in {"admin", "user"}:
+        return None
+    return TokenPayload(username, record["role"], user_id)
 
 
 # ---------------------------------------------------------------------------

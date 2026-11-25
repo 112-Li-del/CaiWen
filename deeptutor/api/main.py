@@ -219,13 +219,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start EventBus: {e}")
 
-    try:
-        from deeptutor.services.tutorbot import get_tutorbot_manager
-
-        await get_tutorbot_manager().auto_start_bots()
-    except Exception as e:
-        logger.warning(f"Failed to auto-start TutorBots: {e}")
-
     # Ping PocketBase if configured — logs a warning (not an error) if unreachable
     try:
         from deeptutor.services.pocketbase_client import ping_pocketbase
@@ -238,15 +231,6 @@ async def lifespan(app: FastAPI):
 
     # Execute on shutdown
     logger.info("Application shutdown")
-
-    # Stop TutorBots
-    try:
-        from deeptutor.services.tutorbot import get_tutorbot_manager
-
-        await get_tutorbot_manager().stop_all(preserve_auto_start=True)
-        logger.info("TutorBots stopped")
-    except Exception as e:
-        logger.warning(f"Failed to stop TutorBots: {e}")
 
     # Stop EventBus
     try:
@@ -340,7 +324,6 @@ from deeptutor.api.routers import (
     skills,
     solve,
     system,
-    tutorbot,
     unified_ws,
     vision_solver,
 )
@@ -406,9 +389,6 @@ app.include_router(
 )
 app.include_router(
     vision_solver.router, prefix="/api/v1", tags=["vision-solver"], dependencies=_auth
-)
-app.include_router(
-    tutorbot.router, prefix="/api/v1/tutorbot", tags=["tutorbot"], dependencies=_auth
 )
 app.include_router(
     attachments.router,

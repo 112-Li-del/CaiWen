@@ -36,10 +36,7 @@ logger = logging.getLogger(__name__)
 
 @router.websocket("/ws")
 async def unified_websocket(ws: WebSocket) -> None:
-    # Auth check — mirrors the require_auth HTTP dependency.
-    # Token is read from the ?token= query param (WebSocket headers can't
-    # carry cookies cross-origin in all browsers).
-    # Uses the same local jwt.decode() path — no network call.
+    from deeptutor.api.routers.auth import _extract_token
     from deeptutor.multi_user.context import (
         reset_current_user,
         set_current_user,
@@ -49,8 +46,9 @@ async def unified_websocket(ws: WebSocket) -> None:
     from deeptutor.services.auth import AUTH_ENABLED, decode_token
 
     user_token = None
+    token = _extract_token(ws.headers.get("authorization"), ws.cookies.get("dt_token"))
+    payload = None
     if AUTH_ENABLED:
-        token = ws.query_params.get("token") or ws.cookies.get("dt_token")
         payload = decode_token(token) if token else None
         if not payload:
             await ws.close(code=4001)
@@ -63,12 +61,21 @@ async def unified_websocket(ws: WebSocket) -> None:
     closed = False
     subscription_tasks: dict[str, asyncio.Task[None]] = {}
 
-    async def safe_send(data: dict[str, Any]) -> None:
+    async def session_is_current() -> bool:
         nonlocal closed
         if closed:
-            return
+            return False
+        if AUTH_ENABLED and decode_token(token) != payload:
+            closed = True
+            await ws.close(code=4001)
+            return False
+        return True
+
+    async def safe_send(data: dict[str, Any]) -> None:
+        nonlocal closed
         try:
-            await ws.send_json(data)
+            if await session_is_current():
+                await ws.send_json(data)
         except Exception:
             closed = True
 
@@ -108,6 +115,8 @@ async def unified_websocket(ws: WebSocket) -> None:
     try:
         while not closed:
             raw = await ws.receive_text()
+            if not await session_is_current():
+                break
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -115,6 +124,10 @@ async def unified_websocket(ws: WebSocket) -> None:
                 continue
 
             msg_type = msg.get("type")
+
+            if msg_type == "ping":
+                await safe_send({"type": "pong"})
+                continue
 
             if msg_type in {"message", "start_turn"}:
                 from deeptutor.services.session import get_turn_runtime_manager

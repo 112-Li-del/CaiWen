@@ -40,6 +40,10 @@ from deeptutor.services.auth import (
     set_role,
 )
 
+from deeptutor.services.auth_sessions import revoke
+
+from deeptutor.services.auth_sessions import revoke
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -197,7 +201,7 @@ async def require_auth(
     """
     FastAPI dependency that enforces authentication when AUTH_ENABLED=true.
 
-    Accepts the JWT from either:
+    Accepts the session ID from either:
       - Authorization: Bearer <token> header
       - dt_token cookie
 
@@ -268,10 +272,12 @@ def require_admin(
 
 @router.get("/status", response_model=AuthStatusResponse)
 async def auth_status(
+    response: Response,
     authorization: str | None = Header(default=None, alias="Authorization"),
     dt_token: str | None = Cookie(default=None),
 ) -> AuthStatusResponse:
     """Return whether auth is enabled and whether the current request is authenticated."""
+    response.headers["Cache-Control"] = "no-store"
     if not AUTH_ENABLED:
         return AuthStatusResponse(
             enabled=False,
@@ -339,7 +345,7 @@ def enforce_login_budget(body: LoginRequest, request: Request) -> None:
 
 @router.post("/login", dependencies=[Depends(enforce_login_budget)])
 async def login(body: LoginRequest, response: Response) -> dict:
-    """Validate credentials and set a JWT cookie."""
+    """Validate credentials and set a session cookie."""
     if not AUTH_ENABLED:
         return {"ok": True, "message": "当前未启用身份认证，无需登录。"}
 
@@ -355,7 +361,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
         payload, pb_token = pb_result
         response.set_cookie(
             key=_COOKIE_NAME,
-            value=pb_token,
+            value=create_token(payload.username, payload.role, payload.user_id, upstream_token=pb_token),
             httponly=True,
             samesite=_SAMESITE,
             max_age=_COOKIE_MAX_AGE,
@@ -370,7 +376,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
             "is_admin": payload.role == "admin",
         }
 
-    # Standard JWT + bcrypt mode
+    # Local bcrypt authentication
     result = authenticate(body.username, body.password)
     if not result:
         raise HTTPException(
@@ -404,9 +410,17 @@ async def login(body: LoginRequest, response: Response) -> dict:
 
 
 @router.post("/logout")
-async def logout(response: Response) -> dict:
-    """Clear the JWT cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, samesite=_SAMESITE)
+async def logout(
+    response: Response,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    dt_token: str | None = Cookie(default=None),
+) -> dict:
+    """Revoke the server-side session and clear the browser cookie."""
+    revoke(dt_token)
+    bearer = _bearer_token_from_header(authorization)
+    if bearer != dt_token:
+        revoke(bearer)
+    response.delete_cookie(key=_COOKIE_NAME, httponly=True, secure=_SECURE, samesite=_SAMESITE)
     return {"ok": True}
 
 
